@@ -199,6 +199,7 @@ summary { font-weight: 600; cursor: pointer; }
 <!-- SETUP -->
 <section id="tab-setup" hidden>
   <h2>Setup</h2>
+  <p class="small muted mono" id="ver"></p>
   <p class="small muted">Shots are always kept on this phone. Add a GitHub key to also save them to your repo and to load jobs from the Town House Designer.</p>
   <div class="stack">
     <label class="field"><span>GitHub key (fine-grained token)</span><input id="s-token" type="password" autocomplete="off" placeholder="github_pat_…"></label>
@@ -238,6 +239,17 @@ summary { font-weight: 600; cursor: pointer; }
 
 <script>
 "use strict";
+const APP_VERSION = "2026-10-01.5";
+// GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
+(async () => {
+  try {
+    const r = await fetch(location.pathname + "?check=" + Date.now(), { cache: "no-store" });
+    const m = (await r.text()).match(/APP_VERSION = "([^"]+)"/);
+    if (m && m[1] !== APP_VERSION && sessionStorage.getItem("gps.upd") !== m[1]) {
+      sessionStorage.setItem("gps.upd", m[1]); location.replace(location.pathname + "?v=" + m[1]);
+    }
+  } catch {}
+})();
 /* ---------- storage helpers ---------- */
 const LS = {
   get(k, d) { try { const v = localStorage.getItem("gps." + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
@@ -406,7 +418,18 @@ function renderGroups(groups, items) {
     const r = data.items[i.name];
     return `<button class="item" role="option" data-i="${esc(i.name)}">${symbol(i.kind)}<span><span class="nm">${esc(i.name)}</span><br><span class="sub">${esc(i.group)}</span></span>${r ? `<span class="pill ${accClass(r.acc_ft)}">±${Math.round(r.acc_ft)} ft</span>` : `<span class="pill none">Not shot</span>`}</button>`;
   }).join("");
-  box.innerHTML = g || it ? g + it : `<div class="item loc-opt muted">Nothing matches. Add an item below to make a new one.</div>`;
+  const typed = $("loc").value.trim();
+  const exists = typed && (locGroups.some(x => norm(x) === norm(typed)) || locItems.some(x => norm(x.name) === norm(typed)));
+  const none = !g && !it ? `<div class="item loc-opt" style="cursor:default"><span class="nm">No location named “${esc(typed)}”</span><span></span></div>` : "";
+  const add = typed && !exists ? `<button class="item loc-opt" data-new="${esc(typed)}"><span><span class="nm" style="color:var(--accent)">+ Add new location “${esc(typed)}”</span><br><span class="sub">Goes in ${esc(group || "Added in field")}</span></span><span></span></button>` : "";
+  box.innerHTML = none + g + it + add;
+}
+function createItem(name) {
+  name = name.trim(); if (!name) return;
+  const g = group || "Added in field";
+  if (!itemsList().some(i => i.name === name)) { data.extra = data.extra || []; data.extra.push({ name, group: g }); saveLocal(); push(`Add ${name}`); }
+  group = g; selected = name; locOpen = false; $("loc").blur(); render(); toast(`Created ${name}`);
+  $("shot").scrollIntoView({ behavior: "smooth", block: "start" });
 }
 function pickItem(n) {
   const i = locItems.find(x => x.name === n); if (!i) return;
@@ -417,13 +440,14 @@ function pickLocation(g) { group = g; locOpen = false; selected = null; $("loc")
 $("loc").addEventListener("focus", () => { locOpen = true; $("loc").select(); renderGroups(); });
 $("loc").addEventListener("input", () => { locOpen = true; renderGroups(); });
 $("loc").addEventListener("keydown", e => {
-  if (e.key === "Enter") { const m = locMatches(); if (m.groups.length) pickLocation(m.groups[0]); else if (m.items.length) pickItem(m.items[0].name); e.preventDefault(); }
+  if (e.key === "Enter") { const m = locMatches(); if (m.groups.length) pickLocation(m.groups[0]); else if (m.items.length) pickItem(m.items[0].name); else createItem($("loc").value); e.preventDefault(); }
   if (e.key === "Escape") { locOpen = false; $("loc").blur(); render(); }
 });
 $("loc").addEventListener("blur", () => setTimeout(() => { if (locOpen && document.activeElement !== $("loc")) { locOpen = false; render(); } }, 200));
-$("groups").addEventListener("pointerdown", e => { if (e.target.closest("[data-g],[data-i]")) e.preventDefault(); });
+$("groups").addEventListener("pointerdown", e => { if (e.target.closest("[data-g],[data-i],[data-new]")) e.preventDefault(); });
 $("groups").addEventListener("click", e => {
-  const b = e.target.closest("[data-g],[data-i]"); if (!b) return;
+  const b = e.target.closest("[data-g],[data-i],[data-new]"); if (!b) return;
+  if (b.dataset.new != null) { createItem(b.dataset.new); return; }
   if (b.dataset.g != null) pickLocation(b.dataset.g); else pickItem(b.dataset.i);
 });
 $("items").addEventListener("click", e => {
@@ -809,7 +833,7 @@ $("export-csv").onclick = () => {
 $("export-json").onclick = () => deliver(`${current}-gps.json`, JSON.stringify(Object.assign({}, data, { mapped: exportRows() }), null, 1), "application/json");
 
 /* ---------- setup ---------- */
-function fillSetup() { $("s-token").value = cfg.token; $("s-repo").value = cfg.repo; $("s-branch").value = cfg.branch; $("s-secs").value = String(cfg.secs); }
+function fillSetup() { $("ver").textContent = "Version " + APP_VERSION; $("s-token").value = cfg.token; $("s-repo").value = cfg.repo; $("s-branch").value = cfg.branch; $("s-secs").value = String(cfg.secs); }
 function setupMsg(kind, text) { const m = $("s-msg"); m.hidden = false; m.className = "note " + kind; m.textContent = text; }
 $("s-secs").onchange = e => { cfg.secs = +e.target.value; LS.set("cfg", cfg); };
 $("s-save").onclick = async () => {
