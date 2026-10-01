@@ -91,6 +91,12 @@ label.field span { font: 600 14px/1 var(--display); letter-spacing: .08em; text-
 .canvas-box { position: relative; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--panel); height: 62vh; min-height: 320px; touch-action: none; }
 .canvas-box canvas { display: block; width: 100%; height: 100%; }
 .canvas-tools { position: absolute; right: 8px; top: 8px; display: grid; gap: 6px; }
+.canvas-box.full { position: fixed; inset: 0; z-index: 30; height: auto; min-height: 0; border: 0; border-radius: 0; }
+.canvas-box.full .canvas-tools { top: calc(10px + env(safe-area-inset-top, 0px)); right: 10px; }
+.canvas-box.full .canvas-tools .btn { min-height: 52px; min-width: 52px; font-size: 22px; }
+.canvas-box.full .placing { top: auto; left: 10px; right: 10px; bottom: calc(10px + env(safe-area-inset-bottom, 0px)); font-size: 18px; }
+.canvas-box.full .placing .btn { min-height: 56px; font-size: 18px; flex: 1; }
+.toast { z-index: 40; }
 .canvas-tools .btn { min-height: 40px; min-width: 40px; padding: 6px 10px; }
 .placing { position: absolute; left: 8px; right: 60px; top: 8px; background: var(--accent); color: var(--accent-ink); padding: 8px 10px; border-radius: 8px; font-weight: 600; display: grid; gap: 8px; }
 .placing .row { gap: 8px; }
@@ -246,7 +252,7 @@ summary { font-weight: 600; cursor: pointer; }
 
 <script>
 "use strict";
-const APP_VERSION = "2026-10-01.7";
+const APP_VERSION = "2026-10-01.8";
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 (async () => {
   try {
@@ -698,8 +704,10 @@ function drawPrint() {
   ctx.save(); ctx.translate(view.x, view.y); ctx.scale(view.s, view.s);
   const c1 = css("--plan"), c2 = css("--plan2");
   ctx.lineCap = "round"; ctx.lineJoin = "round";
+  const full = $("cbox").classList.contains("full");
   for (const [col, w, pts] of job.plan.lines) {
-    ctx.strokeStyle = col === "#b4b4b4" ? c2 : c1; ctx.lineWidth = Math.max(w, 0.6 / view.s);
+    if (full) { ctx.strokeStyle = col === "#b4b4b4" ? c1 : css("--ink"); ctx.lineWidth = Math.max(w, 1.3 / view.s); }
+    else { ctx.strokeStyle = col === "#b4b4b4" ? c2 : c1; ctx.lineWidth = Math.max(w, 0.6 / view.s); }
     ctx.beginPath(); ctx.moveTo(pts[0], pts[1]);
     for (let i = 2; i < pts.length; i += 2) ctx.lineTo(pts[i], pts[i + 1]);
     ctx.stroke();
@@ -717,7 +725,7 @@ function drawPrint() {
     else if (/pole/i.test(it.kind)) { ctx.fillStyle = css("--pole"); ctx.beginPath(); ctx.arc(p.x, p.y, z * 0.8, 0, 7); ctx.fill(); }
     else { ctx.fillStyle = css("--vault"); ctx.fillRect(p.x - z * 0.8, p.y - z * 0.8, z * 1.6, z * 1.6); }
     ctx.globalAlpha = 1;
-    if (view.s >= 1.6) { ctx.fillStyle = css("--ink"); ctx.font = "600 11px " + css("--body"); ctx.textAlign = "left"; ctx.textBaseline = "middle"; ctx.fillText(it.name, p.x + z + 3, p.y); }
+    if (view.s >= 1.6) { ctx.fillStyle = css("--ink"); ctx.font = ($("cbox").classList.contains("full") ? "700 15px " : "600 11px ") + css("--body"); ctx.textAlign = "left"; ctx.textBaseline = "middle"; ctx.fillText(it.name, p.x + z + 3, p.y); }
   }
   // spots set by hand (where the box actually is)
   for (const [n, c] of Object.entries(data.controls)) if (c.x != null) {
@@ -806,10 +814,16 @@ let pending = null, placeReturn = false;
 function startPlacing(n, fromShot) {
   placing = n; focusName = n; pending = null; placeReturn = fromShot;
   $("placing").hidden = false; $("place-save").disabled = true;
-  $("placing-msg").textContent = `Tap where ${n} actually is. Zoom in to be exact.`;
-  if (focusPos(n)) findOnPrint(n, true); else $("cbox").scrollIntoView({ behavior: "smooth", block: "center" });
+  $("placing-msg").textContent = `Tap where ${n} actually is. Pinch to zoom.`;
+  $("cbox").classList.add("full"); document.body.style.overflow = "hidden";
+  view.fitted = false; sizeCanvas(); fitView();
+  if (focusPos(n)) findOnPrint(n, true); else drawPrint();
 }
-function endPlacing() { placing = null; pending = null; $("placing").hidden = true; drawPrint(); }
+function endPlacing() {
+  placing = null; pending = null; $("placing").hidden = true;
+  $("cbox").classList.remove("full"); document.body.style.overflow = "";
+  view.fitted = false; drawPrint();
+}
 $("place-save").onclick = () => {
   if (!pending || !placing) return;
   const n = placing;
@@ -829,11 +843,11 @@ function findOnPrint(n, quiet) {
   if (!sol) sol = solve();
   const f = focusPos(n);
   focusName = n;
-  $("cbox").scrollIntoView({ behavior: "smooth", block: "center" });
+  if (!$("cbox").classList.contains("full")) $("cbox").scrollIntoView({ behavior: "smooth", block: "center" });
   if (!f) { drawPrint(); if (!quiet) toast(`${n} isn't on the print yet. Tap Set spot, then tap where it is.`); return; }
   const r = cv.getBoundingClientRect(), e = extent();
   const fit = Math.min(r.width / (e.x1 - e.x0), r.height / (e.y1 - e.y0)) * 0.95;
-  view.s = Math.max(view.s, fit * 4); view.x = r.width / 2 - f.x * view.s; view.y = r.height / 2 - f.y * view.s; view.fitted = true;
+  view.s = Math.max(view.s, fit * ($("cbox").classList.contains("full") ? 5 : 4)); view.x = r.width / 2 - f.x * view.s; view.y = r.height / 2 - f.y * view.s; view.fitted = true;
   drawPrint();
 }
 $("lock-scale").onchange = e => { data.lockScale = e.target.checked; saveLocal(); push("Scale setting"); drawPrint(); };
