@@ -142,6 +142,8 @@ summary { font-weight: 600; cursor: pointer; }
     <h3>Pick project</h3>
     <select id="project" aria-label="Pick project"></select>
     <button class="btn" id="np-open">+ Create new project</button>
+    <button class="btn big" id="random-btn" style="margin-top:8px">Random location</button>
+    <p class="muted small" style="margin:0">GPS by name with no project or print yet. Bring it into a job later by typing its name.</p>
   </div>
   <div id="new-project-box" class="stack" hidden>
     <h2>New project</h2>
@@ -278,7 +280,7 @@ summary { font-weight: 600; cursor: pointer; }
 
 <script>
 "use strict";
-const APP_VERSION = "2026-10-01.14";
+const APP_VERSION = "2026-10-01.15";
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 (async () => {
   try {
@@ -360,7 +362,7 @@ function renderProjects() {
   sel.innerHTML = ps.length ? ps.map(p => `<option value="${esc(p.slug)}">${esc(p.name)}</option>`).join("") : `<option value="">${gh.on() ? "No projects yet" : "No projects. Add your GitHub key on Setup"}</option>`;
   sel.disabled = !ps.length;
   if (!ps.length) { home = true; showNewProject(true); return; }
-  if (!ps.some(p => p.slug === current)) current = ps[0].slug;
+  if (current !== RANDOM && !ps.some(p => p.slug === current)) current = ps[0].slug;
   sel.innerHTML = `<option value="">Choose a project…</option>` + sel.innerHTML;
   sel.value = home ? "" : current;
   if (!$("new-project-box").hidden && $("np-name").value.trim() === "") showNewProject(false);
@@ -383,7 +385,7 @@ $("np-make").onclick = () => {
 
 async function openProject(s) {
   current = s; LS.set("current", s); group = null; selected = null; cat = null; stopShot(true);
-  const p = allProjects().find(x => x.slug === s);
+  const p = s === RANDOM ? { name: "Random locations", slug: RANDOM, job: false } : allProjects().find(x => x.slug === s);
   job = p && p.job ? LS.get("job." + s, null) : null;
   data = LS.get("data." + s, null) || { project: p ? p.name : s, slug: s, items: {}, extra: [], controls: {}, lockScale: true };
   render();
@@ -391,7 +393,7 @@ async function openProject(s) {
     try { const j = await gh.raw(`gps/jobs/${s}.json`); if (j) { job = j; LS.set("job." + s, j) || null; render(); } }
     catch (e) { setSync("err", "Offline"); }
   }
-  pull();
+  pull(); loadPool();
 }
 
 function itemsList() {
@@ -415,7 +417,8 @@ function symbol(kind) {
 function render() {
   const newProj = !$("new-project-box").hidden, homeView = (home && !selected && !shot.running) || newProj;
   $("pick-view").hidden = !homeView; $("collect-main").hidden = homeView;
-  $("work-proj").textContent = (allProjects().find(p => p.slug === current) || {}).name || "";
+  $("work-proj").textContent = current === RANDOM ? "Random locations" : (allProjects().find(p => p.slug === current) || {}).name || "";
+  $("cats").hidden = current === RANDOM;
   $("loc-wrap").hidden = !finding;
   $("next-btn").hidden = finding || shot.running;
   $("next-btn").textContent = selected ? "Pick a different location" : Object.keys(data.items).length ? "Capture next location" : "Capture first location";
@@ -451,6 +454,43 @@ function render() {
   renderShot();
   if (!$("tab-print").hidden) drawPrint();
 }
+/* ---------- random locations: GPS by name with no project; brought into a job later by typing the name ---------- */
+const RANDOM = "random-locations";
+function poolDoc() {
+  if (current === RANDOM) return data;
+  return LS.get("data." + RANDOM, null) || { project: "Random locations", slug: RANDOM, items: {}, extra: [], controls: {}, labels: {} };
+}
+async function loadPool() {
+  if (!gh.on() || current === RANDOM) return;
+  try { const m = await gh.meta(`gps/readings/${RANDOM}.json`); if (m) { LS.set("data." + RANDOM, merge(poolDoc(), JSON.parse(decodeB64(m.content)))); if (locOpen) renderGroups(); } } catch {}
+}
+async function poolRemove(n, project) {
+  const t = Date.now(), mark = d => { d.gone = Object.assign({}, d.gone, { [n]: t }); d.assigned = Object.assign({}, d.assigned, { [n]: { project, t } }); delete d.items[n]; d.extra = (d.extra || []).filter(e => e.name !== n); return d; };
+  LS.set("data." + RANDOM, mark(poolDoc()));
+  if (!gh.on()) return;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const m = await gh.meta(`gps/readings/${RANDOM}.json`); if (!m) return;
+      const doc = mark(merge(poolDoc(), JSON.parse(decodeB64(m.content))));
+      await gh.put(`gps/readings/${RANDOM}.json`, doc, m.sha, `GPS Shots: Random locations: ${n} moved to ${project}`);
+      LS.set("data." + RANDOM, doc); return;
+    } catch (e) { if (e.status !== 409 && e.status !== 422) return; }
+  }
+}
+function bringIn(n) {
+  const pd = poolDoc(), r = pd.items[n]; if (!r) return;
+  if (shot.running) { toast("Finish or cancel the current shot first"); return; }
+  const g = group || (cat && typeGroup(cat)) || "Added in field", kind = cat ? typeKind(cat) : /^Building /.test(g) ? "Lockbox" : null;
+  data.extra = (data.extra || []).filter(e => e.name !== n); data.extra.push(kind ? { name: n, group: g, kind } : { name: n, group: g });
+  data.items[n] = Object.assign({}, r, { group: g, from: "Random locations" });
+  if (data.deleted) delete data.deleted[n];
+  const b2 = (pd.labels || {})[n]; if (b2) data.labels = Object.assign({}, data.labels, { [n]: b2 });
+  saveLocal(); push(`${n} brought in from Random locations`);
+  const proj = data.project || current; poolRemove(n, proj);
+  group = g; selected = n; locOpen = false; finding = false; $("loc").blur(); render(); toast(`${n} brought in with its GPS`);
+  if (job && job.plan) { showTab("print"); startPlacing(n, true); }
+}
+$("random-btn").onclick = () => { showNewProject(false); home = false; finding = true; selected = null; group = null; openProject(RANDOM); $("loc").value = ""; $("loc").placeholder = "Type a name, e.g. CANSP-57-01"; window.scrollTo(0, 0); };
 /* ---------- second names: every location and building keeps its own name plus the job's/owner's name or address ---------- */
 function name2(k) { return ((data.labels || {})[k] || "").trim(); }
 function both(k) { const b = name2(k); return b ? `${k} · ${b}` : k; }
@@ -530,15 +570,36 @@ let locOpen = false, locGroups = [], locItems = [];
 function norm(t) { return String(t).toLowerCase(); }
 function squash(t) { return norm(t).replace(/[^a-z0-9]/g, ""); }
 function hits(name, words) { const n = norm(name), c = squash(name); return words.every(w => n.includes(w) || c.includes(squash(w))); }
+/* "vault 18" = V-18, "lockbox 18" = LB-18, "building 18" = Building 18 / B-18: a type word in the search
+   matches items of that type (by kind, or by the usual name prefix), and the other words match the name. */
+const TYPE_WORDS = { vault: "Vault", vaults: "Vault", lockbox: "Lockbox", lockboxes: "Lockbox", lb: "Lockbox", building: "Building",
+  buildings: "Building", bldg: "Building", pedestal: "Pedestal", pedestals: "Pedestal", ped: "Pedestal", pole: "Pole", poles: "Pole" };
+const TYPE_PREFIX = { Vault: /^v[^a-z]/i, Lockbox: /^lb[^a-z]?/i, Building: /^(b|bldg)[^a-z]/i, Pedestal: /^ped/i, Pole: /^(p|rp|pole)[^a-z]/i };
+function typeWord(w) { return TYPE_WORDS[w] || types().find(t => norm(t) === w || norm(t) + "s" === w) || null; }
+function isType(name, kind, group, T) {
+  if (T === "Building" && /^Building /.test(name)) return true;
+  if (T === "Pole") return /pole/i.test(kind || "") || TYPE_PREFIX.Pole.test(name);
+  if (kind && kind !== "Other" && typeOf({ kind }) === T) return true;
+  return (TYPE_PREFIX[T] || new RegExp("^" + T.replace(/[^a-z0-9]/gi, ".?"), "i")).test(name);
+}
+function smartHit(name, kind, group, words) {
+  if (hits(name, words)) return true;
+  const tw = words.map(typeWord); if (!tw.some(Boolean)) return false;
+  const rest = words.filter((w, k) => !tw[k]);
+  return tw.filter(Boolean).every(T => isType(name, kind, group, T)) && (!rest.length || hits(name, rest));
+}
 function locMatches() {
   const q = $("loc").value.trim().toLowerCase();
   if (!q || (group && q === norm(group))) return { groups: locGroups, items: [] };
   const words = q.split(/\s+/).filter(Boolean);
   // exact word first: 18 puts Building 18 / V-18 ahead of 118 or 1718
   const rank = t => norm(t).split(/[^a-z0-9]+/).some(x => words.includes(x)) ? 0 : 1;
-  const groups = locGroups.filter(g => hits(g, words) || hits(name2(g), words)).sort((a, b) => rank(a) - rank(b));
-  const items = locItems.filter(i => (hits(i.name, words) || hits(name2(i.name), words)) && (!cat || inCat(i, cat))).sort((a, b) => rank(a.name) - rank(b.name) || a.name.localeCompare(b.name, undefined, { numeric: true })).slice(0, 40);
-  return { groups, items };
+  const groups = locGroups.filter(g => smartHit(g, "", "", words) || hits(name2(g), words)).sort((a, b) => rank(a) - rank(b));
+  const items = locItems.filter(i => (smartHit(i.name, i.kind, i.group, words) || hits(name2(i.name), words)) && (!cat || inCat(i, cat))).sort((a, b) => rank(a.name) - rank(b.name) || a.name.localeCompare(b.name, undefined, { numeric: true })).slice(0, 40);
+  const have = new Set(locItems.map(i => norm(i.name))), pd = current === RANDOM ? null : poolDoc();
+  const pool = pd ? Object.keys(pd.items).filter(n => !have.has(norm(n)) && (smartHit(n, "", "", words) || hits((pd.labels || {})[n] || "", words)))
+    .sort((a, b) => a.localeCompare(b, undefined, { numeric: true })).slice(0, 20) : [];
+  return { groups, items, pool };
 }
 function renderGroups(groups, items) {
   if (groups) { locGroups = groups; locItems = items; }
@@ -556,9 +617,12 @@ function renderGroups(groups, items) {
   }).join("");
   const typed = $("loc").value.trim();
   const exists = typed && (locGroups.some(x => norm(x) === norm(typed)) || locItems.some(x => norm(x.name) === norm(typed)));
-  const none = !g && !it ? `<div class="item loc-opt" style="cursor:default"><span class="nm">No location named “${esc(typed)}”</span><span></span></div>` : "";
+  const pd = poolDoc();
+  const pl = (m.pool || []).map(n => { const r = pd.items[n], b2 = (pd.labels || {})[n];
+    return `<button class="item" role="option" data-pool="${esc(n)}">${symbol("Other")}<span><span class="nm">${esc(b2 ? n + " · " + b2 : n)}</span><br><span class="sub">Random location · tap to bring it into this job</span></span><span class="pill ${accClass(r.acc_ft)}">±${Math.round(r.acc_ft)} ft</span></button>`; }).join("");
+  const none = !g && !it && !pl ? `<div class="item loc-opt" style="cursor:default"><span class="nm">No location named “${esc(typed)}”</span><span></span></div>` : "";
   const add = typed && !exists ? `<button class="item loc-opt" data-new="${esc(typed)}"><span><span class="nm" style="color:var(--accent)">+ Add new location “${esc(typed)}”</span><br><span class="sub">Goes in ${esc(group || (cat && typeGroup(cat)) || "Added in field")}${cat ? " as a " + esc(cat) : ""}</span></span><span></span></button>` : "";
-  box.innerHTML = none + g + it + add;
+  box.innerHTML = none + g + it + pl + add;
 }
 function createItem(name) {
   name = name.trim(); if (!name) return;
@@ -581,9 +645,10 @@ $("loc").addEventListener("keydown", e => {
   if (e.key === "Escape") { locOpen = false; $("loc").blur(); render(); }
 });
 $("loc").addEventListener("blur", () => setTimeout(() => { if (locOpen && document.activeElement !== $("loc")) { locOpen = false; render(); } }, 200));
-$("groups").addEventListener("pointerdown", e => { if (e.target.closest("[data-g],[data-i],[data-new]")) e.preventDefault(); });
+$("groups").addEventListener("pointerdown", e => { if (e.target.closest("[data-g],[data-i],[data-new],[data-pool]")) e.preventDefault(); });
 $("groups").addEventListener("click", e => {
-  const b = e.target.closest("[data-g],[data-i],[data-new]"); if (!b) return;
+  const b = e.target.closest("[data-g],[data-i],[data-new],[data-pool]"); if (!b) return;
+  if (b.dataset.pool != null) { bringIn(b.dataset.pool); return; }
   if (b.dataset.new != null) { createItem(b.dataset.new); return; }
   if (b.dataset.g != null) pickLocation(b.dataset.g); else pickItem(b.dataset.i);
 });
@@ -735,6 +800,9 @@ function merge(a, b) {
   for (const [k, t] of Object.entries(out.deleted)) if (out.items[k] && out.items[k].t <= t) delete out.items[k];
   for (const e of [...(a.extra || []), ...(b.extra || [])]) if (!out.extra.some(x => x.name === e.name)) out.extra.push(e);
   out.lockScale = a.lockScale !== undefined ? a.lockScale : b.lockScale;
+  out.gone = Object.assign({}, b.gone || {}, a.gone || {});                 // random locations moved into a job
+  out.assigned = Object.assign({}, b.assigned || {}, a.assigned || {});
+  for (const [k, t] of Object.entries(out.gone)) { if (out.items[k] && out.items[k].t <= t) delete out.items[k]; out.extra = out.extra.filter(e => e.name !== k || (out.items[k] && out.items[k].t > t)); }
   out.labels = Object.assign({}, b.labels || {}, a.labels || {});
   const ta = a.types ? a.typesT || 0 : -1, tb = b.types ? b.typesT || 0 : -1;    // newest button list wins
   if (tb > ta) { out.types = b.types; out.typesT = b.typesT; }
@@ -1108,7 +1176,7 @@ async function loadJobs(loud) {
       LS.set("custom", custom);
     } catch {}
     if (loud) setupMsg("good", `Connected. ${jobs.length} job${jobs.length === 1 ? "" : "s"} from the designer.`);
-    renderProjects(); await openProject(allProjects().some(p => p.slug === current) ? current : (allProjects()[0] || {}).slug);
+    renderProjects(); if (current !== RANDOM) await openProject(allProjects().some(p => p.slug === current) ? current : (allProjects()[0] || {}).slug);
   } catch (e) { setSync("err", "Not synced"); if (loud) setupMsg("bad", e.message); }
 }
 
