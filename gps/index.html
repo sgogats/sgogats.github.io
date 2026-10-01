@@ -1,0 +1,807 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0b6e4f">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="GPS Shots">
+<title>GPS Shots</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one-column field tool. Sticky job bar, three tabs (Collect, Print, Setup), big tap targets for gloves and sun. */
+:root {
+  --bg: #eef2ef; --panel: #ffffff; --ink: #13201b; --muted: #5b6a63; --line: #cfd8d3;
+  --accent: #0b6e4f; --accent-ink: #ffffff; --good: #1d7a3e; --warn: #a86400; --bad: #b3261e;
+  --lb: #c62828; --vault: #1f5fbf; --pole: #6d4c41; --shot: #0b6e4f; --plan: #8d9993; --plan2: #c3ccc7;
+  --display: "Barlow Condensed", "Arial Narrow", system-ui, sans-serif;
+  --body: "Barlow", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e1412; --panel: #18201d; --ink: #e3ebe6; --muted: #93a39b; --line: #2c3833;
+    --accent: #3dbe8b; --accent-ink: #06130e; --good: #57c97e; --warn: #e3a440; --bad: #ff7b6e;
+    --lb: #ff6b6b; --vault: #6aa4ff; --pole: #c49a84; --shot: #3dbe8b; --plan: #5f6d67; --plan2: #36423d;
+    color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { height: 100%; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.4 var(--body); -webkit-text-size-adjust: 100%; }
+button, input, select { font: inherit; color: inherit; }
+.wrap { max-width: 720px; margin: 0 auto; padding-inline: 16px; padding-block: 0 calc(96px + env(safe-area-inset-bottom, 0px)); }
+header.bar { position: sticky; top: 0; z-index: 5; background: var(--bg); padding-top: env(safe-area-inset-top, 0px); border-bottom: 1px solid var(--line); }
+.bar-in { max-width: 720px; margin: 0 auto; padding: 10px 16px; display: flex; flex-wrap: wrap; gap: 8px 10px; align-items: center; justify-content: space-between; }
+.brand { font: 700 22px/1 var(--display); letter-spacing: .02em; text-transform: uppercase; white-space: nowrap; }
+.brand span { color: var(--accent); }
+.bar select { flex: 1 1 100%; order: 3; min-width: 0; font-weight: 600; }
+nav.tabs { position: fixed; left: 0; right: 0; bottom: 0; z-index: 6; background: var(--panel); border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom, 0px); }
+.tabs-in { max-width: 720px; margin: 0 auto; display: grid; grid-template-columns: repeat(3, 1fr); }
+.tabs button { background: none; border: 0; padding: 12px 4px 14px; font: 600 17px/1 var(--display); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.tabs button[aria-selected="true"] { color: var(--accent); box-shadow: inset 0 3px 0 var(--accent); }
+h2 { font: 700 26px/1.1 var(--display); text-transform: uppercase; letter-spacing: .02em; margin: 18px 0 8px; text-wrap: balance; }
+h3 { font: 600 18px/1.2 var(--display); text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 18px 0 8px; }
+p { margin: 6px 0; }
+.muted { color: var(--muted); }
+.small { font-size: 14px; }
+.mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.stack { display: grid; gap: 10px; }
+.row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.row > * { min-width: 0; }
+input[type=text], input[type=password], input[type=number], select {
+  width: 100%; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); min-height: 48px;
+}
+label.field { display: grid; gap: 4px; font-weight: 600; }
+label.field span { font: 600 14px/1 var(--display); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.btn { min-height: 48px; padding: 10px 16px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); font-weight: 600; cursor: pointer; }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.btn.big { width: 100%; min-height: 64px; font: 700 24px/1 var(--display); letter-spacing: .06em; text-transform: uppercase; }
+.btn.danger { color: var(--bad); }
+.btn:disabled { opacity: .5; }
+.btn:focus-visible, .tabs button:focus-visible, .item:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.chips { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none; }
+.chip { flex: none; padding: 8px 14px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel); font-weight: 600; white-space: nowrap; }
+.chip[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.list { display: grid; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--panel); }
+.item { display: grid; grid-template-columns: 28px 1fr auto; gap: 10px; align-items: center; padding: 12px 14px; border: 0; border-top: 1px solid var(--line); background: none; text-align: left; width: 100%; cursor: pointer; }
+.item:first-child { border-top: 0; }
+.item[aria-current="true"] { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.item .nm { font-weight: 600; }
+.item .sub { font-size: 13px; color: var(--muted); }
+.sym { width: 22px; height: 22px; display: block; }
+.pill { font: 600 13px/1 var(--display); letter-spacing: .06em; text-transform: uppercase; padding: 6px 8px; border-radius: 6px; white-space: nowrap; }
+.pill.none { color: var(--muted); border: 1px dashed var(--line); }
+.pill.good { background: color-mix(in srgb, var(--good) 18%, transparent); color: var(--good); }
+.pill.warn { background: color-mix(in srgb, var(--warn) 18%, transparent); color: var(--warn); }
+.pill.bad { background: color-mix(in srgb, var(--bad) 16%, transparent); color: var(--bad); }
+.shot { border: 2px solid var(--ink); border-radius: 12px; background: var(--panel); padding: 14px; display: grid; gap: 12px; }
+.shot .target { font: 700 30px/1 var(--display); text-transform: uppercase; }
+.meter { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.meter div { border: 1px solid var(--line); border-radius: 8px; padding: 8px; }
+.meter b { display: block; font: 500 22px/1.1 var(--mono); }
+.meter span { font: 600 12px/1 var(--display); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.prog { height: 8px; border-radius: 4px; background: var(--line); overflow: hidden; }
+.prog i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .2s linear; }
+.note { border-left: 4px solid var(--warn); padding: 8px 12px; background: var(--panel); border-radius: 0 8px 8px 0; }
+.note.bad { border-color: var(--bad); }
+.note.good { border-color: var(--good); }
+.canvas-box { position: relative; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--panel); height: 62vh; min-height: 320px; touch-action: none; }
+.canvas-box canvas { display: block; width: 100%; height: 100%; }
+.canvas-tools { position: absolute; right: 8px; top: 8px; display: grid; gap: 6px; }
+.canvas-tools .btn { min-height: 40px; min-width: 40px; padding: 6px 10px; }
+.placing { position: absolute; left: 8px; right: 60px; top: 8px; background: var(--accent); color: var(--accent-ink); padding: 8px 12px; border-radius: 8px; font-weight: 600; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+th { font: 600 13px/1 var(--display); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.tbl { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
+.toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(76px + env(safe-area-inset-bottom, 0px)); background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 8px; font-weight: 600; z-index: 9; max-width: calc(100% - 32px); }
+.sync { font: 600 12px/1 var(--display); letter-spacing: .08em; text-transform: uppercase; padding: 6px 8px; border-radius: 6px; white-space: nowrap; border: 1px solid var(--line); color: var(--muted); }
+.sync.ok { color: var(--good); }
+.sync.err { color: var(--bad); }
+details { border: 1px solid var(--line); border-radius: 10px; background: var(--panel); padding: 10px 14px; }
+summary { font-weight: 600; cursor: pointer; }
+@media (prefers-reduced-motion: reduce) { .prog i { transition: none; } }
+</style>
+</head>
+<body>
+<header class="bar">
+  <div class="bar-in">
+    <div class="brand">GPS<span>Shots</span></div>
+    <select id="project" aria-label="Project"></select>
+    <span id="sync" class="sync" title="GitHub sync">Phone only</span>
+  </div>
+</header>
+
+<main class="wrap">
+
+<!-- COLLECT -->
+<section id="tab-collect">
+  <div id="new-project-box" class="stack" hidden>
+    <h2>New project</h2>
+    <label class="field"><span>Project name</span><input id="np-name" type="text" placeholder="e.g. Palisade Ave Townhomes" autocomplete="off"></label>
+    <div class="row"><button class="btn primary" id="np-make">Create project</button><button class="btn" id="np-cancel">Cancel</button></div>
+  </div>
+
+  <div id="collect-main">
+    <h3>Location</h3>
+    <div class="chips" id="groups" role="toolbar" aria-label="Locations"></div>
+
+    <div id="shot" class="shot" style="margin-top:14px" hidden>
+      <div class="row" style="justify-content:space-between">
+        <div><div class="muted small" id="shot-group"></div><div class="target" id="shot-name"></div></div>
+        <span id="shot-pill" class="pill none">Not shot</span>
+      </div>
+      <div class="meter">
+        <div><span>Accuracy</span><b id="m-acc">—</b></div>
+        <div><span>Readings</span><b id="m-n">0</b></div>
+        <div><span>Time</span><b id="m-t">0 s</b></div>
+      </div>
+      <div class="prog" aria-hidden="true"><i id="m-prog"></i></div>
+      <p class="small muted" id="shot-msg">Stand right on the box, hold the phone flat and still, then press Store GPS.</p>
+      <button class="btn big primary" id="store">Store GPS</button>
+      <div class="row">
+        <button class="btn" id="save-now" hidden>Save now</button>
+        <button class="btn" id="cancel-shot" hidden>Cancel</button>
+        <button class="btn danger" id="clear-shot" hidden>Clear this shot</button>
+      </div>
+      <div class="small mono muted" id="shot-last"></div>
+    </div>
+
+    <h3 id="items-h">Items</h3>
+    <div class="list" id="items"></div>
+    <details style="margin-top:12px">
+      <summary>Add an item that is not on the list</summary>
+      <div class="stack" style="margin-top:10px">
+        <label class="field"><span>Name</span><input id="ni-name" type="text" placeholder="e.g. LB-7C or Pole 4411" autocomplete="off"></label>
+        <label class="field"><span>Location</span><input id="ni-group" type="text" placeholder="e.g. Building 7" autocomplete="off" list="group-list"></label>
+        <datalist id="group-list"></datalist>
+        <button class="btn primary" id="ni-add">Add item</button>
+      </div>
+    </details>
+  </div>
+</section>
+
+<!-- PRINT -->
+<section id="tab-print" hidden>
+  <h2>Put shots on the print</h2>
+  <p class="small muted" id="print-help">Pick 4 to 6 shots spread around the site (corners plus one near the middle). Items already on the print line up by themselves. For anything else, tap Place, then tap the spot on the print.</p>
+  <div class="canvas-box" id="cbox">
+    <canvas id="cv"></canvas>
+    <div class="placing" id="placing" hidden></div>
+    <div class="canvas-tools">
+      <button class="btn" id="z-in" aria-label="Zoom in">+</button>
+      <button class="btn" id="z-out" aria-label="Zoom out">−</button>
+      <button class="btn" id="z-fit" aria-label="Fit print">Fit</button>
+    </div>
+  </div>
+  <div id="fit-note" class="note" style="margin-top:12px"></div>
+  <label class="row small" style="margin-top:8px"><input type="checkbox" id="lock-scale" checked> Hold the print's scale (needs only 2 points; uncheck if the print may be stretched)</label>
+  <h3>Shots</h3>
+  <div class="tbl"><table>
+    <thead><tr><th>Use</th><th>Item</th><th>GPS ±</th><th>Off by</th><th></th></tr></thead>
+    <tbody id="ctrl-rows"></tbody>
+  </table></div>
+  <div class="row" style="margin-top:12px">
+    <button class="btn primary" id="export-csv">Export CSV</button>
+    <button class="btn" id="export-json">Export JSON</button>
+  </div>
+</section>
+
+<!-- SETUP -->
+<section id="tab-setup" hidden>
+  <h2>Setup</h2>
+  <p class="small muted">Shots are always kept on this phone. Add a GitHub key to also save them to your repo and to load jobs from the Town House Designer.</p>
+  <div class="stack">
+    <label class="field"><span>GitHub key (fine-grained token)</span><input id="s-token" type="password" autocomplete="off" placeholder="github_pat_…"></label>
+    <label class="field"><span>Repository</span><input id="s-repo" type="text" autocomplete="off"></label>
+    <label class="field"><span>Branch</span><input id="s-branch" type="text" autocomplete="off"></label>
+    <label class="field"><span>Seconds to average each shot</span>
+      <select id="s-secs"><option>5</option><option selected>10</option><option>20</option><option>30</option><option>60</option></select></label>
+    <div class="row"><button class="btn primary" id="s-save">Save and connect</button><button class="btn" id="s-reload">Reload jobs</button></div>
+    <div id="s-msg" class="note" hidden></div>
+    <details>
+      <summary>How to make the GitHub key</summary>
+      <ol class="small">
+        <li>On github.com go to Settings, Developer settings, Personal access tokens, Fine-grained tokens, Generate new token.</li>
+        <li>Repository access: Only select repositories, pick ASBUILT_MAKER.</li>
+        <li>Permissions: Contents, Read and write.</li>
+        <li>Generate, copy it and paste it above. It stays on this phone only.</li>
+      </ol>
+    </details>
+    <details>
+      <summary>Accuracy tips</summary>
+      <ul class="small">
+        <li>A phone in the open is usually good to 10 to 15 ft. Next to a building it can be 30 ft or worse.</li>
+        <li>Turn on precise location for your browser (iPhone: Settings, Privacy, Location Services, Safari Websites, Precise Location).</li>
+        <li>Wait for the accuracy number to settle before saving. Re-shoot anything marked red.</li>
+      </ul>
+    </details>
+  </div>
+</section>
+</main>
+
+<nav class="tabs" aria-label="Sections"><div class="tabs-in" role="tablist">
+  <button role="tab" data-tab="collect" aria-selected="true">Collect</button>
+  <button role="tab" data-tab="print" aria-selected="false">Print</button>
+  <button role="tab" data-tab="setup" aria-selected="false">Setup</button>
+</div></nav>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+"use strict";
+/* ---------- storage helpers ---------- */
+const LS = {
+  get(k, d) { try { const v = localStorage.getItem("gps." + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { localStorage.setItem("gps." + k, JSON.stringify(v)); return true; } catch { return false; } },
+};
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const slug = s => (s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "job");
+const FT = 3.28084;
+
+const cfg = Object.assign({ token: "", repo: "sgogats/ASBUILT_MAKER", branch: "main", secs: 10 }, LS.get("cfg", {}));
+let jobs = LS.get("jobs", []);            // [{name, slug, items}]
+let custom = LS.get("custom", []);        // [{name, slug}]
+let current = LS.get("current", null);    // slug
+let job = null;                           // loaded job detail (items, plan) or null for custom
+let data = { items: {}, extra: [], controls: {} };  // readings doc for current project
+let group = null, selected = null;
+
+function toast(msg) {
+  const t = $("toast"); t.textContent = msg; t.hidden = false;
+  clearTimeout(toast.h); toast.h = setTimeout(() => t.hidden = true, 2600);
+}
+function setSync(state, text) { const s = $("sync"); s.className = "sync " + (state || ""); s.textContent = text; }
+
+/* ---------- GitHub ---------- */
+const gh = {
+  on() { return !!cfg.token; },
+  url(path) { return `https://api.github.com/repos/${cfg.repo}/contents/${path.split("/").map(encodeURIComponent).join("/")}`; },
+  headers(raw) { return { Authorization: "Bearer " + cfg.token, Accept: raw ? "application/vnd.github.raw+json" : "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" }; },
+  async raw(path) {
+    const r = await fetch(this.url(path) + "?ref=" + encodeURIComponent(cfg.branch) + "&t=" + Date.now(), { headers: this.headers(true), cache: "no-store" });
+    if (r.status === 404) return null;
+    if (!r.ok) throw new Error(await errText(r));
+    return r.json();
+  },
+  async meta(path) {
+    const r = await fetch(this.url(path) + "?ref=" + encodeURIComponent(cfg.branch) + "&t=" + Date.now(), { headers: this.headers(false), cache: "no-store" });
+    if (r.status === 404) return null;
+    if (!r.ok) throw new Error(await errText(r));
+    return r.json();
+  },
+  async put(path, obj, sha, message) {
+    const body = { message, branch: cfg.branch, content: b64(JSON.stringify(obj, null, 1)) };
+    if (sha) body.sha = sha;
+    const r = await fetch(this.url(path), { method: "PUT", headers: this.headers(false), body: JSON.stringify(body) });
+    if (!r.ok) { const e = new Error(await errText(r)); e.status = r.status; throw e; }
+    return r.json();
+  },
+};
+async function errText(r) {
+  let m = ""; try { m = (await r.json()).message; } catch {}
+  if (r.status === 401) return "GitHub key was refused. Check it on Setup.";
+  if (r.status === 403) return "GitHub key can't write here. It needs Contents: Read and write on this repo.";
+  if (r.status === 404) return "Repo or branch not found. Check Setup.";
+  return `GitHub said ${r.status}${m ? ": " + m : ""}`;
+}
+function b64(str) { const bytes = new TextEncoder().encode(str); let s = ""; for (const b of bytes) s += String.fromCharCode(b); return btoa(s); }
+function decodeB64(s) { const bin = atob(s.replace(/\n/g, "")); return new TextDecoder().decode(Uint8Array.from(bin, c => c.charCodeAt(0))); }
+
+/* ---------- projects ---------- */
+function allProjects() {
+  const seen = new Set(), out = [];
+  for (const j of jobs) { seen.add(j.slug); out.push({ name: j.name, slug: j.slug, job: true }); }
+  for (const c of custom) if (!seen.has(c.slug)) { seen.add(c.slug); out.push({ name: c.name, slug: c.slug, job: false }); }
+  return out;
+}
+function renderProjects() {
+  const sel = $("project"), ps = allProjects();
+  sel.innerHTML = ps.map(p => `<option value="${esc(p.slug)}">${esc(p.name)}</option>`).join("") + `<option value="__new">+ New project…</option>`;
+  if (!ps.length) { sel.value = "__new"; showNewProject(true); return; }
+  if (!ps.some(p => p.slug === current)) current = ps[0].slug;
+  sel.value = current;
+  if (!$("new-project-box").hidden && $("np-name").value.trim() === "") showNewProject(false);
+}
+function showNewProject(on) { $("new-project-box").hidden = !on; $("collect-main").hidden = on; if (on) $("np-name").focus(); }
+$("project").addEventListener("change", e => {
+  if (e.target.value === "__new") { showNewProject(true); return; }
+  showNewProject(false); openProject(e.target.value);
+});
+$("np-cancel").onclick = () => { showNewProject(false); renderProjects(); };
+$("np-make").onclick = () => {
+  const name = $("np-name").value.trim(); if (!name) { toast("Type a project name first"); return; }
+  const s = slug(name);
+  if (!allProjects().some(p => p.slug === s)) { custom.push({ name, slug: s }); LS.set("custom", custom); }
+  $("np-name").value = ""; showNewProject(false); current = s; renderProjects(); openProject(s);
+};
+
+async function openProject(s) {
+  current = s; LS.set("current", s); group = null; selected = null; stopShot(true);
+  const p = allProjects().find(x => x.slug === s);
+  job = p && p.job ? LS.get("job." + s, null) : null;
+  data = LS.get("data." + s, null) || { project: p ? p.name : s, slug: s, items: {}, extra: [], controls: {}, lockScale: true };
+  render();
+  if (p && p.job && gh.on()) {
+    try { const j = await gh.raw(`gps/jobs/${s}.json`); if (j) { job = j; LS.set("job." + s, j) || null; render(); } }
+    catch (e) { setSync("err", "Offline"); }
+  }
+  pull();
+}
+
+function itemsList() {
+  const out = [];
+  if (job) for (const it of job.items) out.push(Object.assign({}, it));
+  for (const e of data.extra || []) if (!out.some(o => o.name === e.name)) out.push(Object.assign({ kind: "Other" }, e));
+  for (const n of Object.keys(data.items)) if (!out.some(o => o.name === n)) out.push({ name: n, group: data.items[n].group || "Other", kind: "Other" });
+  return out;
+}
+
+/* ---------- render collect ---------- */
+function accClass(ft) { return ft == null ? "none" : ft <= 15 ? "good" : ft <= 30 ? "warn" : "bad"; }
+function symbol(kind) {
+  if (kind === "Lockbox") return `<svg class="sym" viewBox="0 0 22 22"><path d="M11 3 L20 19 L2 19 Z" fill="var(--lb)"/></svg>`;
+  if (/pole/i.test(kind)) return `<svg class="sym" viewBox="0 0 22 22"><circle cx="11" cy="11" r="7" fill="var(--pole)"/></svg>`;
+  if (kind === "Can") return `<svg class="sym" viewBox="0 0 22 22"><rect x="3" y="3" width="16" height="16" fill="var(--vault)" stroke="#e8c200" stroke-width="3"/></svg>`;
+  if (kind === "Other") return `<svg class="sym" viewBox="0 0 22 22"><path d="M11 2 L20 11 L11 20 L2 11 Z" fill="var(--muted)"/></svg>`;
+  return `<svg class="sym" viewBox="0 0 22 22"><rect x="3" y="3" width="16" height="16" fill="var(--vault)"/></svg>`;
+}
+function render() {
+  const items = itemsList();
+  const groups = [...new Set(items.map(i => i.group))];
+  groups.sort((a, b) => { const na = parseInt(a.replace(/\D+/g, "")) || 9999, nb = parseInt(b.replace(/\D+/g, "")) || 9999; return /^Building/.test(a) && /^Building/.test(b) ? na - nb : a.localeCompare(b); });
+  if (group && !groups.includes(group)) group = null;
+  if (!group) group = groups[0] || null;
+  $("group-list").innerHTML = groups.map(g => `<option value="${esc(g)}">`).join("");
+  $("groups").innerHTML = groups.length ? groups.map(g => {
+    const its = items.filter(i => i.group === g), done = its.filter(i => data.items[i.name]).length;
+    return `<button class="chip" aria-pressed="${g === group}" data-g="${esc(g)}">${esc(g)} <span class="muted">${done}/${its.length}</span></button>`;
+  }).join("") : `<span class="muted small">No items yet. Add one below${gh.on() ? "" : ", or add a GitHub key on Setup to load jobs from the designer"}.</span>`;
+  const list = items.filter(i => i.group === group);
+  $("items-h").textContent = group ? group : "Items";
+  $("items").innerHTML = list.map(i => {
+    const r = data.items[i.name];
+    const pill = r ? `<span class="pill ${accClass(r.acc_ft)}">±${Math.round(r.acc_ft)} ft</span>` : `<span class="pill none">Not shot</span>`;
+    const sub = r ? `Shot ${new Date(r.t).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}` : i.kind;
+    return `<button class="item" data-n="${esc(i.name)}" aria-current="${selected === i.name}">${symbol(i.kind)}<span><span class="nm">${esc(i.name)}</span><br><span class="sub">${esc(sub)}</span></span>${pill}</button>`;
+  }).join("");
+  renderShot();
+  if (!$("tab-print").hidden) drawPrint();
+}
+$("groups").addEventListener("click", e => { const b = e.target.closest(".chip"); if (!b) return; group = b.dataset.g; render(); });
+$("items").addEventListener("click", e => {
+  const b = e.target.closest(".item"); if (!b) return;
+  if (shot.running) { toast("Finish or cancel the current shot first"); return; }
+  selected = b.dataset.n; render();
+  $("shot").scrollIntoView({ behavior: "smooth", block: "start" });
+});
+$("ni-add").onclick = () => {
+  const name = $("ni-name").value.trim(), g = $("ni-group").value.trim() || "Other";
+  if (!name) { toast("Type a name first"); return; }
+  if (itemsList().some(i => i.name === name)) { toast("That name is already on the list"); return; }
+  data.extra = data.extra || []; data.extra.push({ name, group: g });
+  group = g; selected = name; $("ni-name").value = ""; saveLocal(); push(`Add ${name}`); render();
+};
+
+/* ---------- GPS shot ---------- */
+const shot = { running: false, watch: null, samples: [], start: 0, timer: null, wake: null };
+function renderShot() {
+  const box = $("shot");
+  if (!selected) { box.hidden = true; return; }
+  box.hidden = false;
+  const it = itemsList().find(i => i.name === selected) || { group: "", name: selected };
+  $("shot-group").textContent = it.group;
+  $("shot-name").textContent = it.name;
+  const r = data.items[selected];
+  const pill = $("shot-pill");
+  pill.className = "pill " + accClass(r && r.acc_ft);
+  pill.textContent = r ? `Stored ±${Math.round(r.acc_ft)} ft` : "Not shot";
+  $("shot-last").textContent = r ? `${r.lat.toFixed(7)}, ${r.lon.toFixed(7)}  ·  ${r.n} readings` : "";
+  $("clear-shot").hidden = !r || shot.running;
+  $("store").hidden = shot.running;
+  $("save-now").hidden = !shot.running;
+  $("cancel-shot").hidden = !shot.running;
+  $("store").textContent = r ? "Re-shoot GPS" : "Store GPS";
+}
+$("store").onclick = startShot;
+$("save-now").onclick = () => finishShot();
+$("cancel-shot").onclick = () => { stopShot(true); $("shot-msg").textContent = "Cancelled. Nothing was saved."; renderShot(); };
+$("clear-shot").onclick = () => {
+  if ($("clear-shot").dataset.armed !== "1") { $("clear-shot").dataset.armed = "1"; $("clear-shot").textContent = "Tap again to clear"; setTimeout(() => { $("clear-shot").dataset.armed = ""; $("clear-shot").textContent = "Clear this shot"; }, 3000); return; }
+  $("clear-shot").dataset.armed = ""; $("clear-shot").textContent = "Clear this shot";
+  delete data.items[selected]; data.deleted = data.deleted || {}; data.deleted[selected] = Date.now();
+  saveLocal(); push(`Clear ${selected}`); render();
+};
+
+function startShot() {
+  if (!("geolocation" in navigator)) { $("shot-msg").textContent = "This browser has no GPS access."; return; }
+  if (!window.isSecureContext) { $("shot-msg").textContent = "GPS only works on an https:// link."; return; }
+  stopShot(true);
+  Object.assign(shot, { running: true, samples: [], start: Date.now() });
+  $("m-acc").textContent = "…"; $("m-n").textContent = "0"; $("m-t").textContent = "0 s"; $("m-prog").style.width = "0";
+  $("shot-msg").textContent = "Getting a fix. Hold still…";
+  renderShot();
+  try { navigator.wakeLock && navigator.wakeLock.request("screen").then(w => shot.wake = w).catch(() => {}); } catch {}
+  shot.watch = navigator.geolocation.watchPosition(onFix, onGpsError, { enableHighAccuracy: true, maximumAge: 0, timeout: 30000 });
+  shot.timer = setInterval(tick, 250);
+}
+function onFix(p) {
+  if (!shot.running) return;
+  const c = p.coords;
+  shot.samples.push({ lat: c.latitude, lon: c.longitude, acc: c.accuracy, alt: c.altitude, t: p.timestamp });
+  $("m-n").textContent = shot.samples.length;
+  $("m-acc").textContent = "±" + Math.round(c.accuracy * FT) + " ft";
+  $("shot-msg").textContent = c.accuracy * FT > 30 ? "Fix is still rough. Keep holding still, or move away from walls." : "Good fix. Keep still until the bar fills.";
+}
+function onGpsError(e, final) {
+  if (e.code !== 1 && !final) {  // a dropped or slow fix: keep listening until the timer gives up
+    if (!shot.samples.length) $("shot-msg").textContent = "Still waiting for a GPS fix. Step into the open.";
+    return;
+  }
+  const msg = e.code === 1 ? "Location is blocked. Allow location for this site in your phone's settings, then try again."
+    : "No GPS fix came in. Step into the open and try again.";
+  stopShot(true); $("shot-msg").textContent = msg; renderShot();
+}
+function tick() {
+  const secs = (Date.now() - shot.start) / 1000, need = +cfg.secs || 10;
+  $("m-t").textContent = Math.floor(secs) + " s";
+  $("m-prog").style.width = Math.min(100, secs / need * 100) + "%";
+  if (secs >= need && shot.samples.length >= 1) finishShot();
+  if (secs > need + 50 && shot.samples.length === 0) onGpsError({ code: 3 }, true);
+}
+function stopShot(silent) {
+  if (shot.watch != null) navigator.geolocation.clearWatch(shot.watch);
+  clearInterval(shot.timer); shot.watch = null; shot.running = false;
+  if (shot.wake) { shot.wake.release().catch(() => {}); shot.wake = null; }
+}
+function average(samples) {
+  const best = Math.min(...samples.map(s => s.acc));
+  const use = samples.filter(s => s.acc <= Math.max(best * 2, best + 3));
+  let w = 0, la = 0, lo = 0, al = 0, aw = 0;
+  for (const s of use) { const k = 1 / (s.acc * s.acc); w += k; la += s.lat * k; lo += s.lon * k; if (s.alt != null) { al += s.alt * k; aw += k; } }
+  const lat = la / w, lon = lo / w;
+  // spread of the kept readings around the mean, in feet
+  const m = metersPerDeg(lat);
+  const spread = Math.sqrt(use.reduce((a, s) => a + ((s.lat - lat) * m.lat) ** 2 + ((s.lon - lon) * m.lon) ** 2, 0) / use.length);
+  const acc = Math.max(Math.sqrt(1 / w) * 1.0, best / Math.sqrt(Math.min(use.length, 4)), spread);
+  return { lat, lon, acc_ft: acc * FT, best_ft: best * FT, n: samples.length, used: use.length, alt_m: aw ? al / aw : null };
+}
+function finishShot() {
+  const samples = shot.samples.slice(); stopShot(true);
+  if (!samples.length) { $("shot-msg").textContent = "No GPS readings came in. Try again in the open."; renderShot(); return; }
+  const a = average(samples), it = itemsList().find(i => i.name === selected) || {};
+  data.items[selected] = Object.assign(a, { t: Date.now(), group: it.group || "Other" });
+  if (data.deleted) delete data.deleted[selected];
+  saveLocal(); push(`GPS ${selected} ±${Math.round(a.acc_ft)} ft`);
+  $("shot-msg").textContent = `Saved ${selected}: ±${Math.round(a.acc_ft)} ft from ${a.n} readings.` + (a.acc_ft > 30 ? " That's rough; re-shoot if you can." : "");
+  toast(`Saved ${selected}`);
+  render();
+}
+
+/* ---------- local save + GitHub sync ---------- */
+function saveLocal() { data.updated = Date.now(); if (!LS.set("data." + current, data)) toast("Phone storage is full; export now"); }
+function merge(a, b) {
+  const out = Object.assign({}, a, { items: {}, extra: [], controls: Object.assign({}, a.controls || {}, b.controls || {}), deleted: Object.assign({}, a.deleted || {}) });
+  for (const [k, v] of Object.entries(b.deleted || {})) out.deleted[k] = Math.max(out.deleted[k] || 0, v);
+  for (const src of [a.items || {}, b.items || {}]) for (const [k, v] of Object.entries(src)) if (!out.items[k] || out.items[k].t < v.t) out.items[k] = v;
+  for (const [k, t] of Object.entries(out.deleted)) if (out.items[k] && out.items[k].t <= t) delete out.items[k];
+  for (const e of [...(a.extra || []), ...(b.extra || [])]) if (!out.extra.some(x => x.name === e.name)) out.extra.push(e);
+  out.lockScale = a.lockScale !== undefined ? a.lockScale : b.lockScale;
+  return out;
+}
+let pushing = null, pushAgain = false;
+async function pull() {
+  if (!gh.on()) { setSync("", "Phone only"); return; }
+  const s = current;
+  try {
+    setSync("", "Syncing");
+    const m = await gh.meta(`gps/readings/${s}.json`);
+    if (s !== current) return;
+    if (m) { data = merge(data, JSON.parse(decodeB64(m.content))); LS.set("data." + s, data); render(); }
+    setSync("ok", "Saved to GitHub");
+    if (!m && (Object.keys(data.items).length || (data.extra || []).length)) push("Upload shots");
+  } catch (e) { setSync("err", "Not synced"); }
+}
+async function push(message) {
+  if (!gh.on()) { setSync("", "Phone only"); return; }
+  if (pushing) { pushAgain = true; return; }
+  const s = current;
+  pushing = (async () => {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        setSync("", "Saving");
+        const m = await gh.meta(`gps/readings/${s}.json`);
+        let doc = LS.get("data." + s, data);
+        if (m) doc = merge(doc, JSON.parse(decodeB64(m.content)));
+        doc.project = doc.project || s; doc.slug = s;
+        await gh.put(`gps/readings/${s}.json`, doc, m && m.sha, `GPS Shots: ${doc.project}: ${message}`);
+        LS.set("data." + s, doc); if (s === current) data = doc;
+        setSync("ok", "Saved to GitHub"); return;
+      } catch (e) {
+        if (e.status === 409 || e.status === 422) continue;
+        setSync("err", "Not synced"); toast(e.message); return;
+      }
+    }
+    setSync("err", "Not synced");
+  })();
+  await pushing; pushing = null;
+  if (pushAgain) { pushAgain = false; push("More shots"); }
+}
+window.addEventListener("online", () => push("Catch up"));
+
+/* ---------- geometry: GPS -> print ---------- */
+function metersPerDeg(lat) {
+  const r = lat * Math.PI / 180;
+  return { lat: 111132.92 - 559.82 * Math.cos(2 * r) + 1.175 * Math.cos(4 * r), lon: 111412.84 * Math.cos(r) - 93.5 * Math.cos(3 * r) };
+}
+function designPos(name) { if (!job) return null; const i = job.items.find(x => x.name === name); return i && i.x != null ? { x: i.x, y: i.y } : null; }
+function controlPos(name) { const c = data.controls[name]; if (c && c.x != null) return { x: c.x, y: c.y }; return designPos(name); }
+function isUsed(name) { const c = data.controls[name]; if (c && c.use !== undefined) return c.use; return !!designPos(name); }
+function solve() {
+  const shots = Object.entries(data.items);
+  if (!shots.length) return null;
+  const lat0 = shots.reduce((a, [, r]) => a + r.lat, 0) / shots.length, lon0 = shots.reduce((a, [, r]) => a + r.lon, 0) / shots.length;
+  const m = metersPerDeg(lat0);
+  const local = r => ({ x: (r.lon - lon0) * m.lon * FT, y: -(r.lat - lat0) * m.lat * FT });  // feet, y down like the print
+  const ctrl = shots.filter(([n]) => isUsed(n) && controlPos(n)).map(([n, r]) => ({ n, u: local(r), p: controlPos(n), r }));
+  const ptft = job && job.pt_per_ft || null, lock = data.lockScale !== false && !!ptft;
+  const res = { ctrl, local, ptft, lock, ok: false };
+  if (ctrl.length < 2) return res;
+  const k = ctrl.length;
+  const uc = { x: 0, y: 0 }, pc = { x: 0, y: 0 };
+  for (const c of ctrl) { uc.x += c.u.x / k; uc.y += c.u.y / k; pc.x += c.p.x / k; pc.y += c.p.y / k; }
+  let A = 0, B = 0, U = 0;
+  for (const c of ctrl) {
+    const ux = c.u.x - uc.x, uy = c.u.y - uc.y, vx = c.p.x - pc.x, vy = c.p.y - pc.y;
+    A += ux * vx + uy * vy; B += ux * vy - uy * vx; U += ux * ux + uy * uy;
+  }
+  if (U < 1) return res;  // all shots in one spot
+  const th = Math.atan2(B, A), s = lock ? ptft : Math.hypot(A, B) / U;
+  const cos = Math.cos(th), sin = Math.sin(th);
+  const tx = pc.x - s * (cos * uc.x - sin * uc.y), ty = pc.y - s * (sin * uc.x + cos * uc.y);
+  const map = u => ({ x: s * (cos * u.x - sin * u.y) + tx, y: s * (sin * u.x + cos * u.y) + ty });
+  const unit = ptft || s;
+  let ss = 0;
+  for (const c of ctrl) { const q = map(c.u); c.err = Math.hypot(q.x - c.p.x, q.y - c.p.y) / unit; ss += c.err * c.err; }
+  const dof = Math.max(1, k - (lock ? 3 : 4));
+  Object.assign(res, { ok: true, map, s, th, unit, rms: Math.sqrt(ss / k), sigma: k > (lock ? 3 : 4) ? Math.sqrt(ss / dof) : null });
+  return res;
+}
+
+/* ---------- print canvas ---------- */
+const cv = $("cv"), ctx = cv.getContext("2d");
+const view = { s: 1, x: 0, y: 0, fitted: false };
+let placing = null, sol = null;
+function css(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+function sizeCanvas() {
+  const r = cv.getBoundingClientRect(), d = window.devicePixelRatio || 1;
+  cv.width = Math.round(r.width * d); cv.height = Math.round(r.height * d);
+  ctx.setTransform(d, 0, 0, d, 0, 0);
+}
+function extent() {
+  if (job && job.plan && job.plan.size) return { x0: 0, y0: 0, x1: job.plan.size[0], y1: job.plan.size[1] };
+  return null;
+}
+function fitView() {
+  const r = cv.getBoundingClientRect(), e = extent();
+  if (!e) { view.s = 1; view.x = r.width / 2; view.y = r.height / 2; return; }
+  view.s = Math.min(r.width / (e.x1 - e.x0), r.height / (e.y1 - e.y0)) * 0.95;
+  view.x = (r.width - (e.x1 - e.x0) * view.s) / 2 - e.x0 * view.s;
+  view.y = (r.height - (e.y1 - e.y0) * view.s) / 2 - e.y0 * view.s;
+  view.fitted = true;
+}
+const toScreen = p => ({ x: p.x * view.s + view.x, y: p.y * view.s + view.y });
+const toPrint = (sx, sy) => ({ x: (sx - view.x) / view.s, y: (sy - view.y) / view.s });
+function drawPrint() {
+  sizeCanvas(); if (!view.fitted) fitView();
+  const r = cv.getBoundingClientRect();
+  ctx.fillStyle = css("--panel"); ctx.fillRect(0, 0, r.width, r.height);
+  sol = solve();
+  renderFitNote(); renderCtrlRows();
+  if (!job || !job.plan) {
+    ctx.fillStyle = css("--muted"); ctx.font = "16px " + css("--body"); ctx.textAlign = "center";
+    ctx.fillText(job ? "This job has no site plan." : "No print for this project yet.", r.width / 2, r.height / 2 - 10);
+    ctx.fillText("Shots are still saved and can be exported.", r.width / 2, r.height / 2 + 14);
+    return;
+  }
+  ctx.save(); ctx.translate(view.x, view.y); ctx.scale(view.s, view.s);
+  const c1 = css("--plan"), c2 = css("--plan2");
+  ctx.lineCap = "round"; ctx.lineJoin = "round";
+  for (const [col, w, pts] of job.plan.lines) {
+    ctx.strokeStyle = col === "#b4b4b4" ? c2 : c1; ctx.lineWidth = Math.max(w, 0.6 / view.s);
+    ctx.beginPath(); ctx.moveTo(pts[0], pts[1]);
+    for (let i = 2; i < pts.length; i += 2) ctx.lineTo(pts[i], pts[i + 1]);
+    ctx.stroke();
+  }
+  ctx.fillStyle = css("--muted"); ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  for (const [x, y, t, size] of job.plan.texts) { ctx.font = `600 ${size}px ${css("--body")}`; ctx.fillText(t, x, y); }
+  ctx.restore();
+  // designed items
+  const z = Math.max(5, Math.min(10, view.s * 6));
+  for (const it of job.items) {
+    if (it.x == null) continue;
+    const p = toScreen(it);
+    ctx.globalAlpha = data.items[it.name] ? 0.9 : 0.45;
+    if (it.kind === "Lockbox") { ctx.fillStyle = css("--lb"); ctx.beginPath(); ctx.moveTo(p.x, p.y - z); ctx.lineTo(p.x + z, p.y + z * 0.8); ctx.lineTo(p.x - z, p.y + z * 0.8); ctx.closePath(); ctx.fill(); }
+    else if (/pole/i.test(it.kind)) { ctx.fillStyle = css("--pole"); ctx.beginPath(); ctx.arc(p.x, p.y, z * 0.8, 0, 7); ctx.fill(); }
+    else { ctx.fillStyle = css("--vault"); ctx.fillRect(p.x - z * 0.8, p.y - z * 0.8, z * 1.6, z * 1.6); }
+    ctx.globalAlpha = 1;
+  }
+  // control picks placed by hand
+  for (const [n, c] of Object.entries(data.controls)) if (c.x != null) {
+    const p = toScreen(c); ctx.strokeStyle = css("--ink"); ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(p.x - 8, p.y); ctx.lineTo(p.x + 8, p.y); ctx.moveTo(p.x, p.y - 8); ctx.lineTo(p.x, p.y + 8); ctx.stroke();
+  }
+  // shots mapped through the fit
+  if (sol && sol.ok) {
+    ctx.font = "600 12px " + css("--body"); ctx.textAlign = "left"; ctx.textBaseline = "middle";
+    for (const [n, rd] of Object.entries(data.items)) {
+      const q = toScreen(sol.map(sol.local(rd))), d = controlPos(n);
+      if (d) { const dp = toScreen(d); ctx.strokeStyle = css("--shot"); ctx.lineWidth = 1.5; ctx.setLineDash([4, 3]); ctx.beginPath(); ctx.moveTo(dp.x, dp.y); ctx.lineTo(q.x, q.y); ctx.stroke(); ctx.setLineDash([]); }
+      const rad = Math.max(3, rd.acc_ft * sol.unit * view.s);
+      ctx.fillStyle = css("--shot"); ctx.globalAlpha = 0.15; ctx.beginPath(); ctx.arc(q.x, q.y, rad, 0, 7); ctx.fill(); ctx.globalAlpha = 1;
+      ctx.beginPath(); ctx.arc(q.x, q.y, isUsed(n) ? 6 : 4.5, 0, 7); ctx.fill();
+      if (isUsed(n)) { ctx.strokeStyle = css("--panel"); ctx.lineWidth = 2; ctx.stroke(); }
+      ctx.fillStyle = css("--ink"); ctx.fillText(n, q.x + 9, q.y);
+    }
+  }
+}
+function renderFitNote() {
+  const box = $("fit-note"), n = Object.keys(data.items).length;
+  if (!n) { box.className = "note"; box.textContent = "No shots yet. Store GPS on a few boxes first."; return; }
+  if (!sol || !sol.ok) {
+    const k = sol ? sol.ctrl.length : 0;
+    box.className = "note"; box.textContent = `${k} of the points needed are matched. Match at least ${sol && sol.lock ? 2 : 3}, ideally 4 to 6 spread around the site.`;
+    return;
+  }
+  const k = sol.ctrl.length, worst = sol.ctrl.reduce((a, c) => c.err > a.err ? c : a);
+  let txt = `${k} points matched. Average miss ${sol.rms.toFixed(1)} ft.`;
+  if (!sol.lock && sol.ptft) txt += ` Scale from GPS: ${(sol.s / sol.ptft * 100).toFixed(1)}% of the print's scale.`;
+  if (k < 4) txt += " Add more points to check the fit.";
+  else if (worst.err > Math.max(25, sol.rms * 2.2)) txt += ` ${worst.n} is ${worst.err.toFixed(0)} ft off; it may be a bad shot or a box built somewhere else. Uncheck it to leave it out.`;
+  box.className = "note " + (sol.rms <= 15 && k >= 4 ? "good" : sol.rms > 30 ? "bad" : "");
+  box.textContent = txt;
+}
+function renderCtrlRows() {
+  const rows = Object.entries(data.items).sort((a, b) => a[0].localeCompare(b[0], undefined, { numeric: true }));
+  const byN = {}; if (sol) for (const c of sol.ctrl) byN[c.n] = c;
+  $("ctrl-rows").innerHTML = rows.length ? rows.map(([n, r]) => {
+    const has = !!controlPos(n), used = isUsed(n), c = byN[n];
+    let off = "—";
+    if (c && c.err != null) off = c.err.toFixed(1) + " ft";
+    else if (sol && sol.ok && designPos(n)) { const q = sol.map(sol.local(r)), d = designPos(n); off = (Math.hypot(q.x - d.x, q.y - d.y) / sol.unit).toFixed(1) + " ft"; }
+    return `<tr><td><input type="checkbox" data-use="${esc(n)}" ${used && has ? "checked" : ""} ${has ? "" : "disabled"} aria-label="Use ${esc(n)}"></td>
+      <td><b>${esc(n)}</b></td><td class="mono"><span class="pill ${accClass(r.acc_ft)}">${Math.round(r.acc_ft)}</span></td>
+      <td class="mono">${off}</td>
+      <td><button class="btn" data-place="${esc(n)}" style="min-height:40px">${data.controls[n] && data.controls[n].x != null ? "Move" : "Place"}</button></td></tr>`;
+  }).join("") : `<tr><td colspan="5" class="muted">No shots yet.</td></tr>`;
+}
+$("ctrl-rows").addEventListener("change", e => {
+  const n = e.target.dataset.use; if (!n) return;
+  data.controls[n] = Object.assign({}, data.controls[n], { use: e.target.checked });
+  saveLocal(); push(`Print points`); drawPrint();
+});
+$("ctrl-rows").addEventListener("click", e => {
+  const n = e.target.dataset && e.target.dataset.place; if (!n) return;
+  if (!job || !job.plan) { toast("This project has no print to place on"); return; }
+  placing = n; $("placing").hidden = false; $("placing").textContent = `Tap the print where ${n} is`;
+  $("cbox").scrollIntoView({ behavior: "smooth", block: "center" });
+});
+$("lock-scale").onchange = e => { data.lockScale = e.target.checked; saveLocal(); push("Scale setting"); drawPrint(); };
+
+// pan, pinch, tap
+const ptrs = new Map(); let gesture = null;
+cv.addEventListener("pointerdown", e => { cv.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, { x: e.offsetX, y: e.offsetY, x0: e.offsetX, y0: e.offsetY }); gesture = null; });
+cv.addEventListener("pointermove", e => {
+  const p = ptrs.get(e.pointerId); if (!p) return;
+  const prev = { x: p.x, y: p.y }; p.x = e.offsetX; p.y = e.offsetY;
+  if (ptrs.size === 1) {
+    if (Math.hypot(p.x - p.x0, p.y - p.y0) > 6) gesture = "pan";
+    if (gesture === "pan") { view.x += p.x - prev.x; view.y += p.y - prev.y; drawPrint(); }
+  } else if (ptrs.size === 2) {
+    gesture = "pinch";
+    const [a, b] = [...ptrs.values()];
+    const other = a === p ? b : a;
+    const d0 = Math.hypot(prev.x - other.x, prev.y - other.y), d1 = Math.hypot(p.x - other.x, p.y - other.y);
+    if (d0 > 0) zoomAt((p.x + other.x) / 2, (p.y + other.y) / 2, d1 / d0);
+  }
+});
+function endPtr(e) {
+  const p = ptrs.get(e.pointerId); ptrs.delete(e.pointerId);
+  if (p && !gesture && ptrs.size === 0 && placing) {
+    const q = toPrint(p.x, p.y);
+    data.controls[placing] = Object.assign({}, data.controls[placing], { x: Math.round(q.x * 10) / 10, y: Math.round(q.y * 10) / 10, use: true });
+    toast(`${placing} placed`); placing = null; $("placing").hidden = true;
+    saveLocal(); push("Print points"); drawPrint();
+  }
+}
+cv.addEventListener("pointerup", endPtr); cv.addEventListener("pointercancel", endPtr);
+cv.addEventListener("wheel", e => { e.preventDefault(); zoomAt(e.offsetX, e.offsetY, e.deltaY < 0 ? 1.15 : 1 / 1.15); }, { passive: false });
+function zoomAt(sx, sy, k) {
+  const ns = Math.max(0.05, Math.min(40, view.s * k)); k = ns / view.s;
+  view.x = sx - (sx - view.x) * k; view.y = sy - (sy - view.y) * k; view.s = ns; drawPrint();
+}
+$("z-in").onclick = () => { const r = cv.getBoundingClientRect(); zoomAt(r.width / 2, r.height / 2, 1.5); };
+$("z-out").onclick = () => { const r = cv.getBoundingClientRect(); zoomAt(r.width / 2, r.height / 2, 1 / 1.5); };
+$("z-fit").onclick = () => { fitView(); drawPrint(); };
+window.addEventListener("resize", () => { if (!$("tab-print").hidden) drawPrint(); });
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { if (!$("tab-print").hidden) drawPrint(); });
+
+/* ---------- export ---------- */
+function exportRows() {
+  const s = solve();
+  return Object.entries(data.items).sort((a, b) => a[0].localeCompare(b[0], undefined, { numeric: true })).map(([n, r]) => {
+    const q = s && s.ok ? s.map(s.local(r)) : null, d = designPos(n);
+    return { item: n, location: r.group || "", lat: r.lat.toFixed(8), lon: r.lon.toFixed(8), accuracy_ft: r.acc_ft.toFixed(1), readings: r.n,
+      shot_at: new Date(r.t).toISOString(), print_x: q ? q.x.toFixed(1) : "", print_y: q ? q.y.toFixed(1) : "",
+      off_design_ft: q && d ? (Math.hypot(q.x - d.x, q.y - d.y) / s.unit).toFixed(1) : "", used_for_fit: s && s.ok && s.ctrl.some(c => c.n === n) ? "yes" : "" };
+  });
+}
+async function deliver(name, text, type) {
+  const file = new File([text], name, { type });
+  try { if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: name }); return; } } catch (e) { if (e.name === "AbortError") return; }
+  const a = document.createElement("a"); a.href = URL.createObjectURL(file); a.download = name; document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+}
+$("export-csv").onclick = () => {
+  const rows = exportRows(); if (!rows.length) { toast("No shots to export"); return; }
+  const cols = Object.keys(rows[0]);
+  const q = v => /[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : v;
+  deliver(`${current}-gps.csv`, [cols.join(","), ...rows.map(r => cols.map(c => q(r[c])).join(","))].join("\n"), "text/csv");
+};
+$("export-json").onclick = () => deliver(`${current}-gps.json`, JSON.stringify(Object.assign({}, data, { mapped: exportRows() }), null, 1), "application/json");
+
+/* ---------- setup ---------- */
+function fillSetup() { $("s-token").value = cfg.token; $("s-repo").value = cfg.repo; $("s-branch").value = cfg.branch; $("s-secs").value = String(cfg.secs); }
+function setupMsg(kind, text) { const m = $("s-msg"); m.hidden = false; m.className = "note " + kind; m.textContent = text; }
+$("s-secs").onchange = e => { cfg.secs = +e.target.value; LS.set("cfg", cfg); };
+$("s-save").onclick = async () => {
+  cfg.token = $("s-token").value.trim(); cfg.repo = $("s-repo").value.trim() || "sgogats/ASBUILT_MAKER"; cfg.branch = $("s-branch").value.trim() || "main"; cfg.secs = +$("s-secs").value;
+  LS.set("cfg", cfg);
+  if (!cfg.token) { setupMsg("", "Saved. No GitHub key, so shots stay on this phone."); setSync("", "Phone only"); return; }
+  await loadJobs(true);
+};
+$("s-reload").onclick = () => loadJobs(true);
+async function loadJobs(loud) {
+  if (!gh.on()) return;
+  try {
+    setSync("", "Loading");
+    const list = await gh.raw("gps/jobs/index.json");
+    if (list) { jobs = list; LS.set("jobs", jobs); }
+    // projects started on another phone
+    try {
+      const r = await fetch(gh.url("gps/readings") + "?ref=" + encodeURIComponent(cfg.branch), { headers: gh.headers(false), cache: "no-store" });
+      if (r.ok) for (const f of await r.json()) {
+        const s = f.name.replace(/\.json$/, "");
+        if (f.name.endsWith(".json") && !allProjects().some(p => p.slug === s)) custom.push({ name: s.replace(/-/g, " "), slug: s });
+      }
+      LS.set("custom", custom);
+    } catch {}
+    if (loud) setupMsg("good", `Connected. ${jobs.length} job${jobs.length === 1 ? "" : "s"} from the designer.`);
+    renderProjects(); await openProject($("project").value === "__new" ? (allProjects()[0] || {}).slug : $("project").value);
+  } catch (e) { setSync("err", "Not synced"); if (loud) setupMsg("bad", e.message); }
+}
+
+/* ---------- tabs ---------- */
+document.querySelector(".tabs").addEventListener("click", e => {
+  const b = e.target.closest("[data-tab]"); if (!b) return;
+  for (const x of document.querySelectorAll("[data-tab]")) x.setAttribute("aria-selected", x === b);
+  for (const t of ["collect", "print", "setup"]) $("tab-" + t).hidden = t !== b.dataset.tab;
+  try { sessionStorage.setItem("gps.tab", b.dataset.tab); } catch {}
+  if (b.dataset.tab === "print") { $("lock-scale").checked = data.lockScale !== false; view.fitted = false; drawPrint(); }
+  if (b.dataset.tab === "setup") fillSetup();
+  window.scrollTo(0, 0);
+});
+
+/* ---------- start ---------- */
+renderProjects();
+if (current && $("project").value !== "__new") openProject(current);
+if (gh.on()) loadJobs(false);
+else { setSync("", "Phone only"); if (!allProjects().length) showNewProject(true); }
+</script>
+</body>
+</html>
