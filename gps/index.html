@@ -63,15 +63,14 @@ label.field span { font: 600 14px/1 var(--display); letter-spacing: .08em; text-
 .btn.danger { color: var(--bad); }
 .btn:disabled { opacity: .5; }
 .btn:focus-visible, .tabs button:focus-visible, .item:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
-.chips { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none; }
-.chip { flex: none; padding: 8px 14px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel); font-weight: 600; white-space: nowrap; }
-.chip[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
 .list { display: grid; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--panel); }
 .item { display: grid; grid-template-columns: 28px 1fr auto; gap: 10px; align-items: center; padding: 12px 14px; border: 0; border-top: 1px solid var(--line); background: none; text-align: left; width: 100%; cursor: pointer; }
 .item:first-child { border-top: 0; }
 .item[aria-current="true"] { background: color-mix(in srgb, var(--accent) 12%, transparent); }
 .item .nm { font-weight: 600; }
 .item .sub { font-size: 13px; color: var(--muted); }
+.loc-list { margin-top: 6px; max-height: 50vh; overflow-y: auto; }
+.item.loc-opt { grid-template-columns: 1fr auto; }
 .sym { width: 22px; height: 22px; display: block; }
 .pill { font: 600 13px/1 var(--display); letter-spacing: .06em; text-transform: uppercase; padding: 6px 8px; border-radius: 6px; white-space: nowrap; }
 .pill.none { color: var(--muted); border: 1px dashed var(--line); }
@@ -111,7 +110,6 @@ summary { font-weight: 600; cursor: pointer; }
 <header class="bar">
   <div class="bar-in">
     <div class="brand">GPS<span>Shots</span></div>
-    <select id="project" aria-label="Project"></select>
     <span id="sync" class="sync" title="GitHub sync">Phone only</span>
   </div>
 </header>
@@ -120,6 +118,11 @@ summary { font-weight: 600; cursor: pointer; }
 
 <!-- COLLECT -->
 <section id="tab-collect">
+  <div class="stack" id="project-box">
+    <h3>Pick project</h3>
+    <select id="project" aria-label="Pick project"></select>
+    <button class="btn" id="np-open">+ Create new project</button>
+  </div>
   <div id="new-project-box" class="stack" hidden>
     <h2>New project</h2>
     <label class="field"><span>Project name</span><input id="np-name" type="text" placeholder="e.g. Palisade Ave Townhomes" autocomplete="off"></label>
@@ -128,7 +131,8 @@ summary { font-weight: 600; cursor: pointer; }
 
   <div id="collect-main">
     <h3>Location</h3>
-    <div class="chips" id="groups" role="toolbar" aria-label="Locations"></div>
+    <input id="loc" type="text" placeholder="Pick or type a location" autocomplete="off" role="combobox" aria-expanded="false" aria-controls="groups" enterkeyhint="go">
+    <div class="list loc-list" id="groups" role="listbox" aria-label="Locations" hidden></div>
 
     <div id="shot" class="shot" style="margin-top:14px" hidden>
       <div class="row" style="justify-content:space-between">
@@ -168,6 +172,7 @@ summary { font-weight: 600; cursor: pointer; }
 <!-- PRINT -->
 <section id="tab-print" hidden>
   <h2>Put shots on the print</h2>
+  <p class="small"><b id="print-proj"></b></p>
   <p class="small muted" id="print-help">Pick 4 to 6 shots spread around the site (corners plus one near the middle). Items already on the print line up by themselves. For anything else, tap Place, then tap the spot on the print.</p>
   <div class="canvas-box" id="cbox">
     <canvas id="cv"></canvas>
@@ -301,15 +306,16 @@ function allProjects() {
 }
 function renderProjects() {
   const sel = $("project"), ps = allProjects();
-  sel.innerHTML = ps.map(p => `<option value="${esc(p.slug)}">${esc(p.name)}</option>`).join("") + `<option value="__new">+ New project…</option>`;
-  if (!ps.length) { sel.value = "__new"; showNewProject(true); return; }
+  sel.innerHTML = ps.length ? ps.map(p => `<option value="${esc(p.slug)}">${esc(p.name)}</option>`).join("") : `<option value="">No projects yet</option>`;
+  sel.disabled = !ps.length;
+  if (!ps.length) { showNewProject(true); return; }
   if (!ps.some(p => p.slug === current)) current = ps[0].slug;
   sel.value = current;
   if (!$("new-project-box").hidden && $("np-name").value.trim() === "") showNewProject(false);
 }
-function showNewProject(on) { $("new-project-box").hidden = !on; $("collect-main").hidden = on; if (on) $("np-name").focus(); }
+function showNewProject(on) { $("new-project-box").hidden = !on; $("collect-main").hidden = on; $("np-open").hidden = on; if (on) $("np-name").focus(); }
+$("np-open").onclick = () => showNewProject(true);
 $("project").addEventListener("change", e => {
-  if (e.target.value === "__new") { showNewProject(true); return; }
   showNewProject(false); openProject(e.target.value);
 });
 $("np-cancel").onclick = () => { showNewProject(false); renderProjects(); };
@@ -355,14 +361,14 @@ function render() {
   const groups = [...new Set(items.map(i => i.group))];
   groups.sort((a, b) => { const na = parseInt(a.replace(/\D+/g, "")) || 9999, nb = parseInt(b.replace(/\D+/g, "")) || 9999; return /^Building/.test(a) && /^Building/.test(b) ? na - nb : a.localeCompare(b); });
   if (group && !groups.includes(group)) group = null;
-  if (!group) group = groups[0] || null;
+  if (!group && groups.length === 1) group = groups[0];
   $("group-list").innerHTML = groups.map(g => `<option value="${esc(g)}">`).join("");
-  $("groups").innerHTML = groups.length ? groups.map(g => {
-    const its = items.filter(i => i.group === g), done = its.filter(i => data.items[i.name]).length;
-    return `<button class="chip" aria-pressed="${g === group}" data-g="${esc(g)}">${esc(g)} <span class="muted">${done}/${its.length}</span></button>`;
-  }).join("") : `<span class="muted small">No items yet. Add one below${gh.on() ? "" : ", or add a GitHub key on Setup to load jobs from the designer"}.</span>`;
+  if (!locOpen) $("loc").value = group || "";
+  $("loc").placeholder = groups.length ? "Pick or type a location" : "No locations yet. Add an item below.";
+  renderGroups(groups, items);
   const list = items.filter(i => i.group === group);
   $("items-h").textContent = group ? group : "Items";
+  $("items-h").hidden = $("items").hidden = !group;
   $("items").innerHTML = list.map(i => {
     const r = data.items[i.name];
     const pill = r ? `<span class="pill ${accClass(r.acc_ft)}">±${Math.round(r.acc_ft)} ft</span>` : `<span class="pill none">Not shot</span>`;
@@ -372,7 +378,37 @@ function render() {
   renderShot();
   if (!$("tab-print").hidden) drawPrint();
 }
-$("groups").addEventListener("click", e => { const b = e.target.closest(".chip"); if (!b) return; group = b.dataset.g; render(); });
+let locOpen = false, locGroups = [], locItems = [];
+function locMatches() {
+  const q = $("loc").value.trim().toLowerCase();
+  if (!q || (group && q === group.toLowerCase())) return locGroups;
+  const words = q.split(/\s+/);
+  const hit = locGroups.filter(g => words.every(w => g.toLowerCase().includes(w)));
+  // a typed number puts the exact building first (7 before 17 and 27)
+  const exact = g => g.toLowerCase().split(/\s+/).some(t => words.includes(t)) ? 0 : 1;
+  return hit.sort((a, b) => exact(a) - exact(b));
+}
+function renderGroups(groups, items) {
+  if (groups) { locGroups = groups; locItems = items; }
+  const box = $("groups");
+  box.hidden = !locOpen; $("loc").setAttribute("aria-expanded", locOpen);
+  if (!locOpen) return;
+  const shown = locMatches();
+  box.innerHTML = shown.length ? shown.map(g => {
+    const its = locItems.filter(i => i.group === g), done = its.filter(i => data.items[i.name]).length;
+    return `<button class="item loc-opt" role="option" data-g="${esc(g)}" aria-current="${g === group}"><span class="nm">${esc(g)}</span><span class="pill ${done && done === its.length ? "good" : "none"}">${done}/${its.length} shot</span></button>`;
+  }).join("") : `<div class="item loc-opt muted">No location matches. Add an item below to make a new one.</div>`;
+}
+function pickLocation(g) { group = g; locOpen = false; selected = null; $("loc").blur(); render(); }
+$("loc").addEventListener("focus", () => { locOpen = true; $("loc").select(); renderGroups(); });
+$("loc").addEventListener("input", () => { locOpen = true; renderGroups(); });
+$("loc").addEventListener("keydown", e => {
+  if (e.key === "Enter") { const m = locMatches(); if (m.length) pickLocation(m[0]); e.preventDefault(); }
+  if (e.key === "Escape") { locOpen = false; $("loc").blur(); render(); }
+});
+$("loc").addEventListener("blur", () => setTimeout(() => { if (locOpen && document.activeElement !== $("loc")) { locOpen = false; render(); } }, 200));
+$("groups").addEventListener("pointerdown", e => { if (e.target.closest("[data-g]")) e.preventDefault(); });
+$("groups").addEventListener("click", e => { const b = e.target.closest("[data-g]"); if (b) pickLocation(b.dataset.g); });
 $("items").addEventListener("click", e => {
   const b = e.target.closest(".item"); if (!b) return;
   if (shot.running) { toast("Finish or cancel the current shot first"); return; }
@@ -782,7 +818,7 @@ async function loadJobs(loud) {
       LS.set("custom", custom);
     } catch {}
     if (loud) setupMsg("good", `Connected. ${jobs.length} job${jobs.length === 1 ? "" : "s"} from the designer.`);
-    renderProjects(); await openProject($("project").value === "__new" ? (allProjects()[0] || {}).slug : $("project").value);
+    renderProjects(); await openProject($("project").value || (allProjects()[0] || {}).slug);
   } catch (e) { setSync("err", "Not synced"); if (loud) setupMsg("bad", e.message); }
 }
 
@@ -792,14 +828,14 @@ document.querySelector(".tabs").addEventListener("click", e => {
   for (const x of document.querySelectorAll("[data-tab]")) x.setAttribute("aria-selected", x === b);
   for (const t of ["collect", "print", "setup"]) $("tab-" + t).hidden = t !== b.dataset.tab;
   try { sessionStorage.setItem("gps.tab", b.dataset.tab); } catch {}
-  if (b.dataset.tab === "print") { $("lock-scale").checked = data.lockScale !== false; view.fitted = false; drawPrint(); }
+  if (b.dataset.tab === "print") { $("print-proj").textContent = (allProjects().find(p => p.slug === current) || {}).name || ""; $("lock-scale").checked = data.lockScale !== false; view.fitted = false; drawPrint(); }
   if (b.dataset.tab === "setup") fillSetup();
   window.scrollTo(0, 0);
 });
 
 /* ---------- start ---------- */
 renderProjects();
-if (current && $("project").value !== "__new") openProject(current);
+if (current && $("project").value) openProject(current);
 if (gh.on()) loadJobs(false);
 else { setSync("", "Phone only"); if (!allProjects().length) showNewProject(true); }
 </script>
