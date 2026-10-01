@@ -280,7 +280,7 @@ summary { font-weight: 600; cursor: pointer; }
 
 <script>
 "use strict";
-const APP_VERSION = "2026-10-01.15";
+const APP_VERSION = "2026-10-01.16";
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 (async () => {
   try {
@@ -361,7 +361,7 @@ function renderProjects() {
   const sel = $("project"), ps = allProjects();
   sel.innerHTML = ps.length ? ps.map(p => `<option value="${esc(p.slug)}">${esc(p.name)}</option>`).join("") : `<option value="">${gh.on() ? "No projects yet" : "No projects. Add your GitHub key on Setup"}</option>`;
   sel.disabled = !ps.length;
-  if (!ps.length) { home = true; showNewProject(true); return; }
+  if (!ps.length) { home = true; return; }          // keep the home screen (Random location, + Create new project) even with no projects
   if (current !== RANDOM && !ps.some(p => p.slug === current)) current = ps[0].slug;
   sel.innerHTML = `<option value="">Choose a project…</option>` + sel.innerHTML;
   sel.value = home ? "" : current;
@@ -1200,7 +1200,8 @@ function showTab(name) {
 renderProjects();
 if (current && allProjects().some(p => p.slug === current)) openProject(current);
 if (gh.on()) { loadJobs(false); pullTypes(); }
-else { setSync("", "Phone only"); if (!allProjects().length) showNewProject(true); }
+else setSync("", "Phone only");
+render();
 </script>
 <div class="ask" id="ask" hidden><div><div id="ask-msg"></div><button class="btn primary" id="ask-yes"></button><button class="btn" id="ask-no"></button></div></div>
 </body>
