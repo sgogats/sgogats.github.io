@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>GPS Shots Map</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
+<style>
+/* Satellite map of every saved GPS shot. Reads the same GitHub key GPS Shots saved on this phone. */
+:root { --bg: #eef2ef; --panel: #ffffff; --ink: #13201b; --muted: #5b6a63; --line: #cfd8d3; --accent: #0b6e4f;
+  --lb: #e53935; --vault: #2f7bff; --other: #18b26b; color-scheme: light; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --bg: #0e1412; --panel: #18201d; --ink: #e3ebe6; --muted: #93a39b; --line: #2c3833; --accent: #3dbe8b; color-scheme: dark; }
+}
+:root[data-theme="dark"] { --bg: #0e1412; --panel: #18201d; --ink: #e3ebe6; --muted: #93a39b; --line: #2c3833; --accent: #3dbe8b; color-scheme: dark; }
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body { background: var(--bg); color: var(--ink); font: 16px/1.35 system-ui, -apple-system, "Segoe UI", sans-serif; display: flex; flex-direction: column; }
+header { display: flex; gap: 8px; align-items: center; padding: calc(8px + env(safe-area-inset-top, 0px)) 12px 8px; background: var(--panel); border-bottom: 1px solid var(--line); }
+header a { color: var(--accent); font-weight: 600; text-decoration: none; white-space: nowrap; }
+select { flex: 1; min-width: 0; min-height: 44px; font: inherit; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); }
+#map { flex: 1; }
+#msg { position: absolute; z-index: 1000; left: 12px; right: 12px; top: 72px; background: var(--panel); color: var(--ink); border-radius: 10px; padding: 12px 14px; box-shadow: 0 2px 10px rgba(0,0,0,.25); }
+#msg a { color: var(--accent); font-weight: 600; }
+.lbl { background: rgba(0,0,0,.65); color: #fff; border: 0; box-shadow: none; font-weight: 700; font-size: 13px; padding: 1px 5px; }
+.lbl::before { display: none; }
+.leaflet-popup-content { font-size: 15px; line-height: 1.4; }
+.leaflet-popup-content a { font-weight: 700; }
+.locate { width: 44px; height: 44px; font-size: 22px; line-height: 44px; text-align: center; background: #fff; color: #222; cursor: pointer; display: block; }
+</style>
+</head>
+<body>
+<header>
+  <a href="./">‹ GPS Shots</a>
+  <select id="proj" aria-label="Project"></select>
+</header>
+<div id="map"></div>
+<div id="msg" hidden></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+let cfg = {}; try { cfg = JSON.parse(localStorage.getItem("gps.cfg") || "{}") || {}; } catch {}
+cfg = Object.assign({ repo: "sgogats/ASBUILT_MAKER", branch: "main" }, cfg);
+const say = html => { $("msg").innerHTML = html; $("msg").hidden = !html; };
+
+const map = L.map("map", { zoomControl: true }).setView([40.8935, -73.9455], 17);
+const sat = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", { maxZoom: 21, maxNativeZoom: 19, attribution: "Imagery © Esri" }).addTo(map);
+const streets = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 21, maxNativeZoom: 19, attribution: "© OpenStreetMap" });
+L.control.layers({ Satellite: sat, Streets: streets }).addTo(map);
+const Locate = L.Control.extend({ onAdd() { const b = L.DomUtil.create("a", "locate leaflet-bar"); b.title = "Where am I"; b.textContent = "◎";
+  L.DomEvent.on(b, "click", e => { L.DomEvent.stop(e); map.locate({ setView: true, maxZoom: 19, enableHighAccuracy: true }); }); return b; } });
+map.addControl(new Locate({ position: "topleft" }));
+let me = null;
+map.on("locationfound", e => { if (me) me.remove(); me = L.circleMarker(e.latlng, { radius: 8, color: "#fff", weight: 3, fillColor: "#1a73e8", fillOpacity: 1 }).addTo(map).bindTooltip("You", { className: "lbl" }); });
+
+const layer = L.layerGroup().addTo(map);
+let docs = [];
+function color(n, kind) {
+  if (/^lb/i.test(n) || kind === "Lockbox") return getComputedStyle(document.documentElement).getPropertyValue("--lb");
+  if (/^v[^a-z]|vault|^crossover/i.test(n) || /vault|can|main/i.test(kind || "")) return getComputedStyle(document.documentElement).getPropertyValue("--vault");
+  return getComputedStyle(document.documentElement).getPropertyValue("--other");
+}
+function draw() {
+  layer.clearLayers();
+  const pick = $("proj").value, pts = [];
+  for (const d of docs) {
+    if (pick && d.slug !== pick) continue;
+    const kinds = {}; for (const e of d.extra || []) kinds[e.name] = e.kind;
+    for (const [n, r] of Object.entries(d.items || {})) {
+      if (r.lat == null) continue;
+      const ll = [r.lat, r.lon], b2 = (d.labels || {})[n], c = color(n, kinds[n]);
+      pts.push(ll);
+      L.circle(ll, { radius: (r.acc_ft || 0) / 3.28084, color: c, weight: 1, fillOpacity: 0.12, interactive: false }).addTo(layer);
+      const when = r.t ? new Date(r.t).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "";
+      L.circleMarker(ll, { radius: 8, color: "#fff", weight: 2, fillColor: c, fillOpacity: 1 }).addTo(layer)
+        .bindTooltip(esc(b2 ? `${n} · ${b2}` : n), { permanent: true, direction: "right", offset: [8, 0], className: "lbl" })
+        .bindPopup(`<b>${esc(n)}</b>${b2 ? `<br>${esc(b2)}` : ""}<br>${esc(d.project || d.slug)}<br>±${Math.round(r.acc_ft || 0)} ft · ${esc(when)}<br>`
+          + `<a href="https://www.google.com/maps/search/?api=1&query=${r.lat.toFixed(7)},${r.lon.toFixed(7)}" target="_blank" rel="noopener">Open in Google Maps</a>`);
+    }
+  }
+  if (pts.length) map.fitBounds(pts, { padding: [40, 40], maxZoom: 19 });
+  say(pts.length ? "" : "No GPS shots saved for this project yet.");
+}
+async function gh(path, raw) {
+  const r = await fetch(`https://api.github.com/repos/${cfg.repo}/contents/${path}?ref=${encodeURIComponent(cfg.branch)}&t=${Date.now()}`,
+    { headers: { Authorization: "Bearer " + cfg.token, Accept: raw ? "application/vnd.github.raw+json" : "application/vnd.github+json" }, cache: "no-store" });
+  if (!r.ok) throw new Error(r.status === 401 ? "GitHub key was refused." : "GitHub said " + r.status);
+  return r.json();
+}
+async function load() {
+  if (!cfg.token) { say(`This phone has no GitHub key yet. Open <a href="./">GPS Shots</a>, go to Setup, paste your key, then come back.`); return; }
+  say("Loading shots…");
+  try {
+    const list = (await gh("gps/readings")).filter(f => f.name.endsWith(".json"));
+    docs = (await Promise.all(list.map(f => gh("gps/readings/" + f.name, true).catch(() => null)))).filter(Boolean);
+    docs.forEach((d, i) => { d.slug = d.slug || list[i].name.replace(/\.json$/, ""); });
+    const withPts = docs.filter(d => Object.values(d.items || {}).some(r => r.lat != null));
+    let last = ""; try { last = JSON.parse(localStorage.getItem("gps.current") || '""'); } catch {}
+    $("proj").innerHTML = `<option value="">All projects</option>` + withPts.map(d => `<option value="${esc(d.slug)}">${esc(d.project || d.slug)}</option>`).join("");
+    if (withPts.some(d => d.slug === last)) $("proj").value = last;
+    draw();
+  } catch (e) { say("Could not load shots: " + esc(e.message)); }
+}
+$("proj").onchange = draw;
+load();
+</script>
+</body>
+</html>

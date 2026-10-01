@@ -144,6 +144,7 @@ summary { font-weight: 600; cursor: pointer; }
     <button class="btn" id="np-open">+ Create new project</button>
     <button class="btn big" id="random-btn" style="margin-top:8px">Random location</button>
     <p class="muted small" style="margin:0">GPS by name with no project or print yet. Bring it into a job later by typing its name.</p>
+    <a class="btn big" href="map.html" style="margin-top:8px;display:grid;place-items:center;text-decoration:none;color:inherit">See all points on a map</a>
   </div>
   <div id="new-project-box" class="stack" hidden>
     <h2>New project</h2>
@@ -280,7 +281,7 @@ summary { font-weight: 600; cursor: pointer; }
 
 <script>
 "use strict";
-const APP_VERSION = "2026-10-01.16";
+const APP_VERSION = "2026-10-01.17";
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 (async () => {
   try {
