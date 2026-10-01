@@ -109,6 +109,9 @@ table { border-collapse: collapse; width: 100%; font-size: 14px; }
 th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--line); vertical-align: middle; }
 th { font: 600 13px/1 var(--display); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
 .tbl { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
+.ask { position: fixed; inset: 0; z-index: 20; background: rgba(0,0,0,.55); display: grid; place-items: center; padding: 16px; }
+.ask > div { background: var(--panel); color: var(--ink); border-radius: 12px; padding: 18px; max-width: 420px; width: 100%; display: grid; gap: 14px; font-size: 18px; }
+.ask .btn { min-height: 56px; font-size: 18px; width: 100%; }
 .toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(76px + env(safe-area-inset-bottom, 0px)); background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 8px; font-weight: 600; z-index: 9; max-width: calc(100% - 32px); }
 .sync { font: 600 12px/1 var(--display); letter-spacing: .08em; text-transform: uppercase; padding: 6px 8px; border-radius: 6px; white-space: nowrap; border: 1px solid var(--line); color: var(--muted); }
 .sync.ok { color: var(--good); }
@@ -134,7 +137,6 @@ summary { font-weight: 600; cursor: pointer; }
   <div class="stack" id="project-box">
     <h3>Pick project</h3>
     <select id="project" aria-label="Pick project"></select>
-    <button class="btn big primary" id="start-btn">Start collecting</button>
     <button class="btn" id="np-open">+ Create new project</button>
   </div>
   <div id="new-project-box" class="stack" hidden>
@@ -265,7 +267,7 @@ summary { font-weight: 600; cursor: pointer; }
 
 <script>
 "use strict";
-const APP_VERSION = "2026-10-01.9";
+const APP_VERSION = "2026-10-01.10";
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 (async () => {
   try {
@@ -292,7 +294,7 @@ let custom = LS.get("custom", []);        // [{name, slug}]
 let current = LS.get("current", null);    // slug
 let job = null;                           // loaded job detail (items, plan) or null for custom
 let data = { items: {}, extra: [], controls: {} };  // readings doc for current project
-let group = null, selected = null, picking = !current, finding = false;
+let group = null, selected = null, home = true, finding = false;   // home: project + location screen; after a save: clean "Capture next location" screen
 
 function toast(msg) {
   const t = $("toast"); t.textContent = msg; t.hidden = false;
@@ -345,26 +347,25 @@ function allProjects() {
 function renderProjects() {
   const sel = $("project"), ps = allProjects();
   sel.innerHTML = ps.length ? ps.map(p => `<option value="${esc(p.slug)}">${esc(p.name)}</option>`).join("") : `<option value="">${gh.on() ? "No projects yet" : "No projects. Add your GitHub key on Setup"}</option>`;
-  sel.disabled = !ps.length; $("start-btn").hidden = !ps.length;
-  if (!ps.length) { picking = true; showNewProject(true); return; }
+  sel.disabled = !ps.length;
+  if (!ps.length) { home = true; showNewProject(true); return; }
   if (!ps.some(p => p.slug === current)) current = ps[0].slug;
   sel.value = current;
   if (!$("new-project-box").hidden && $("np-name").value.trim() === "") showNewProject(false);
 }
-function showNewProject(on) { $("new-project-box").hidden = !on; $("project-box").hidden = on; if (on) { picking = true; $("pick-view").hidden = false; $("collect-main").hidden = true; $("np-name").focus(); } }
-$("start-btn").onclick = () => { const v = $("project").value; if (!v) return; picking = false; finding = false; selected = null; group = null; if (v !== current || !job) openProject(v); else render(); };
-$("change-proj").onclick = () => { if (shot.running) { toast("Finish or cancel the current shot first"); return; } picking = true; showNewProject(false); render(); window.scrollTo(0, 0); };
+function showNewProject(on) { $("new-project-box").hidden = !on; $("project-box").hidden = on; if (on) { home = true; $("pick-view").hidden = false; $("collect-main").hidden = true; $("np-name").focus(); } }
+$("change-proj").onclick = () => { if (shot.running) { toast("Finish or cancel the current shot first"); return; } home = true; selected = null; group = null; showNewProject(false); render(); window.scrollTo(0, 0); };
 $("next-btn").onclick = () => { selected = null; group = null; finding = true; render(); $("loc").value = ""; $("loc").focus(); };
 $("np-open").onclick = () => showNewProject(true);
 $("project").addEventListener("change", e => {
-  showNewProject(false); picking = false; openProject(e.target.value);
+  showNewProject(false); home = true; selected = null; group = null; openProject(e.target.value);
 });
 $("np-cancel").onclick = () => { showNewProject(false); renderProjects(); };
 $("np-make").onclick = () => {
   const name = $("np-name").value.trim(); if (!name) { toast("Type a project name first"); return; }
   const s = slug(name);
   if (!allProjects().some(p => p.slug === s)) { custom.push({ name, slug: s }); LS.set("custom", custom); }
-  $("np-name").value = ""; showNewProject(false); picking = false; current = s; renderProjects(); openProject(s);
+  $("np-name").value = ""; showNewProject(false); home = true; current = s; renderProjects(); openProject(s);
 };
 
 async function openProject(s) {
@@ -398,10 +399,12 @@ function symbol(kind) {
   return `<svg class="sym" viewBox="0 0 22 22"><rect x="3" y="3" width="16" height="16" fill="var(--vault)"/></svg>`;
 }
 function render() {
-  $("pick-view").hidden = !picking; $("collect-main").hidden = picking;
+  const homeView = home && !selected && !shot.running, newProj = !$("new-project-box").hidden;
+  $("pick-view").hidden = !(homeView || newProj); $("collect-main").hidden = newProj;
   $("work-proj").textContent = (allProjects().find(p => p.slug === current) || {}).name || "";
-  $("loc-wrap").hidden = !finding;
-  $("next-btn").hidden = finding || shot.running;
+  document.querySelector(".work-head").hidden = home;
+  $("loc-wrap").hidden = !(finding || homeView);
+  $("next-btn").hidden = home || finding || shot.running;
   $("next-btn").textContent = Object.keys(data.items).length ? "Capture next location" : "Capture first location";
   const items = itemsList();
   const groups = [...new Set(items.map(i => i.group))];
@@ -414,7 +417,7 @@ function render() {
   renderGroups(groups, items);
   const list = items.filter(i => i.group === group);
   $("items-h").textContent = group ? group : "Items";
-  $("items-h").hidden = $("items").hidden = !(finding && group && !selected);
+  $("items-h").hidden = $("items").hidden = !((finding || homeView) && group && !selected);
   $("items").innerHTML = list.map(i => {
     const r = data.items[i.name];
     const pill = r ? `<span class="pill ${accClass(r.acc_ft)}">±${Math.round(r.acc_ft)} ft</span>` : `<span class="pill none">Not shot</span>`;
@@ -583,10 +586,32 @@ function average(samples) {
   const acc = Math.max(Math.sqrt(1 / w) * 1.0, best / Math.sqrt(Math.min(use.length, 4)), spread);
   return { lat, lon, acc_ft: acc * FT, best_ft: best * FT, n: samples.length, used: use.length, alt_m: aw ? al / aw : null };
 }
-function finishShot() {
+function ask(msg, yes, no) {
+  return new Promise(res => {
+    $("ask-msg").textContent = msg; $("ask-yes").textContent = yes; $("ask-no").textContent = no; $("ask").hidden = false;
+    $("ask-yes").onclick = () => { $("ask").hidden = true; res(true); };
+    $("ask-no").onclick = () => { $("ask").hidden = true; res(false); };
+  });
+}
+function feetApart(a, b) {
+  const k = 20902231, la = (a.lat + b.lat) / 2 * Math.PI / 180;
+  return Math.hypot((b.lat - a.lat) * Math.PI / 180 * k, (b.lon - a.lon) * Math.PI / 180 * k * Math.cos(la));
+}
+const MOVE_CHECK_FT = 50;
+async function finishShot() {
   const samples = shot.samples.slice(); stopShot(true);
   if (!samples.length) { $("shot-msg").textContent = "No GPS readings came in. Try again in the open."; renderShot(); return; }
   const a = average(samples), it = itemsList().find(i => i.name === selected) || {};
+  const old = data.items[selected];
+  if (old && old.lat != null) {
+    const d = feetApart(old, a);
+    if (d > MOVE_CHECK_FT && !await ask(`${selected} is already in, ${Math.round(d)} ft from where you are now. Are you changing its position, or did you pick the wrong location?`,
+        `Change ${selected}'s position`, "Wrong location, don't save")) {
+      $("shot-msg").textContent = `Not saved. ${selected} keeps its old shot.`;
+      selected = null; group = null; finding = true; render(); $("loc").value = ""; $("loc").focus();
+      return;
+    }
+  }
   data.items[selected] = Object.assign(a, { t: Date.now(), group: it.group || "Other" });
   if (data.deleted) delete data.deleted[selected];
   saveLocal(); push(`GPS ${selected} ±${Math.round(a.acc_ft)} ft`);
@@ -594,6 +619,7 @@ function finishShot() {
   toast(`Saved ${selected}`);
   render();
   if (job && job.plan) { const n = selected; showTab("print"); startPlacing(n, true); }
+  else { home = false; render(); }
 }
 
 /* ---------- local save + GitHub sync ---------- */
@@ -856,9 +882,9 @@ $("place-save").onclick = () => {
   data.controls[n] = Object.assign({}, data.controls[n], { x: Math.round(pending.x * 10) / 10, y: Math.round(pending.y * 10) / 10, use: true });
   saveLocal(); push(`Spot for ${n}`); toast(`Saved ${n} on the print`);
   const back = placeReturn; endPlacing();
-  if (back) { showTab("collect"); selected = null; group = null; finding = false; render(); }
+  if (back) { showTab("collect"); selected = null; group = null; finding = false; home = false; render(); }
 };
-$("place-skip").onclick = () => { const back = placeReturn; endPlacing(); if (back) { showTab("collect"); selected = null; group = null; finding = false; render(); } };
+$("place-skip").onclick = () => { const back = placeReturn; endPlacing(); if (back) { showTab("collect"); selected = null; group = null; finding = false; home = false; render(); } };
 function focusPos(n) {
   const c = controlPos(n); if (c) return c;
   if (sol && sol.ok && data.items[n]) return sol.map(sol.local(data.items[n]));
@@ -971,7 +997,11 @@ async function loadJobs(loud) {
 }
 
 /* ---------- tabs ---------- */
-document.querySelector(".tabs").addEventListener("click", e => { const b = e.target.closest("[data-tab]"); if (b) showTab(b.dataset.tab); });
+document.querySelector(".tabs").addEventListener("click", e => {
+  const b = e.target.closest("[data-tab]"); if (!b) return;
+  if (b.dataset.tab === "collect" && !shot.running) { home = true; selected = null; group = null; finding = false; showNewProject(false); render(); $("loc").value = ""; }
+  showTab(b.dataset.tab);
+});
 function showTab(name) {
   const b = document.querySelector(`[data-tab="${name}"]`);
   for (const x of document.querySelectorAll("[data-tab]")) x.setAttribute("aria-selected", x === b);
@@ -988,5 +1018,6 @@ if (current && $("project").value) openProject(current);
 if (gh.on()) loadJobs(false);
 else { setSync("", "Phone only"); if (!allProjects().length) showNewProject(true); }
 </script>
+<div class="ask" id="ask" hidden><div><div id="ask-msg"></div><button class="btn primary" id="ask-yes"></button><button class="btn" id="ask-no"></button></div></div>
 </body>
 </html>
