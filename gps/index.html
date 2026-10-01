@@ -92,7 +92,10 @@ label.field span { font: 600 14px/1 var(--display); letter-spacing: .08em; text-
 .canvas-box canvas { display: block; width: 100%; height: 100%; }
 .canvas-tools { position: absolute; right: 8px; top: 8px; display: grid; gap: 6px; }
 .canvas-tools .btn { min-height: 40px; min-width: 40px; padding: 6px 10px; }
-.placing { position: absolute; left: 8px; right: 60px; top: 8px; background: var(--accent); color: var(--accent-ink); padding: 8px 12px; border-radius: 8px; font-weight: 600; }
+.placing { position: absolute; left: 8px; right: 60px; top: 8px; background: var(--accent); color: var(--accent-ink); padding: 8px 10px; border-radius: 8px; font-weight: 600; display: grid; gap: 8px; }
+.placing .row { gap: 8px; }
+.placing .btn { min-height: 44px; padding: 8px 14px; color: var(--ink); }
+.placing .btn.save { background: var(--accent-ink); color: var(--accent); border-color: var(--accent-ink); }
 table { border-collapse: collapse; width: 100%; font-size: 14px; }
 th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--line); vertical-align: middle; }
 th { font: 600 13px/1 var(--display); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
@@ -150,6 +153,7 @@ summary { font-weight: 600; cursor: pointer; }
       <div class="row">
         <button class="btn" id="save-now" hidden>Save now</button>
         <button class="btn" id="cancel-shot" hidden>Cancel</button>
+        <button class="btn" id="show-print" hidden>Show on print</button>
         <button class="btn danger" id="clear-shot" hidden>Clear this shot</button>
       </div>
       <div class="small mono muted" id="shot-last"></div>
@@ -173,10 +177,13 @@ summary { font-weight: 600; cursor: pointer; }
 <section id="tab-print" hidden>
   <h2>Put shots on the print</h2>
   <p class="small"><b id="print-proj"></b></p>
-  <p class="small muted" id="print-help">Pick 4 to 6 shots spread around the site (corners plus one near the middle). Items already on the print line up by themselves. For anything else, tap Place, then tap the spot on the print.</p>
+  <p class="small muted" id="print-help">Pick 4 to 6 shots spread around the site (corners plus one near the middle). Items already on the print line up by themselves. Tap Find to zoom to a box, or Set spot to tap where it actually is.</p>
   <div class="canvas-box" id="cbox">
     <canvas id="cv"></canvas>
-    <div class="placing" id="placing" hidden></div>
+    <div class="placing" id="placing" hidden>
+      <span id="placing-msg"></span>
+      <div class="row"><button class="btn save" id="place-save" disabled>Save spot</button><button class="btn" id="place-skip">Skip</button></div>
+    </div>
     <div class="canvas-tools">
       <button class="btn" id="z-in" aria-label="Zoom in">+</button>
       <button class="btn" id="z-out" aria-label="Zoom out">−</button>
@@ -239,7 +246,7 @@ summary { font-weight: 600; cursor: pointer; }
 
 <script>
 "use strict";
-const APP_VERSION = "2026-10-01.5";
+const APP_VERSION = "2026-10-01.7";
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 (async () => {
   try {
@@ -479,12 +486,14 @@ function renderShot() {
   pill.textContent = r ? `Stored ±${Math.round(r.acc_ft)} ft` : "Not shot";
   $("shot-last").textContent = r ? `${r.lat.toFixed(7)}, ${r.lon.toFixed(7)}  ·  ${r.n} readings` : "";
   $("clear-shot").hidden = !r || shot.running;
+  $("show-print").hidden = shot.running || !(job && job.plan);
   $("store").hidden = shot.running;
   $("save-now").hidden = !shot.running;
   $("cancel-shot").hidden = !shot.running;
   $("store").textContent = r ? "Re-shoot GPS" : "Store GPS";
 }
 $("store").onclick = startShot;
+$("show-print").onclick = () => { const n = selected; showTab("print"); findOnPrint(n); };
 $("save-now").onclick = () => finishShot();
 $("cancel-shot").onclick = () => { stopShot(true); $("shot-msg").textContent = "Cancelled. Nothing was saved."; renderShot(); };
 $("clear-shot").onclick = () => {
@@ -557,6 +566,7 @@ function finishShot() {
   $("shot-msg").textContent = `Saved ${selected}: ±${Math.round(a.acc_ft)} ft from ${a.n} readings.` + (a.acc_ft > 30 ? " That's rough; re-shoot if you can." : "");
   toast(`Saved ${selected}`);
   render();
+  if (job && job.plan) { const n = selected; showTab("print"); startPlacing(n, true); }
 }
 
 /* ---------- local save + GitHub sync ---------- */
@@ -652,7 +662,7 @@ function solve() {
 /* ---------- print canvas ---------- */
 const cv = $("cv"), ctx = cv.getContext("2d");
 const view = { s: 1, x: 0, y: 0, fitted: false };
-let placing = null, sol = null;
+let placing = null, sol = null, focusName = null;
 function css(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
 function sizeCanvas() {
   const r = cv.getBoundingClientRect(), d = window.devicePixelRatio || 1;
@@ -707,11 +717,32 @@ function drawPrint() {
     else if (/pole/i.test(it.kind)) { ctx.fillStyle = css("--pole"); ctx.beginPath(); ctx.arc(p.x, p.y, z * 0.8, 0, 7); ctx.fill(); }
     else { ctx.fillStyle = css("--vault"); ctx.fillRect(p.x - z * 0.8, p.y - z * 0.8, z * 1.6, z * 1.6); }
     ctx.globalAlpha = 1;
+    if (view.s >= 1.6) { ctx.fillStyle = css("--ink"); ctx.font = "600 11px " + css("--body"); ctx.textAlign = "left"; ctx.textBaseline = "middle"; ctx.fillText(it.name, p.x + z + 3, p.y); }
   }
-  // control picks placed by hand
+  // spots set by hand (where the box actually is)
   for (const [n, c] of Object.entries(data.controls)) if (c.x != null) {
     const p = toScreen(c); ctx.strokeStyle = css("--ink"); ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.moveTo(p.x - 8, p.y); ctx.lineTo(p.x + 8, p.y); ctx.moveTo(p.x, p.y - 8); ctx.lineTo(p.x, p.y + 8); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(p.x - 9, p.y); ctx.lineTo(p.x + 9, p.y); ctx.moveTo(p.x, p.y - 9); ctx.lineTo(p.x, p.y + 9); ctx.stroke();
+    ctx.fillStyle = css("--ink"); ctx.font = "700 12px " + css("--body"); ctx.textAlign = "left"; ctx.textBaseline = "bottom"; ctx.fillText(n, p.x + 6, p.y - 6);
+  }
+  // spot being set right now
+  if (pending) {
+    const p = toScreen(pending); ctx.strokeStyle = css("--bad"); ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(p.x - 14, p.y); ctx.lineTo(p.x + 14, p.y); ctx.moveTo(p.x, p.y - 14); ctx.lineTo(p.x, p.y + 14); ctx.stroke();
+    ctx.beginPath(); ctx.arc(p.x, p.y, 8, 0, 7); ctx.stroke();
+  }
+  // the item being looked for
+  if (focusName) {
+    const f = focusPos(focusName);
+    if (f) {
+      const p = toScreen(f);
+      ctx.strokeStyle = css("--warn"); ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(p.x, p.y, 22, 0, 7); ctx.stroke();
+      ctx.font = "700 15px " + css("--body"); ctx.textAlign = "left"; ctx.textBaseline = "middle";
+      const w = ctx.measureText(focusName).width;
+      ctx.fillStyle = css("--warn"); ctx.fillRect(p.x + 26, p.y - 12, w + 12, 24);
+      ctx.fillStyle = css("--panel"); ctx.fillText(focusName, p.x + 32, p.y);
+    }
   }
   // shots mapped through the fit
   if (sol && sol.ok) {
@@ -754,7 +785,7 @@ function renderCtrlRows() {
     return `<tr><td><input type="checkbox" data-use="${esc(n)}" ${used && has ? "checked" : ""} ${has ? "" : "disabled"} aria-label="Use ${esc(n)}"></td>
       <td><b>${esc(n)}</b></td><td class="mono"><span class="pill ${accClass(r.acc_ft)}">${Math.round(r.acc_ft)}</span></td>
       <td class="mono">${off}</td>
-      <td><button class="btn" data-place="${esc(n)}" style="min-height:40px">${data.controls[n] && data.controls[n].x != null ? "Move" : "Place"}</button></td></tr>`;
+      <td><div class="row" style="gap:6px;flex-wrap:nowrap"><button class="btn" data-find="${esc(n)}" style="min-height:40px">Find</button><button class="btn" data-place="${esc(n)}" style="min-height:40px">${data.controls[n] && data.controls[n].x != null ? "Move spot" : "Set spot"}</button>${data.controls[n] && data.controls[n].x != null && designPos(n) ? `<button class="btn" data-reset="${esc(n)}" style="min-height:40px">Undo</button>` : ""}</div></td></tr>`;
   }).join("") : `<tr><td colspan="5" class="muted">No shots yet.</td></tr>`;
 }
 $("ctrl-rows").addEventListener("change", e => {
@@ -763,11 +794,48 @@ $("ctrl-rows").addEventListener("change", e => {
   saveLocal(); push(`Print points`); drawPrint();
 });
 $("ctrl-rows").addEventListener("click", e => {
-  const n = e.target.dataset && e.target.dataset.place; if (!n) return;
+  const d = e.target.dataset || {};
+  if (d.find) { findOnPrint(d.find); return; }
+  if (d.reset) { const c = Object.assign({}, data.controls[d.reset]); delete c.x; delete c.y; data.controls[d.reset] = c; saveLocal(); push("Print points"); toast(`${d.reset} back to the designed spot`); drawPrint(); return; }
+  const n = d.place; if (!n) return;
   if (!job || !job.plan) { toast("This project has no print to place on"); return; }
-  placing = n; $("placing").hidden = false; $("placing").textContent = `Tap the print where ${n} is`;
-  $("cbox").scrollIntoView({ behavior: "smooth", block: "center" });
+  if (focusPos(n)) findOnPrint(n, true); else $("cbox").scrollIntoView({ behavior: "smooth", block: "center" });
+  startPlacing(n, false);
 });
+let pending = null, placeReturn = false;
+function startPlacing(n, fromShot) {
+  placing = n; focusName = n; pending = null; placeReturn = fromShot;
+  $("placing").hidden = false; $("place-save").disabled = true;
+  $("placing-msg").textContent = `Tap where ${n} actually is. Zoom in to be exact.`;
+  if (focusPos(n)) findOnPrint(n, true); else $("cbox").scrollIntoView({ behavior: "smooth", block: "center" });
+}
+function endPlacing() { placing = null; pending = null; $("placing").hidden = true; drawPrint(); }
+$("place-save").onclick = () => {
+  if (!pending || !placing) return;
+  const n = placing;
+  data.controls[n] = Object.assign({}, data.controls[n], { x: Math.round(pending.x * 10) / 10, y: Math.round(pending.y * 10) / 10, use: true });
+  saveLocal(); push(`Spot for ${n}`); toast(`Saved ${n} on the print`);
+  const back = placeReturn; endPlacing();
+  if (back) { showTab("collect"); selected = null; render(); }
+};
+$("place-skip").onclick = () => { const back = placeReturn; endPlacing(); if (back) { showTab("collect"); selected = null; render(); } };
+function focusPos(n) {
+  const c = controlPos(n); if (c) return c;
+  if (sol && sol.ok && data.items[n]) return sol.map(sol.local(data.items[n]));
+  return null;
+}
+function findOnPrint(n, quiet) {
+  if (!job || !job.plan) { toast("This project has no print"); return; }
+  if (!sol) sol = solve();
+  const f = focusPos(n);
+  focusName = n;
+  $("cbox").scrollIntoView({ behavior: "smooth", block: "center" });
+  if (!f) { drawPrint(); if (!quiet) toast(`${n} isn't on the print yet. Tap Set spot, then tap where it is.`); return; }
+  const r = cv.getBoundingClientRect(), e = extent();
+  const fit = Math.min(r.width / (e.x1 - e.x0), r.height / (e.y1 - e.y0)) * 0.95;
+  view.s = Math.max(view.s, fit * 4); view.x = r.width / 2 - f.x * view.s; view.y = r.height / 2 - f.y * view.s; view.fitted = true;
+  drawPrint();
+}
 $("lock-scale").onchange = e => { data.lockScale = e.target.checked; saveLocal(); push("Scale setting"); drawPrint(); };
 
 // pan, pinch, tap
@@ -790,10 +858,9 @@ cv.addEventListener("pointermove", e => {
 function endPtr(e) {
   const p = ptrs.get(e.pointerId); ptrs.delete(e.pointerId);
   if (p && !gesture && ptrs.size === 0 && placing) {
-    const q = toPrint(p.x, p.y);
-    data.controls[placing] = Object.assign({}, data.controls[placing], { x: Math.round(q.x * 10) / 10, y: Math.round(q.y * 10) / 10, use: true });
-    toast(`${placing} placed`); placing = null; $("placing").hidden = true;
-    saveLocal(); push("Print points"); drawPrint();
+    pending = toPrint(p.x, p.y); $("place-save").disabled = false;
+    $("placing-msg").textContent = `${placing}: tap again to adjust, or Save spot.`;
+    drawPrint();
   }
 }
 cv.addEventListener("pointerup", endPtr); cv.addEventListener("pointercancel", endPtr);
@@ -864,15 +931,16 @@ async function loadJobs(loud) {
 }
 
 /* ---------- tabs ---------- */
-document.querySelector(".tabs").addEventListener("click", e => {
-  const b = e.target.closest("[data-tab]"); if (!b) return;
+document.querySelector(".tabs").addEventListener("click", e => { const b = e.target.closest("[data-tab]"); if (b) showTab(b.dataset.tab); });
+function showTab(name) {
+  const b = document.querySelector(`[data-tab="${name}"]`);
   for (const x of document.querySelectorAll("[data-tab]")) x.setAttribute("aria-selected", x === b);
   for (const t of ["collect", "print", "setup"]) $("tab-" + t).hidden = t !== b.dataset.tab;
   try { sessionStorage.setItem("gps.tab", b.dataset.tab); } catch {}
   if (b.dataset.tab === "print") { $("print-proj").textContent = (allProjects().find(p => p.slug === current) || {}).name || ""; $("lock-scale").checked = data.lockScale !== false; view.fitted = false; drawPrint(); }
   if (b.dataset.tab === "setup") fillSetup();
   window.scrollTo(0, 0);
-});
+}
 
 /* ---------- start ---------- */
 renderProjects();
