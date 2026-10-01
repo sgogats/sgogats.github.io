@@ -306,7 +306,7 @@ function allProjects() {
 }
 function renderProjects() {
   const sel = $("project"), ps = allProjects();
-  sel.innerHTML = ps.length ? ps.map(p => `<option value="${esc(p.slug)}">${esc(p.name)}</option>`).join("") : `<option value="">No projects yet</option>`;
+  sel.innerHTML = ps.length ? ps.map(p => `<option value="${esc(p.slug)}">${esc(p.name)}</option>`).join("") : `<option value="">${gh.on() ? "No projects yet" : "No projects. Add your GitHub key on Setup"}</option>`;
   sel.disabled = !ps.length;
   if (!ps.length) { showNewProject(true); return; }
   if (!ps.some(p => p.slug === current)) current = ps[0].slug;
