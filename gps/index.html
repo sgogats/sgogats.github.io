@@ -72,6 +72,10 @@ label.field span { font: 600 14px/1 var(--display); letter-spacing: .08em; text-
 .work-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding-block: 14px 12px; }
 .work-proj { font: 700 22px/1.15 var(--display); text-transform: uppercase; letter-spacing: .02em; }
 #next-btn { margin-top: 6px; min-height: 96px; }
+.linkish { background: none; border: 0; padding: 6px 0; color: var(--accent); font: 600 15px var(--body); cursor: pointer; text-align: left; }
+.cats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
+.cats .btn { min-height: 56px; font-size: 17px; }
+.cats .btn[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
 .loc-list { margin-top: 6px; max-height: 50vh; overflow-y: auto; }
 .item.loc-opt { grid-template-columns: 1fr auto; }
 .sym { width: 22px; height: 22px; display: block; }
@@ -148,7 +152,7 @@ summary { font-weight: 600; cursor: pointer; }
 
   <div id="collect-main">
     <div class="work-head">
-      <div><div class="muted small">Collecting points for</div><div class="work-proj" id="work-proj"></div></div>
+      <div><div class="muted small">Current project</div><div class="work-proj" id="work-proj"></div></div>
       <button class="btn" id="change-proj">Change project</button>
     </div>
     <button class="btn big primary" id="next-btn">Capture next location</button>
@@ -156,11 +160,17 @@ summary { font-weight: 600; cursor: pointer; }
     <h3>Which location?</h3>
     <input id="loc" type="text" placeholder="Pick or type a location or box" autocomplete="off" role="combobox" aria-expanded="false" aria-controls="groups" enterkeyhint="go">
     <div class="list loc-list" id="groups" role="listbox" aria-label="Locations" hidden></div>
+    <div class="cats" id="cats"></div>
+    <div class="stack" id="type-box" style="margin-top:10px" hidden>
+      <input id="type-name" type="text" placeholder="Type name, e.g. Manhole, Cleanout, Panel" autocomplete="off" enterkeyhint="done">
+      <div class="list loc-list" id="type-sugg" hidden></div>
+      <button class="btn" id="type-cancel">Cancel</button>
+    </div>
     </div>
 
     <div id="shot" class="shot" style="margin-top:14px" hidden>
       <div class="row" style="justify-content:space-between">
-        <div><div class="muted small" id="shot-group"></div><div class="target" id="shot-name"></div></div>
+        <div><div class="muted small" id="shot-group"></div><div class="target" id="shot-name"></div><div class="muted" id="shot-name2"></div><button class="linkish" id="name2-btn"></button></div>
         <span id="shot-pill" class="pill none">Not shot</span>
       </div>
       <div class="meter">
@@ -181,6 +191,7 @@ summary { font-weight: 600; cursor: pointer; }
     </div>
 
     <h3 id="items-h">Items</h3>
+    <button class="linkish" id="group-name2" hidden></button>
     <div class="list" id="items"></div>
     <details style="margin-top:12px" hidden>
       <summary>Add an item that is not on the list</summary>
@@ -267,7 +278,7 @@ summary { font-weight: 600; cursor: pointer; }
 
 <script>
 "use strict";
-const APP_VERSION = "2026-10-01.10";
+const APP_VERSION = "2026-10-01.14";
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 (async () => {
   try {
@@ -294,7 +305,7 @@ let custom = LS.get("custom", []);        // [{name, slug}]
 let current = LS.get("current", null);    // slug
 let job = null;                           // loaded job detail (items, plan) or null for custom
 let data = { items: {}, extra: [], controls: {} };  // readings doc for current project
-let group = null, selected = null, home = true, finding = false;   // home: project + location screen; after a save: clean "Capture next location" screen
+let group = null, selected = null, home = true, finding = false, cat = null;   // home: pick a project; project page: "Current project" + locations; after a save: clean "Capture next location"
 
 function toast(msg) {
   const t = $("toast"); t.textContent = msg; t.hidden = false;
@@ -350,26 +361,28 @@ function renderProjects() {
   sel.disabled = !ps.length;
   if (!ps.length) { home = true; showNewProject(true); return; }
   if (!ps.some(p => p.slug === current)) current = ps[0].slug;
-  sel.value = current;
+  sel.innerHTML = `<option value="">Choose a project…</option>` + sel.innerHTML;
+  sel.value = home ? "" : current;
   if (!$("new-project-box").hidden && $("np-name").value.trim() === "") showNewProject(false);
 }
 function showNewProject(on) { $("new-project-box").hidden = !on; $("project-box").hidden = on; if (on) { home = true; $("pick-view").hidden = false; $("collect-main").hidden = true; $("np-name").focus(); } }
-$("change-proj").onclick = () => { if (shot.running) { toast("Finish or cancel the current shot first"); return; } home = true; selected = null; group = null; showNewProject(false); render(); window.scrollTo(0, 0); };
-$("next-btn").onclick = () => { selected = null; group = null; finding = true; render(); $("loc").value = ""; $("loc").focus(); };
+$("change-proj").onclick = () => { if (shot.running) { toast("Finish or cancel the current shot first"); return; } home = true; selected = null; group = null; finding = false; showNewProject(false); renderProjects(); render(); window.scrollTo(0, 0); };
+$("next-btn").onclick = () => { selected = null; group = null; cat = null; finding = true; render(); $("loc").value = ""; $("loc").focus(); };
 $("np-open").onclick = () => showNewProject(true);
 $("project").addEventListener("change", e => {
-  showNewProject(false); home = true; selected = null; group = null; openProject(e.target.value);
+  if (!e.target.value) return;
+  showNewProject(false); home = false; finding = true; selected = null; group = null; openProject(e.target.value); $("loc").value = ""; window.scrollTo(0, 0);
 });
 $("np-cancel").onclick = () => { showNewProject(false); renderProjects(); };
 $("np-make").onclick = () => {
   const name = $("np-name").value.trim(); if (!name) { toast("Type a project name first"); return; }
   const s = slug(name);
   if (!allProjects().some(p => p.slug === s)) { custom.push({ name, slug: s }); LS.set("custom", custom); }
-  $("np-name").value = ""; showNewProject(false); home = true; current = s; renderProjects(); openProject(s);
+  $("np-name").value = ""; showNewProject(false); home = false; finding = true; current = s; renderProjects(); openProject(s);
 };
 
 async function openProject(s) {
-  current = s; LS.set("current", s); group = null; selected = null; stopShot(true);
+  current = s; LS.set("current", s); group = null; selected = null; cat = null; stopShot(true);
   const p = allProjects().find(x => x.slug === s);
   job = p && p.job ? LS.get("job." + s, null) : null;
   data = LS.get("data." + s, null) || { project: p ? p.name : s, slug: s, items: {}, extra: [], controls: {}, lockScale: true };
@@ -396,16 +409,17 @@ function symbol(kind) {
   if (/pole/i.test(kind)) return `<svg class="sym" viewBox="0 0 22 22"><circle cx="11" cy="11" r="7" fill="var(--pole)"/></svg>`;
   if (kind === "Can") return `<svg class="sym" viewBox="0 0 22 22"><rect x="3" y="3" width="16" height="16" fill="var(--vault)" stroke="#e8c200" stroke-width="3"/></svg>`;
   if (kind === "Other") return `<svg class="sym" viewBox="0 0 22 22"><path d="M11 2 L20 11 L11 20 L2 11 Z" fill="var(--muted)"/></svg>`;
+  if (/pedestal/i.test(kind)) return `<svg class="sym" viewBox="0 0 22 22"><rect x="6" y="2" width="10" height="18" rx="2" fill="var(--muted)"/></svg>`;
   return `<svg class="sym" viewBox="0 0 22 22"><rect x="3" y="3" width="16" height="16" fill="var(--vault)"/></svg>`;
 }
 function render() {
-  const homeView = home && !selected && !shot.running, newProj = !$("new-project-box").hidden;
-  $("pick-view").hidden = !(homeView || newProj); $("collect-main").hidden = newProj;
+  const newProj = !$("new-project-box").hidden, homeView = (home && !selected && !shot.running) || newProj;
+  $("pick-view").hidden = !homeView; $("collect-main").hidden = homeView;
   $("work-proj").textContent = (allProjects().find(p => p.slug === current) || {}).name || "";
-  document.querySelector(".work-head").hidden = home;
-  $("loc-wrap").hidden = !(finding || homeView);
-  $("next-btn").hidden = home || finding || shot.running;
-  $("next-btn").textContent = Object.keys(data.items).length ? "Capture next location" : "Capture first location";
+  $("loc-wrap").hidden = !finding;
+  $("next-btn").hidden = finding || shot.running;
+  $("next-btn").textContent = selected ? "Pick a different location" : Object.keys(data.items).length ? "Capture next location" : "Capture first location";
+  $("next-btn").classList.toggle("primary", !selected);
   const items = itemsList();
   const groups = [...new Set(items.map(i => i.group))];
   groups.sort((a, b) => { const na = parseInt(a.replace(/\D+/g, "")) || 9999, nb = parseInt(b.replace(/\D+/g, "")) || 9999; return /^Building/.test(a) && /^Building/.test(b) ? na - nb : a.localeCompare(b); });
@@ -415,18 +429,103 @@ function render() {
   if (!locOpen) $("loc").value = group || "";
   $("loc").placeholder = groups.length ? "Pick or type a location or box" : "No locations yet. Add an item below.";
   renderGroups(groups, items);
-  const list = items.filter(i => i.group === group);
-  $("items-h").textContent = group ? group : "Items";
-  $("items-h").hidden = $("items").hidden = !((finding || homeView) && group && !selected);
-  $("items").innerHTML = list.map(i => {
+  if (cat && !types().includes(cat)) cat = null;
+  $("cats").innerHTML = types().map(t => `<button class="btn" data-cat="${esc(t)}" aria-pressed="${t === cat}">${esc(t)}</button>`).join("")
+    + `<button class="btn" data-act="add-loc" style="grid-column:1/-1">+ Add new location</button><button class="btn" data-act="add-type" style="grid-column:1/-1">+ Add type</button>`;
+  const bGroups = groups.filter(g => /^Building /.test(g));
+  const list = group ? items.filter(i => i.group === group) : cat ? items.filter(i => inCat(i, cat)).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true })) : [];
+  const showGroups = !group && cat === "Building" && bGroups.length;
+  $("items-h").textContent = group ? both(group) : cat || "Items";
+  $("group-name2").hidden = !(finding && group && !selected);
+  $("group-name2").textContent = group && name2(group) ? `Change ${group}'s second name` : `+ Add second name for ${group} (address)`;
+  $("items-h").hidden = $("items").hidden = !(finding && (group || cat) && !selected);
+  $("items").innerHTML = showGroups ? bGroups.map(g => {
+    const its = items.filter(i => i.group === g), done = its.filter(i => data.items[i.name]).length;
+    return `<button class="item" data-g="${esc(g)}"><span></span><span class="nm">${esc(both(g))}</span><span class="pill ${done && done === its.length ? "good" : "none"}">${done}/${its.length} shot</span></button>`;
+  }).join("") + list.map(i => `<button class="item" data-n="${esc(i.name)}">${symbol(i.kind)}<span class="nm">${esc(both(i.name))}</span><span></span></button>`).join("") : list.map(i => {
     const r = data.items[i.name];
     const pill = r ? `<span class="pill ${accClass(r.acc_ft)}">±${Math.round(r.acc_ft)} ft</span>` : `<span class="pill none">Not shot</span>`;
     const sub = r ? `Shot ${new Date(r.t).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}` : i.kind;
     return `<button class="item" data-n="${esc(i.name)}" aria-current="${selected === i.name}">${symbol(i.kind)}<span><span class="nm">${esc(i.name)}</span><br><span class="sub">${esc(sub)}</span></span>${pill}</button>`;
-  }).join("");
+  }).join("") || (cat && !group ? `<div class="item" style="cursor:default"><span></span><span class="sub">No ${esc(cat)} locations yet. Tap + Add new location.</span><span></span></div><button class="item" data-rm="${esc(cat)}"><span></span><span class="sub">Remove the ${esc(cat)} button from this project</span><span></span></button>` : "");
   renderShot();
   if (!$("tab-print").hidden) drawPrint();
 }
+/* ---------- second names: every location and building keeps its own name plus the job's/owner's name or address ---------- */
+function name2(k) { return ((data.labels || {})[k] || "").trim(); }
+function both(k) { const b = name2(k); return b ? `${k} · ${b}` : k; }
+function editName2(k) {
+  const v = prompt(`Second name for ${k}\n(the job's name for it, or its address). Leave empty to remove.`, name2(k));
+  if (v === null) return;
+  data.labels = Object.assign({}, data.labels, { [k]: v.trim() }); saveLocal(); push(`Name ${k}: ${v.trim() || "removed"}`); render();
+}
+$("name2-btn").onclick = () => { if (selected) editName2(selected); };
+$("group-name2").onclick = () => { if (group) editName2(group); };
+/* ---------- location types (buttons): per project; names shared across projects via gps/types.json ---------- */
+const DEFAULT_TYPES = ["Lockbox", "Vault", "Building", "Pedestal"];
+let typeLib = LS.get("types", []) || [];
+function types() { return data.types || DEFAULT_TYPES; }
+function typeOf(i) {
+  const k = i.kind || "", ts = types();
+  if (ts.includes(k)) return k;
+  if (k === "Lockbox") return "Lockbox";
+  if (/pedestal/i.test(k)) return "Pedestal";
+  return "Vault";                                   // designer vaults, cans, mains, poles, MDU entry, older adds
+}
+function inCat(i, t) { return typeOf(i) === t; }
+function typeGroup(t) { return t === "Lockbox" ? "Added in field" : t === "Vault" ? "Vaults, cans and poles" : t; }
+function typeKind(t) { return t === "Vault" ? "Lockbox vault" : t; }
+function allTypeNames() {
+  const out = [];
+  for (const n of [...DEFAULT_TYPES, ...typeLib, ...types()]) if (n && !out.some(x => norm(x) === norm(n))) out.push(n);
+  return out;
+}
+async function pullTypes() {
+  if (!gh.on()) return;
+  try { const t = await gh.raw("gps/types.json"); if (t && t.types) { typeLib = allTypeNames().concat(t.types).filter((n, i, a) => a.findIndex(x => norm(x) === norm(n)) === i); LS.set("types", typeLib); } } catch {}
+}
+async function pushTypes() {
+  LS.set("types", typeLib);
+  if (!gh.on()) return;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const m = await gh.meta("gps/types.json");
+      const remote = m ? (JSON.parse(decodeB64(m.content)).types || []) : [];
+      const all = remote.concat(typeLib).filter((n, i, a) => a.findIndex(x => norm(x) === norm(n)) === i);
+      if (m && all.length === remote.length) return;
+      await gh.put("gps/types.json", { types: all }, m && m.sha, "GPS Shots: location types");
+      typeLib = all; LS.set("types", typeLib); return;
+    } catch (e) { if (e.status !== 409 && e.status !== 422) return; }
+  }
+}
+function setTypes(list, msg) { data.types = list; data.typesT = Date.now(); saveLocal(); push(msg); render(); }
+function renderTypeSugg() {
+  const q = norm($("type-name").value.trim()), have = types().map(norm);
+  const opts = allTypeNames().filter(n => !have.includes(norm(n)) && (!q || norm(n).includes(q)));
+  const typed = $("type-name").value.trim(), exact = typed && allTypeNames().some(n => norm(n) === norm(typed));
+  $("type-sugg").innerHTML = opts.map(n => `<button class="item loc-opt" data-t="${esc(n)}"><span class="nm">${esc(n)}</span><span class="sub">Used before</span></button>`).join("")
+    + (typed && !exact ? `<button class="item loc-opt" data-t="${esc(typed)}"><span class="nm" style="color:var(--accent)">+ New type “${esc(typed)}”</span><span></span></button>` : "");
+  $("type-sugg").hidden = !$("type-sugg").innerHTML;
+}
+function addType(name) {
+  name = name.trim(); if (!name) return;
+  const lib = allTypeNames().find(n => norm(n) === norm(name)); if (lib) name = lib;   // keep one spelling everywhere
+  if (!types().some(n => norm(n) === norm(name))) setTypes([...types(), name], `Add type ${name}`);
+  if (!typeLib.some(n => norm(n) === norm(name))) { typeLib.push(name); pushTypes(); }
+  $("type-box").hidden = true; cat = name; group = null; render();
+}
+$("type-name").addEventListener("input", renderTypeSugg);
+$("type-name").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); addType($("type-name").value); } });
+$("type-sugg").addEventListener("click", e => { const b = e.target.closest("[data-t]"); if (b) addType(b.dataset.t); });
+$("type-cancel").onclick = () => { $("type-box").hidden = true; };
+$("cats").addEventListener("click", e => {
+  const b = e.target.closest("button"); if (!b) return;
+  if (shot.running) { toast("Finish or cancel the current shot first"); return; }
+  if (b.dataset.act === "add-loc") { group = null; selected = null; $("loc").value = ""; $("loc").placeholder = "Type the new location's name"; $("loc").focus(); return; }
+  if (b.dataset.act === "add-type") { $("type-box").hidden = false; $("type-name").value = ""; renderTypeSugg(); $("type-name").focus(); return; }
+  cat = b.dataset.cat; group = null; selected = null; locOpen = false; $("loc").value = ""; render();
+  $("items-h").scrollIntoView({ behavior: "smooth", block: "start" });
+});
 let locOpen = false, locGroups = [], locItems = [];
 function norm(t) { return String(t).toLowerCase(); }
 function squash(t) { return norm(t).replace(/[^a-z0-9]/g, ""); }
@@ -437,8 +536,8 @@ function locMatches() {
   const words = q.split(/\s+/).filter(Boolean);
   // exact word first: 18 puts Building 18 / V-18 ahead of 118 or 1718
   const rank = t => norm(t).split(/[^a-z0-9]+/).some(x => words.includes(x)) ? 0 : 1;
-  const groups = locGroups.filter(g => hits(g, words)).sort((a, b) => rank(a) - rank(b));
-  const items = locItems.filter(i => hits(i.name, words)).sort((a, b) => rank(a.name) - rank(b.name) || a.name.localeCompare(b.name, undefined, { numeric: true })).slice(0, 40);
+  const groups = locGroups.filter(g => hits(g, words) || hits(name2(g), words)).sort((a, b) => rank(a) - rank(b));
+  const items = locItems.filter(i => (hits(i.name, words) || hits(name2(i.name), words)) && (!cat || inCat(i, cat))).sort((a, b) => rank(a.name) - rank(b.name) || a.name.localeCompare(b.name, undefined, { numeric: true })).slice(0, 40);
   return { groups, items };
 }
 function renderGroups(groups, items) {
@@ -449,22 +548,23 @@ function renderGroups(groups, items) {
   const m = locMatches();
   const g = m.groups.map(g => {
     const its = locItems.filter(i => i.group === g), done = its.filter(i => data.items[i.name]).length;
-    return `<button class="item loc-opt" role="option" data-g="${esc(g)}" aria-current="${g === group}"><span class="nm">${esc(g)}</span><span class="pill ${done && done === its.length ? "good" : "none"}">${done}/${its.length} shot</span></button>`;
+    return `<button class="item loc-opt" role="option" data-g="${esc(g)}" aria-current="${g === group}"><span class="nm">${esc(both(g))}</span><span class="pill ${done && done === its.length ? "good" : "none"}">${done}/${its.length} shot</span></button>`;
   }).join("");
   const it = m.items.map(i => {
     const r = data.items[i.name];
-    return `<button class="item" role="option" data-i="${esc(i.name)}">${symbol(i.kind)}<span><span class="nm">${esc(i.name)}</span><br><span class="sub">${esc(i.group)}</span></span>${r ? `<span class="pill ${accClass(r.acc_ft)}">±${Math.round(r.acc_ft)} ft</span>` : `<span class="pill none">Not shot</span>`}</button>`;
+    return `<button class="item" role="option" data-i="${esc(i.name)}">${symbol(i.kind)}<span><span class="nm">${esc(both(i.name))}</span><br><span class="sub">${esc(i.group)}</span></span>${r ? `<span class="pill ${accClass(r.acc_ft)}">±${Math.round(r.acc_ft)} ft</span>` : `<span class="pill none">Not shot</span>`}</button>`;
   }).join("");
   const typed = $("loc").value.trim();
   const exists = typed && (locGroups.some(x => norm(x) === norm(typed)) || locItems.some(x => norm(x.name) === norm(typed)));
   const none = !g && !it ? `<div class="item loc-opt" style="cursor:default"><span class="nm">No location named “${esc(typed)}”</span><span></span></div>` : "";
-  const add = typed && !exists ? `<button class="item loc-opt" data-new="${esc(typed)}"><span><span class="nm" style="color:var(--accent)">+ Add new location “${esc(typed)}”</span><br><span class="sub">Goes in ${esc(group || "Added in field")}</span></span><span></span></button>` : "";
+  const add = typed && !exists ? `<button class="item loc-opt" data-new="${esc(typed)}"><span><span class="nm" style="color:var(--accent)">+ Add new location “${esc(typed)}”</span><br><span class="sub">Goes in ${esc(group || (cat && typeGroup(cat)) || "Added in field")}${cat ? " as a " + esc(cat) : ""}</span></span><span></span></button>` : "";
   box.innerHTML = none + g + it + add;
 }
 function createItem(name) {
   name = name.trim(); if (!name) return;
-  const g = group || "Added in field";
-  if (!itemsList().some(i => i.name === name)) { data.extra = data.extra || []; data.extra.push({ name, group: g }); saveLocal(); push(`Add ${name}`); }
+  const g = group || (cat && typeGroup(cat)) || "Added in field";
+  const kind = cat ? typeKind(cat) : /^Building /.test(g) ? "Lockbox" : null;
+  if (!itemsList().some(i => i.name === name)) { data.extra = data.extra || []; data.extra.push(kind ? { name, group: g, kind } : { name, group: g }); saveLocal(); push(`Add ${name}`); }
   group = g; selected = name; locOpen = false; finding = false; $("loc").blur(); render(); toast(`Created ${name}`);
   $("shot").scrollIntoView({ behavior: "smooth", block: "start" });
 }
@@ -488,8 +588,10 @@ $("groups").addEventListener("click", e => {
   if (b.dataset.g != null) pickLocation(b.dataset.g); else pickItem(b.dataset.i);
 });
 $("items").addEventListener("click", e => {
-  const b = e.target.closest(".item"); if (!b) return;
+  const b = e.target.closest(".item"); if (!b || (!b.dataset.n && !b.dataset.g && !b.dataset.rm)) return;
   if (shot.running) { toast("Finish or cancel the current shot first"); return; }
+  if (b.dataset.rm) { const t = b.dataset.rm; cat = null; setTypes(types().filter(x => x !== t), `Remove type ${t}`); toast(`Removed ${t}`); return; }
+  if (b.dataset.g) { group = b.dataset.g; render(); return; }
   selected = b.dataset.n; finding = false; render();
   $("shot").scrollIntoView({ behavior: "smooth", block: "start" });
 });
@@ -510,6 +612,8 @@ function renderShot() {
   const it = itemsList().find(i => i.name === selected) || { group: "", name: selected };
   $("shot-group").textContent = it.group;
   $("shot-name").textContent = it.name;
+  $("shot-name2").textContent = name2(it.name); $("shot-name2").hidden = !name2(it.name);
+  $("name2-btn").textContent = name2(it.name) ? "Change second name" : "+ Add second name (job name or address)"; $("name2-btn").hidden = shot.running;
   const r = data.items[selected];
   const pill = $("shot-pill");
   pill.className = "pill " + accClass(r && r.acc_ft);
@@ -631,6 +735,9 @@ function merge(a, b) {
   for (const [k, t] of Object.entries(out.deleted)) if (out.items[k] && out.items[k].t <= t) delete out.items[k];
   for (const e of [...(a.extra || []), ...(b.extra || [])]) if (!out.extra.some(x => x.name === e.name)) out.extra.push(e);
   out.lockScale = a.lockScale !== undefined ? a.lockScale : b.lockScale;
+  out.labels = Object.assign({}, b.labels || {}, a.labels || {});
+  const ta = a.types ? a.typesT || 0 : -1, tb = b.types ? b.typesT || 0 : -1;    // newest button list wins
+  if (tb > ta) { out.types = b.types; out.typesT = b.typesT; }
   return out;
 }
 let pushing = null, pushAgain = false;
@@ -777,7 +884,16 @@ function drawPrint() {
     else if (/pole/i.test(it.kind)) { ctx.fillStyle = css("--pole"); ctx.beginPath(); ctx.arc(p.x, p.y, z * 0.8, 0, 7); ctx.fill(); }
     else { ctx.fillStyle = css("--vault"); ctx.fillRect(p.x - z * 0.8, p.y - z * 0.8, z * 1.6, z * 1.6); }
     ctx.globalAlpha = 1;
-    if (view.s >= 1.6) { ctx.fillStyle = css("--ink"); ctx.font = ($("cbox").classList.contains("full") ? "700 15px " : "600 11px ") + css("--body"); ctx.textAlign = "left"; ctx.textBaseline = "middle"; ctx.fillText(it.name, p.x + z + 3, p.y); }
+    if (view.s >= 1.6) { ctx.fillStyle = css("--ink"); ctx.font = ($("cbox").classList.contains("full") ? "700 15px " : "600 11px ") + css("--body"); ctx.textAlign = "left"; ctx.textBaseline = "middle"; const b2 = name2(it.name); ctx.fillText(it.name, p.x + z + 3, b2 ? p.y - 8 : p.y); if (b2) ctx.fillText(b2, p.x + z + 3, p.y + 8); }
+  }
+  // buildings with a second name (address): both names at the building
+  for (const b of job.buildings || []) {
+    const k = "Building " + b.name, b2 = name2(k); if (!b2 || !b.box) continue;
+    const p = toScreen({ x: (b.box[0] + b.box[2]) / 2, y: (b.box[1] + b.box[3]) / 2 });
+    ctx.font = "700 " + (full ? 15 : 12) + "px " + css("--body"); ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    const w = Math.max(ctx.measureText(k).width, ctx.measureText(b2).width) + 12;
+    ctx.fillStyle = css("--panel"); ctx.globalAlpha = 0.85; ctx.fillRect(p.x - w / 2, p.y - 20, w, 40); ctx.globalAlpha = 1;
+    ctx.fillStyle = css("--ink"); ctx.fillText(k, p.x, p.y - 9); ctx.fillText(b2, p.x, p.y + 9);
   }
   // spots set by hand (where the box actually is)
   for (const [n, c] of Object.entries(data.controls)) if (c.x != null) {
@@ -992,14 +1108,14 @@ async function loadJobs(loud) {
       LS.set("custom", custom);
     } catch {}
     if (loud) setupMsg("good", `Connected. ${jobs.length} job${jobs.length === 1 ? "" : "s"} from the designer.`);
-    renderProjects(); await openProject($("project").value || (allProjects()[0] || {}).slug);
+    renderProjects(); await openProject(allProjects().some(p => p.slug === current) ? current : (allProjects()[0] || {}).slug);
   } catch (e) { setSync("err", "Not synced"); if (loud) setupMsg("bad", e.message); }
 }
 
 /* ---------- tabs ---------- */
 document.querySelector(".tabs").addEventListener("click", e => {
   const b = e.target.closest("[data-tab]"); if (!b) return;
-  if (b.dataset.tab === "collect" && !shot.running) { home = true; selected = null; group = null; finding = false; showNewProject(false); render(); $("loc").value = ""; }
+  if (b.dataset.tab === "collect" && !shot.running) { home = true; selected = null; group = null; finding = false; showNewProject(false); renderProjects(); render(); $("loc").value = ""; }
   showTab(b.dataset.tab);
 });
 function showTab(name) {
@@ -1014,8 +1130,8 @@ function showTab(name) {
 
 /* ---------- start ---------- */
 renderProjects();
-if (current && $("project").value) openProject(current);
-if (gh.on()) loadJobs(false);
+if (current && allProjects().some(p => p.slug === current)) openProject(current);
+if (gh.on()) { loadJobs(false); pullTypes(); }
 else { setSync("", "Phone only"); if (!allProjects().length) showNewProject(true); }
 </script>
 <div class="ask" id="ask" hidden><div><div id="ask-msg"></div><button class="btn primary" id="ask-yes"></button><button class="btn" id="ask-no"></button></div></div>
