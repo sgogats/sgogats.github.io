@@ -69,6 +69,9 @@ label.field span { font: 600 14px/1 var(--display); letter-spacing: .08em; text-
 .item[aria-current="true"] { background: color-mix(in srgb, var(--accent) 12%, transparent); }
 .item .nm { font-weight: 600; }
 .item .sub { font-size: 13px; color: var(--muted); }
+.work-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding-block: 14px 12px; }
+.work-proj { font: 700 22px/1.15 var(--display); text-transform: uppercase; letter-spacing: .02em; }
+#next-btn { margin-top: 6px; min-height: 96px; }
 .loc-list { margin-top: 6px; max-height: 50vh; overflow-y: auto; }
 .item.loc-opt { grid-template-columns: 1fr auto; }
 .sym { width: 22px; height: 22px; display: block; }
@@ -127,9 +130,11 @@ summary { font-weight: 600; cursor: pointer; }
 
 <!-- COLLECT -->
 <section id="tab-collect">
+  <div id="pick-view">
   <div class="stack" id="project-box">
     <h3>Pick project</h3>
     <select id="project" aria-label="Pick project"></select>
+    <button class="btn big primary" id="start-btn">Start collecting</button>
     <button class="btn" id="np-open">+ Create new project</button>
   </div>
   <div id="new-project-box" class="stack" hidden>
@@ -137,11 +142,19 @@ summary { font-weight: 600; cursor: pointer; }
     <label class="field"><span>Project name</span><input id="np-name" type="text" placeholder="e.g. Palisade Ave Townhomes" autocomplete="off"></label>
     <div class="row"><button class="btn primary" id="np-make">Create project</button><button class="btn" id="np-cancel">Cancel</button></div>
   </div>
+  </div>
 
   <div id="collect-main">
-    <h3>Location</h3>
+    <div class="work-head">
+      <div><div class="muted small">Collecting points for</div><div class="work-proj" id="work-proj"></div></div>
+      <button class="btn" id="change-proj">Change project</button>
+    </div>
+    <button class="btn big primary" id="next-btn">Capture next location</button>
+    <div id="loc-wrap" hidden>
+    <h3>Which location?</h3>
     <input id="loc" type="text" placeholder="Pick or type a location or box" autocomplete="off" role="combobox" aria-expanded="false" aria-controls="groups" enterkeyhint="go">
     <div class="list loc-list" id="groups" role="listbox" aria-label="Locations" hidden></div>
+    </div>
 
     <div id="shot" class="shot" style="margin-top:14px" hidden>
       <div class="row" style="justify-content:space-between">
@@ -167,7 +180,7 @@ summary { font-weight: 600; cursor: pointer; }
 
     <h3 id="items-h">Items</h3>
     <div class="list" id="items"></div>
-    <details style="margin-top:12px">
+    <details style="margin-top:12px" hidden>
       <summary>Add an item that is not on the list</summary>
       <div class="stack" style="margin-top:10px">
         <label class="field"><span>Name</span><input id="ni-name" type="text" placeholder="e.g. LB-7C or Pole 4411" autocomplete="off"></label>
@@ -252,7 +265,7 @@ summary { font-weight: 600; cursor: pointer; }
 
 <script>
 "use strict";
-const APP_VERSION = "2026-10-01.8";
+const APP_VERSION = "2026-10-01.9";
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 (async () => {
   try {
@@ -279,7 +292,7 @@ let custom = LS.get("custom", []);        // [{name, slug}]
 let current = LS.get("current", null);    // slug
 let job = null;                           // loaded job detail (items, plan) or null for custom
 let data = { items: {}, extra: [], controls: {} };  // readings doc for current project
-let group = null, selected = null;
+let group = null, selected = null, picking = !current, finding = false;
 
 function toast(msg) {
   const t = $("toast"); t.textContent = msg; t.hidden = false;
@@ -332,23 +345,26 @@ function allProjects() {
 function renderProjects() {
   const sel = $("project"), ps = allProjects();
   sel.innerHTML = ps.length ? ps.map(p => `<option value="${esc(p.slug)}">${esc(p.name)}</option>`).join("") : `<option value="">${gh.on() ? "No projects yet" : "No projects. Add your GitHub key on Setup"}</option>`;
-  sel.disabled = !ps.length;
-  if (!ps.length) { showNewProject(true); return; }
+  sel.disabled = !ps.length; $("start-btn").hidden = !ps.length;
+  if (!ps.length) { picking = true; showNewProject(true); return; }
   if (!ps.some(p => p.slug === current)) current = ps[0].slug;
   sel.value = current;
   if (!$("new-project-box").hidden && $("np-name").value.trim() === "") showNewProject(false);
 }
-function showNewProject(on) { $("new-project-box").hidden = !on; $("collect-main").hidden = on; $("np-open").hidden = on; if (on) $("np-name").focus(); }
+function showNewProject(on) { $("new-project-box").hidden = !on; $("project-box").hidden = on; if (on) { picking = true; $("pick-view").hidden = false; $("collect-main").hidden = true; $("np-name").focus(); } }
+$("start-btn").onclick = () => { const v = $("project").value; if (!v) return; picking = false; finding = false; selected = null; group = null; if (v !== current || !job) openProject(v); else render(); };
+$("change-proj").onclick = () => { if (shot.running) { toast("Finish or cancel the current shot first"); return; } picking = true; showNewProject(false); render(); window.scrollTo(0, 0); };
+$("next-btn").onclick = () => { selected = null; group = null; finding = true; render(); $("loc").value = ""; $("loc").focus(); };
 $("np-open").onclick = () => showNewProject(true);
 $("project").addEventListener("change", e => {
-  showNewProject(false); openProject(e.target.value);
+  showNewProject(false); picking = false; openProject(e.target.value);
 });
 $("np-cancel").onclick = () => { showNewProject(false); renderProjects(); };
 $("np-make").onclick = () => {
   const name = $("np-name").value.trim(); if (!name) { toast("Type a project name first"); return; }
   const s = slug(name);
   if (!allProjects().some(p => p.slug === s)) { custom.push({ name, slug: s }); LS.set("custom", custom); }
-  $("np-name").value = ""; showNewProject(false); current = s; renderProjects(); openProject(s);
+  $("np-name").value = ""; showNewProject(false); picking = false; current = s; renderProjects(); openProject(s);
 };
 
 async function openProject(s) {
@@ -382,6 +398,11 @@ function symbol(kind) {
   return `<svg class="sym" viewBox="0 0 22 22"><rect x="3" y="3" width="16" height="16" fill="var(--vault)"/></svg>`;
 }
 function render() {
+  $("pick-view").hidden = !picking; $("collect-main").hidden = picking;
+  $("work-proj").textContent = (allProjects().find(p => p.slug === current) || {}).name || "";
+  $("loc-wrap").hidden = !finding;
+  $("next-btn").hidden = finding || shot.running;
+  $("next-btn").textContent = Object.keys(data.items).length ? "Capture next location" : "Capture first location";
   const items = itemsList();
   const groups = [...new Set(items.map(i => i.group))];
   groups.sort((a, b) => { const na = parseInt(a.replace(/\D+/g, "")) || 9999, nb = parseInt(b.replace(/\D+/g, "")) || 9999; return /^Building/.test(a) && /^Building/.test(b) ? na - nb : a.localeCompare(b); });
@@ -393,7 +414,7 @@ function render() {
   renderGroups(groups, items);
   const list = items.filter(i => i.group === group);
   $("items-h").textContent = group ? group : "Items";
-  $("items-h").hidden = $("items").hidden = !group;
+  $("items-h").hidden = $("items").hidden = !(finding && group && !selected);
   $("items").innerHTML = list.map(i => {
     const r = data.items[i.name];
     const pill = r ? `<span class="pill ${accClass(r.acc_ft)}">±${Math.round(r.acc_ft)} ft</span>` : `<span class="pill none">Not shot</span>`;
@@ -441,12 +462,12 @@ function createItem(name) {
   name = name.trim(); if (!name) return;
   const g = group || "Added in field";
   if (!itemsList().some(i => i.name === name)) { data.extra = data.extra || []; data.extra.push({ name, group: g }); saveLocal(); push(`Add ${name}`); }
-  group = g; selected = name; locOpen = false; $("loc").blur(); render(); toast(`Created ${name}`);
+  group = g; selected = name; locOpen = false; finding = false; $("loc").blur(); render(); toast(`Created ${name}`);
   $("shot").scrollIntoView({ behavior: "smooth", block: "start" });
 }
 function pickItem(n) {
   const i = locItems.find(x => x.name === n); if (!i) return;
-  group = i.group; locOpen = false; selected = n; $("loc").blur(); render();
+  group = i.group; locOpen = false; selected = n; finding = false; $("loc").blur(); render();
   $("shot").scrollIntoView({ behavior: "smooth", block: "start" });
 }
 function pickLocation(g) { group = g; locOpen = false; selected = null; $("loc").blur(); render(); }
@@ -466,7 +487,7 @@ $("groups").addEventListener("click", e => {
 $("items").addEventListener("click", e => {
   const b = e.target.closest(".item"); if (!b) return;
   if (shot.running) { toast("Finish or cancel the current shot first"); return; }
-  selected = b.dataset.n; render();
+  selected = b.dataset.n; finding = false; render();
   $("shot").scrollIntoView({ behavior: "smooth", block: "start" });
 });
 $("ni-add").onclick = () => {
@@ -721,7 +742,12 @@ function drawPrint() {
     if (it.x == null) continue;
     const p = toScreen(it);
     ctx.globalAlpha = data.items[it.name] ? 0.9 : 0.45;
-    if (it.kind === "Lockbox") { ctx.fillStyle = css("--lb"); ctx.beginPath(); ctx.moveTo(p.x, p.y - z); ctx.lineTo(p.x + z, p.y + z * 0.8); ctx.lineTo(p.x - z, p.y + z * 0.8); ctx.closePath(); ctx.fill(); }
+    if (full) {  // outlines only, so the print's own marks (transformers, curbs) show through
+      ctx.strokeStyle = css(it.kind === "Lockbox" ? "--lb" : /pole/i.test(it.kind) ? "--pole" : "--vault"); ctx.lineWidth = 2; ctx.globalAlpha = 0.8;
+      if (it.kind === "Lockbox") { ctx.beginPath(); ctx.moveTo(p.x, p.y - z); ctx.lineTo(p.x + z, p.y + z * 0.8); ctx.lineTo(p.x - z, p.y + z * 0.8); ctx.closePath(); ctx.stroke(); }
+      else if (/pole/i.test(it.kind)) { ctx.beginPath(); ctx.arc(p.x, p.y, z * 0.8, 0, 7); ctx.stroke(); }
+      else ctx.strokeRect(p.x - z * 0.8, p.y - z * 0.8, z * 1.6, z * 1.6);
+    } else if (it.kind === "Lockbox") { ctx.fillStyle = css("--lb"); ctx.beginPath(); ctx.moveTo(p.x, p.y - z); ctx.lineTo(p.x + z, p.y + z * 0.8); ctx.lineTo(p.x - z, p.y + z * 0.8); ctx.closePath(); ctx.fill(); }
     else if (/pole/i.test(it.kind)) { ctx.fillStyle = css("--pole"); ctx.beginPath(); ctx.arc(p.x, p.y, z * 0.8, 0, 7); ctx.fill(); }
     else { ctx.fillStyle = css("--vault"); ctx.fillRect(p.x - z * 0.8, p.y - z * 0.8, z * 1.6, z * 1.6); }
     ctx.globalAlpha = 1;
@@ -830,9 +856,9 @@ $("place-save").onclick = () => {
   data.controls[n] = Object.assign({}, data.controls[n], { x: Math.round(pending.x * 10) / 10, y: Math.round(pending.y * 10) / 10, use: true });
   saveLocal(); push(`Spot for ${n}`); toast(`Saved ${n} on the print`);
   const back = placeReturn; endPlacing();
-  if (back) { showTab("collect"); selected = null; render(); }
+  if (back) { showTab("collect"); selected = null; group = null; finding = false; render(); }
 };
-$("place-skip").onclick = () => { const back = placeReturn; endPlacing(); if (back) { showTab("collect"); selected = null; render(); } };
+$("place-skip").onclick = () => { const back = placeReturn; endPlacing(); if (back) { showTab("collect"); selected = null; group = null; finding = false; render(); } };
 function focusPos(n) {
   const c = controlPos(n); if (c) return c;
   if (sol && sol.ok && data.items[n]) return sol.map(sol.local(data.items[n]));
