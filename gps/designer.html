@@ -115,7 +115,7 @@ textarea { min-height: 70px; resize: vertical; }
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const SCREENS = [
-  ["main", "Main screen"], ["lists", "Project lists"], ["status", "Change project status"], ["newproject", "New project"], ["project", "Project page"], ["vaultlist", "Vault list"],
+  ["main", "Main screen"], ["lists", "Project lists"], ["status", "Change status of job"], ["newproject", "New project"], ["project", "Project page"], ["vaultlist", "Vault list"],
   ["addtype", "Add type"], ["capture", "Capture (Store GPS)"], ["hold", "Hold still pop-up"], ["gmap", "Map from coordinates"], ["ask", "Already-in pop-up"], ["clean", "After save"],
   ["random", "Random location"], ["print", "Print"], ["placing", "Set spot on print"], ["setup", "Setup"],
 ];
@@ -256,8 +256,8 @@ $("theme").onclick = e => { const b = e.target.closest("[data-thclear]"); if (b)
 // what each button does in the app today, per screen
 const FLOW = {
   main: [["A project in the list", "project"], ["New Project", "newproject"], ["System point", "random"], ["Active / Finished / Canceled / All projects", "lists"], ["Plot on Google Maps", "Google Maps with all points"], ["Setup (top)", "setup"], ["Plot on print (bottom)", "print"]],
-  lists: [["A project in the list", "project"], ["Change project status, then a project", "status"], ["Cancel", "main"]],
-  status: [["Active / Complete / Canceled", "lists"], ["Cancel", "lists"]],
+  lists: [["A job in the list", "status"], ["Cancel", "main"]],
+  status: [["Active / Complete / Canceled", "Saves the status, stays here"], ["Done", "main"]],
   newproject: [["Create project", "project"], ["Cancel", "main"]],
   project: [["Next location / Capture first location", "Opens the location box here"], ["Lockbox / Vault / Building / Pedestal", "vaultlist"], ["+ Add new location", "Opens the name box here"], ["+ Add type", "addtype"], ["A location in the search list", "capture"], ["Cancel", "main"]],
   vaultlist: [["A location in the list", "capture"], ["Another type button", "vaultlist"], ["Cancel", "main"]],

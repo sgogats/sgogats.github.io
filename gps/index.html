@@ -90,7 +90,6 @@ label.field span { font: 600 14px/1 var(--display); letter-spacing: .08em; text-
 .st-pill { font: 600 12px/1 var(--display); letter-spacing: .06em; text-transform: uppercase; padding: 5px 7px; border-radius: 6px; border: 1px solid var(--line); color: var(--muted); }
 .st-pill.complete { color: var(--good); border-color: var(--good); }
 .st-pill.canceled { color: var(--bad); border-color: var(--bad); }
-.change-mode .proj-list .item { box-shadow: inset 4px 0 0 var(--accent); }
 .slide { position: absolute; top: 4px; bottom: 4px; right: 4px; width: 14px; border-radius: 7px; background: color-mix(in srgb, var(--muted) 25%, transparent); touch-action: none; }
 .slide > div { position: absolute; left: 0; right: 0; border-radius: 7px; background: var(--muted); min-height: 30px; }
 .proj-list .item { grid-template-columns: 1fr auto; min-height: 49px; }
@@ -186,19 +185,17 @@ summary { font-weight: 600; cursor: pointer; }
   </div>
   <div id="lists-box" class="stack" hidden>
     <h2 class="pick-title" id="lists-title">Active projects</h2>
-    <p class="muted" id="lists-hint" style="margin:0;text-align:center">Tap a project to open it.</p>
     <div class="proj-wrap"><div class="list proj-list" id="lists-list" role="listbox" aria-label="Projects"></div><div class="slide" id="lists-slide" hidden><div id="lists-thumb"></div></div></div>
-    <button class="btn big" id="lists-change">Change project status</button>
     <button class="btn big cancel" data-home>Cancel</button>
   </div>
   <div id="status-box" class="stack" hidden>
-    <h2 class="pick-title">Change project status</h2>
+    <h2 class="pick-title">Change status of job</h2>
     <p style="margin:0;text-align:center;font-size:20px;font-weight:700" id="status-name"></p>
     <p class="muted" style="margin:0;text-align:center">Now: <span id="status-now"></span></p>
     <button class="btn big" data-setst="active">Active</button>
     <button class="btn big" data-setst="complete">Complete</button>
     <button class="btn big" data-setst="canceled">Canceled</button>
-    <button class="btn big cancel" id="status-cancel">Cancel</button>
+    <button class="btn big primary" id="status-done" data-home>Done</button>
   </div>
   <div id="new-project-box" class="stack" hidden>
     <h2>New project</h2>
@@ -346,7 +343,7 @@ summary { font-weight: 600; cursor: pointer; }
 <div class="gmap" id="gmap" hidden><iframe id="gmap-frame" title="Google Maps" loading="lazy"></iframe><button class="btn big primary" id="gmap-back">Back</button></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-02.6";
+const APP_VERSION = "2026-10-02.7";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -478,7 +475,7 @@ $(k + "-slide").addEventListener("pointerdown", e => {
 /* ---------- project status: active, complete, canceled. Shared in gps/projects.json so every device agrees ---------- */
 const ST_NAME = { active: "Active", complete: "Complete", canceled: "Canceled" };
 const LOOK_TITLE = { active: "Active projects", complete: "Finished projects", canceled: "Canceled projects", all: "All projects" };
-let statuses = LS.get("status", {}), look = "active", changeMode = false, statusFor = null;
+let statuses = LS.get("status", {}), look = "active", statusFor = null;
 const statusOf = slug => statuses[slug] || "active";
 async function pullStatus() {
   if (!gh.on()) return;
@@ -497,12 +494,10 @@ async function pushStatus(slug, st) {
     } catch (e) { if (e.status !== 409 && e.status !== 422) { toast("Status saved on this phone only"); return; } }
   }
 }
-function showLists(which, change = false) {
-  look = which; changeMode = change; homePanel("lists");
+// each lookup page is just its list; tapping a job opens "Change status of job"
+function showLists(which) {
+  look = which; homePanel("lists");
   $("lists-title").textContent = LOOK_TITLE[which];
-  $("lists-hint").textContent = change ? "Tap the project whose status you want to change." : "Tap a project to open it.";
-  $("lists-change").textContent = change ? "Done changing status" : "Change project status";
-  $("lists-box").classList.toggle("change-mode", change);
   const ps = allProjects().filter(p => which === "all" || statusOf(p.slug) === which).sort((a, b) => a.name.localeCompare(b.name));
   $("lists-list").innerHTML = ps.map(p => `<button class="item" role="option" data-lp="${esc(p.slug)}"><span class="nm">${esc(p.name)}</span><span class="st-pill ${statusOf(p.slug)}">${ST_NAME[statusOf(p.slug)]}</span></button>`).join("")
     || `<div class="item" style="cursor:default"><span class="sub">No ${which === "all" ? "" : ST_NAME[which].toLowerCase() + " "}projects</span><span></span></div>`;
@@ -517,11 +512,9 @@ function showStatus(slug) {
 }
 document.addEventListener("click", e => {
   const lk = e.target.closest("[data-look]"); if (lk) { $("proj-search").value = ""; showLists(lk.dataset.look); return; }
-  const lp = e.target.closest("[data-lp]"); if (lp) { if (changeMode) showStatus(lp.dataset.lp); else pickProject(lp.dataset.lp); return; }
-  const st = e.target.closest("[data-setst]"); if (st && statusFor) { pushStatus(statusFor, st.dataset.setst); toast(`${$("status-name").textContent} is now ${ST_NAME[st.dataset.setst]}`); projList(); showLists(look, true); }
+  const lp = e.target.closest("[data-lp]"); if (lp) { showStatus(lp.dataset.lp); return; }
+  const st = e.target.closest("[data-setst]"); if (st && statusFor) { pushStatus(statusFor, st.dataset.setst); toast(`${$("status-name").textContent} is now ${ST_NAME[st.dataset.setst]}`); projList(); showStatus(statusFor); }
 });
-$("lists-change").onclick = () => showLists(look, !changeMode);
-$("status-cancel").onclick = () => showLists(look, true);
 $("proj-search").addEventListener("input", () => projList());
 $("proj-search").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); const b = $("proj-list").querySelector("[data-p],[data-newp]"); if (b) b.click(); } if (e.key === "Escape") { $("proj-search").value = ""; projList(); } });
 $("proj-list").addEventListener("pointerdown", e => { if (e.target.closest("[data-p],[data-newp]")) e.preventDefault(); });
