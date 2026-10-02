@@ -241,6 +241,7 @@ summary { font-weight: 600; cursor: pointer; }
 <!-- SETUP -->
 <section id="tab-setup" hidden>
   <h2>Setup</h2>
+  <a class="btn" href="designer.html" style="display:grid;place-items:center;text-decoration:none;color:inherit">Design the app's screens</a>
   <p class="small muted mono" id="ver"></p>
   <p class="small muted">Shots are always kept on this phone. Add a GitHub key to also save them to your repo and to load jobs from the Town House Designer.</p>
   <div class="stack">
@@ -281,9 +282,10 @@ summary { font-weight: 600; cursor: pointer; }
 
 <script>
 "use strict";
-const APP_VERSION = "2026-10-01.17";
+const APP_VERSION = "2026-10-02.1";
+const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
-(async () => {
+if (!DESIGN_MODE) (async () => {
   try {
     const r = await fetch(location.pathname + "?check=" + Date.now(), { cache: "no-store" });
     const m = (await r.text()).match(/APP_VERSION = "([^"]+)"/);
@@ -295,7 +297,7 @@ const APP_VERSION = "2026-10-01.17";
 /* ---------- storage helpers ---------- */
 const LS = {
   get(k, d) { try { const v = localStorage.getItem("gps." + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
-  set(k, v) { try { localStorage.setItem("gps." + k, JSON.stringify(v)); return true; } catch { return false; } },
+  set(k, v) { if (DESIGN_MODE) return true; try { localStorage.setItem("gps." + k, JSON.stringify(v)); return true; } catch { return false; } },
 };
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -454,6 +456,7 @@ function render() {
   }).join("") || (cat && !group ? `<div class="item" style="cursor:default"><span></span><span class="sub">No ${esc(cat)} locations yet. Tap + Add new location.</span><span></span></div><button class="item" data-rm="${esc(cat)}"><span></span><span class="sub">Remove the ${esc(cat)} button from this project</span><span></span></button>` : "");
   renderShot();
   if (!$("tab-print").hidden) drawPrint();
+  applyDesign();
 }
 /* ---------- random locations: GPS by name with no project; brought into a job later by typing the name ---------- */
 const RANDOM = "random-locations";
@@ -823,6 +826,7 @@ async function pull() {
   } catch (e) { setSync("err", "Not synced"); }
 }
 async function push(message) {
+  if (DESIGN_MODE) return;
   if (!gh.on()) { setSync("", "Phone only"); return; }
   if (pushing) { pushAgain = true; return; }
   const s = current;
@@ -1194,13 +1198,64 @@ function showTab(name) {
   try { sessionStorage.setItem("gps.tab", b.dataset.tab); } catch {}
   if (b.dataset.tab === "print") { $("print-proj").textContent = (allProjects().find(p => p.slug === current) || {}).name || ""; $("lock-scale").checked = data.lockScale !== false; view.fitted = false; drawPrint(); }
   if (b.dataset.tab === "setup") fillSetup();
+  applyDesign();
   window.scrollTo(0, 0);
 }
+
+/* ---------- look set in designer.html (gps/design.json): theme colours, and per-button colour, text, size, hide ---------- */
+let design = LS.get("design", null);
+const SIZES = { S: ["14px", "40px"], M: ["17px", "48px"], L: ["21px", "60px"], XL: ["26px", "72px"] };
+const THEME_VARS = { accent: "--accent", bg: "--bg", panel: "--panel", ink: "--ink", vault: "--vault", lb: "--lb" };
+function applyDesign() {
+  const d = design || {}, th = d.theme || {};
+  let css = "";
+  const vars = Object.entries(th).filter(([k, v]) => THEME_VARS[k] && v).map(([k, v]) => `${THEME_VARS[k]}:${v}!important;`).join("");
+  if (vars) css += `:root{${vars}}`;
+  for (const [sel, o] of Object.entries(d.els || {})) {
+    let r = "";
+    if (o.bg) r += `background:${o.bg}!important;border-color:${o.bg}!important;`;
+    if (o.color) r += `color:${o.color}!important;`;
+    if (o.size && SIZES[o.size]) r += `font-size:${SIZES[o.size][0]}!important;min-height:${SIZES[o.size][1]}!important;`;
+    if (o.hide) r += "display:none!important;";
+    if (r) css += `${sel}{${r}}`;
+  }
+  let st = $("design-css"); if (!st) { st = document.createElement("style"); st.id = "design-css"; document.head.appendChild(st); }
+  if (st.textContent !== css) st.textContent = css;
+  for (const [sel, o] of Object.entries(d.els || {})) if (o.text) {
+    try { for (const el of document.querySelectorAll(sel)) if (el.textContent !== o.text) el.textContent = o.text; } catch {}
+  }
+}
+async function pullDesign() {
+  if (!gh.on() || DESIGN_MODE) return;
+  try { const d = await gh.raw("gps/design.json"); if (d) { design = d; LS.set("design", d); applyDesign(); } } catch {}
+}
+// designer.html drives these through the frame
+window.setDesign = d => { design = d; applyDesign(); };
+window.designScreen = name => {
+  try { if (placing) endPlacing(); } catch {}
+  $("ask").hidden = true; $("type-box").hidden = true;
+  const first = (allProjects().find(p => p.job) || allProjects()[0] || {}).slug;
+  const item = () => (itemsList()[0] || {}).name || "V-18";
+  const proj = (s, then) => { home = false; selected = null; group = null; cat = null; finding = true; showNewProject(false); showTab("collect"); Promise.resolve(openProject(s)).then(() => { then && then(); render(); }); };
+  if (name === "main") { home = true; selected = group = cat = null; finding = false; showNewProject(false); renderProjects(); showTab("collect"); render(); }
+  else if (name === "newproject") { showTab("collect"); showNewProject(true); render(); }
+  else if (name === "project") proj(first);
+  else if (name === "vaultlist") proj(first, () => { cat = "Vault"; });
+  else if (name === "addtype") proj(first, () => { $("type-box").hidden = false; $("type-name").value = ""; renderTypeSugg(); });
+  else if (name === "capture") proj(first, () => { finding = false; selected = item(); });
+  else if (name === "clean") proj(first, () => { finding = false; selected = null; });
+  else if (name === "random") proj(RANDOM);
+  else if (name === "print") { if (current !== first && first) openProject(first); showTab("print"); }
+  else if (name === "placing") { showTab("print"); startPlacing(item(), false); }
+  else if (name === "setup") showTab("setup");
+  else if (name === "ask") { proj(first, () => { finding = false; selected = item(); }); ask(`${item()} is already in, 120 ft from where you are now. Are you changing its position, or did you pick the wrong location?`, `Change ${item()}'s position`, "Wrong location, don't save"); }
+  applyDesign();
+};
 
 /* ---------- start ---------- */
 renderProjects();
 if (current && allProjects().some(p => p.slug === current)) openProject(current);
-if (gh.on()) { loadJobs(false); pullTypes(); }
+if (gh.on()) { loadJobs(false); pullTypes(); pullDesign(); }
 else setSync("", "Phone only");
 render();
 </script>

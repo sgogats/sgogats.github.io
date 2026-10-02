@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>GPS Shots Designer</title>
+<style>
+/* Designer for GPS Shots: the real app runs in the phone frame. Tap a button there to change its look, its words,
+   where it should go, or leave a note. Saved to gps/design.json; colours, words, size and hide apply to the app live,
+   "goes to" and notes are instructions for the next build. */
+:root { --bg: #eef2ef; --panel: #ffffff; --ink: #13201b; --muted: #5b6a63; --line: #cfd8d3; --accent: #0b6e4f; --accent-ink: #fff; --pick: #d6007a; color-scheme: light; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --bg: #0e1412; --panel: #18201d; --ink: #e3ebe6; --muted: #93a39b; --line: #2c3833; --accent: #3dbe8b; --accent-ink: #06130e; color-scheme: dark; }
+}
+:root[data-theme="dark"] { --bg: #0e1412; --panel: #18201d; --ink: #e3ebe6; --muted: #93a39b; --line: #2c3833; --accent: #3dbe8b; --accent-ink: #06130e; color-scheme: dark; }
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+header { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 10px; padding: calc(8px + env(safe-area-inset-top, 0px)) 16px 8px; background: var(--panel); border-bottom: 1px solid var(--line); }
+header h1 { font-size: 19px; margin: 0; flex: 1; }
+header a { color: var(--accent); font-weight: 600; text-decoration: none; }
+.btn { min-height: 44px; padding: 8px 14px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); font: 600 15px system-ui, sans-serif; cursor: pointer; }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.btn[aria-pressed="true"] { background: var(--ink); color: var(--panel); border-color: var(--ink); }
+#status { font-size: 13px; color: var(--muted); }
+.layout { display: grid; grid-template-columns: 220px minmax(320px, 420px) minmax(280px, 1fr); gap: 16px; padding: 16px; align-items: start; }
+@media (max-width: 980px) { .layout { grid-template-columns: 1fr; } }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px; }
+.card h2 { font-size: 15px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 0 0 10px; }
+.screens { display: grid; gap: 6px; }
+@media (max-width: 980px) { .screens { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); } }
+.screens .btn { text-align: left; }
+.phone { width: 390px; max-width: 100%; height: 780px; margin: 0 auto; border: 10px solid #111; border-radius: 34px; overflow: hidden; background: #fff; box-shadow: 0 6px 24px rgba(0,0,0,.18); }
+.phone iframe { width: 100%; height: 100%; border: 0; display: block; }
+.stack { display: grid; gap: 10px; }
+label.f { display: grid; gap: 4px; font-size: 14px; color: var(--muted); }
+input[type=text], textarea, select { font: 16px system-ui, sans-serif; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); width: 100%; }
+textarea { min-height: 70px; resize: vertical; }
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.color { display: flex; gap: 8px; align-items: center; }
+.color input[type=color] { width: 48px; height: 40px; padding: 0; border: 1px solid var(--line); border-radius: 8px; background: none; }
+.color .clear { font-size: 13px; min-height: 36px; padding: 4px 10px; }
+.sel-name { font-weight: 700; font-size: 18px; color: var(--pick); }
+.muted { color: var(--muted); font-size: 14px; }
+.flow { font-size: 14px; display: grid; gap: 4px; margin: 0; padding-left: 18px; }
+.theme { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+</style>
+</head>
+<body>
+<header>
+  <a href="./">‹ App</a>
+  <h1>GPS Shots Designer</h1>
+  <span id="status"></span>
+  <button class="btn primary" id="save">Save</button>
+</header>
+
+<div class="layout">
+  <div class="card">
+    <h2>Screens</h2>
+    <div class="screens" id="screens"></div>
+    <p class="muted">Pick a screen, then tap any button in the phone.</p>
+  </div>
+
+  <div>
+    <div class="phone"><iframe id="app" title="GPS Shots preview"></iframe></div>
+  </div>
+
+  <div class="stack">
+    <div class="card stack" id="edit">
+      <h2>Selected</h2>
+      <div id="none" class="muted">Tap a button, title or box in the phone to change it.</div>
+      <div id="fields" class="stack" hidden>
+        <div class="sel-name" id="sel-name"></div>
+        <div class="muted" id="sel-cant" hidden>This one changes on its own (it is filled in from your job), so only its colours and size can change, and the change applies to every row like it.</div>
+        <label class="f">Words on it<input type="text" id="f-text" placeholder="Leave empty to keep the app's words"></label>
+        <div class="row">
+          <div class="f">Button colour<div class="color"><input type="color" id="f-bg"><button class="btn clear" data-clear="bg">None</button></div></div>
+          <div class="f">Text colour<div class="color"><input type="color" id="f-color"><button class="btn clear" data-clear="color">None</button></div></div>
+        </div>
+        <div class="f">Size
+          <div class="row" id="f-size">
+            <button class="btn" data-size="">Normal</button><button class="btn" data-size="S">S</button><button class="btn" data-size="M">M</button><button class="btn" data-size="L">L</button><button class="btn" data-size="XL">XL</button>
+          </div>
+        </div>
+        <label class="row"><input type="checkbox" id="f-hide"> Hide it</label>
+        <label class="f">When tapped, it should go to<select id="f-goes"></select></label>
+        <label class="f">Note for Claude about this button<textarea id="f-note" placeholder="e.g. make this bigger and move it to the bottom"></textarea></label>
+        <button class="btn" id="reset-el">Undo my changes to this one</button>
+      </div>
+    </div>
+
+    <div class="card stack">
+      <h2>Notes for this screen</h2>
+      <textarea id="screen-note" placeholder="How this screen should look or work. e.g. put Lockbox and Vault on top, hide Pedestal"></textarea>
+    </div>
+
+    <div class="card">
+      <h2>Colours for the whole app</h2>
+      <div class="theme" id="theme"></div>
+    </div>
+
+    <div class="card">
+      <h2>Flow you've set</h2>
+      <ol class="flow" id="flow"></ol>
+      <p class="muted" id="flow-none">No arrows yet. Pick a button and choose where it should go.</p>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const SCREENS = [
+  ["main", "Main screen"], ["newproject", "New project"], ["project", "Project page"], ["vaultlist", "Vault list"],
+  ["addtype", "Add type"], ["capture", "Capture (Store GPS)"], ["ask", "Already-in pop-up"], ["clean", "After save"],
+  ["random", "Random location"], ["print", "Print"], ["placing", "Set spot on print"], ["setup", "Setup"],
+];
+const THEME = [["accent", "Main colour"], ["bg", "Background"], ["panel", "Cards"], ["ink", "Text"], ["vault", "Vault"], ["lb", "Lockbox"]];
+let cfg = {}; try { cfg = JSON.parse(localStorage.getItem("gps.cfg") || "{}") || {}; } catch {}
+cfg = Object.assign({ repo: "sgogats/ASBUILT_MAKER", branch: "main" }, cfg);
+let design = { theme: {}, els: {}, screens: {} }, screen = "main", sel = null, selEl = null, sha = null, dirty = false;
+const status = t => { $("status").textContent = t; };
+
+/* ---------- GitHub ---------- */
+const url = p => `https://api.github.com/repos/${cfg.repo}/contents/${p}`;
+const hdr = () => ({ Authorization: "Bearer " + cfg.token, Accept: "application/vnd.github+json" });
+const b64 = s => { let o = ""; for (const b of new TextEncoder().encode(s)) o += String.fromCharCode(b); return btoa(o); };
+const unb64 = s => new TextDecoder().decode(Uint8Array.from(atob(s.replace(/\n/g, "")), c => c.charCodeAt(0)));
+async function load() {
+  try { const c = JSON.parse(localStorage.getItem("gps.design") || "null"); if (c) design = Object.assign(design, c); } catch {}
+  if (!cfg.token) { status("No GitHub key on this device. Add it in the app's Setup to save."); return; }
+  try {
+    const r = await fetch(url("gps/design.json") + "?ref=" + cfg.branch + "&t=" + Date.now(), { headers: hdr(), cache: "no-store" });
+    if (r.ok) { const m = await r.json(); sha = m.sha; design = Object.assign({ theme: {}, els: {}, screens: {} }, JSON.parse(unb64(m.content))); }
+    status(r.ok ? "Loaded your design" : "New design");
+  } catch { status("Offline: changes stay on this device until you Save"); }
+}
+async function save() {
+  design.updated = new Date().toISOString();
+  try { localStorage.setItem("gps.design", JSON.stringify(design)); } catch {}
+  if (!cfg.token) { status("Saved on this device only (no GitHub key)"); dirty = false; return; }
+  status("Saving…");
+  for (let i = 0; i < 3; i++) {
+    try {
+      const m = await fetch(url("gps/design.json") + "?ref=" + cfg.branch + "&t=" + Date.now(), { headers: hdr(), cache: "no-store" });
+      sha = m.ok ? (await m.json()).sha : null;
+      const body = { message: "GPS Shots design: " + (sel ? labelOf(sel) : "screens"), branch: cfg.branch, content: b64(JSON.stringify(design, null, 1)) };
+      if (sha) body.sha = sha;
+      const r = await fetch(url("gps/design.json"), { method: "PUT", headers: hdr(), body: JSON.stringify(body) });
+      if (r.ok) { sha = (await r.json()).content.sha; dirty = false; status("Saved to GitHub. The app picks it up next time it opens."); return; }
+      if (r.status !== 409 && r.status !== 422) { status("GitHub said " + r.status + ". Not saved."); return; }
+    } catch { status("Could not reach GitHub. Not saved."); return; }
+  }
+}
+$("save").onclick = save;
+window.addEventListener("beforeunload", e => { if (dirty) { e.preventDefault(); e.returnValue = ""; } });
+
+/* ---------- the app in the phone ---------- */
+const frame = $("app");
+const win = () => frame.contentWindow, doc = () => frame.contentDocument;
+function push() { dirty = true; status("Not saved yet"); try { win().setDesign(design); } catch {} renderFlow(); }
+function goScreen(name) {
+  screen = name; sel = null; selEl = null; showFields();
+  for (const b of $("screens").children) b.setAttribute("aria-pressed", b.dataset.s === name);
+  $("screen-note").value = (design.screens[name] || {}).note || "";
+  try { win().designScreen(name); } catch {}
+  setTimeout(mark, 400);
+}
+$("screens").innerHTML = SCREENS.map(([k, t]) => `<button class="btn" data-s="${k}" aria-pressed="false">${esc(t)}</button>`).join("");
+$("screens").onclick = e => { const b = e.target.closest("[data-s]"); if (b) goScreen(b.dataset.s); };
+
+// which thing was tapped, and a stable way to find it again
+function target(el) {
+  const t = el.closest("button, a, input, select, textarea, h1, h2, h3, .brand, .work-proj, .target, .pill, [id]");
+  if (!t || t === doc().body) return null;
+  const row = t.closest("[data-n],[data-g],[data-i],[data-pool]");
+  if (row) { const list = row.parentElement && row.parentElement.id; return { sel: list ? `#${list} .item` : ".item", el: row, shared: true, name: "Rows in this list" }; }
+  for (const a of ["data-cat", "data-act", "data-tab", "data-size"]) if (t.hasAttribute(a)) return { sel: `[${a}="${t.getAttribute(a).replace(/"/g, '\\"')}"]`, el: t };
+  if (t.id) return { sel: "#" + t.id, el: t };
+  if (t.matches(".brand")) return { sel: ".brand", el: t };
+  return null;
+}
+function labelOf(s) { const o = design.els[s] || {}; return o.label || s; }
+function mark() {
+  const d = doc(); if (!d) return;
+  for (const x of d.querySelectorAll(".dz-sel")) x.classList.remove("dz-sel");
+  if (sel) { try { for (const x of d.querySelectorAll(sel)) x.classList.add("dz-sel"); } catch {} }
+}
+frame.addEventListener("load", () => {
+  const d = doc();
+  const st = d.createElement("style"); st.textContent = ".dz-sel{outline:3px dashed #d6007a!important;outline-offset:2px!important}"; d.head.appendChild(st);
+  const stop = e => { e.preventDefault(); e.stopPropagation(); };
+  for (const ev of ["pointerdown", "mousedown", "touchstart", "focusin", "keydown", "submit", "change", "input"]) d.addEventListener(ev, stop, true);
+  d.addEventListener("click", e => {
+    stop(e);
+    const t = target(e.target);
+    if (!t) return;
+    sel = t.sel; selEl = t.el;
+    const o = design.els[sel] = design.els[sel] || {};
+    if (!o.label) o.label = (t.name || (t.el.textContent || t.el.placeholder || t.el.id || sel).trim().replace(/\s+/g, " ").slice(0, 40)) + " (" + SCREENS.find(s => s[0] === screen)[1] + ")";
+    if (!o.screen) o.screen = screen;
+    o.shared = !!t.shared;
+    showFields(); mark();
+  }, true);
+  try { win().setDesign(design); } catch {}
+  goScreen(screen); showTheme();
+});
+
+/* ---------- edit panel ---------- */
+const goesOpts = [["", "Leave as it is"], ["stay", "Stay on this screen"], ...SCREENS, ["other", "Somewhere else (say in the note)"]];
+$("f-goes").innerHTML = goesOpts.map(([k, t]) => `<option value="${k}">${esc(t)}</option>`).join("");
+function showFields() {
+  $("none").hidden = !!sel; $("fields").hidden = !sel;
+  if (!sel) return;
+  const o = design.els[sel] || {};
+  $("sel-name").textContent = labelOf(sel);
+  $("sel-cant").hidden = !o.shared; $("f-text").disabled = !!o.shared;
+  $("f-text").value = o.text || "";
+  $("f-bg").value = o.bg || "#ffffff"; $("f-color").value = o.color || "#13201b";
+  for (const b of $("f-size").children) b.setAttribute("aria-pressed", (o.size || "") === b.dataset.size);
+  $("f-hide").checked = !!o.hide; $("f-goes").value = o.goes || ""; $("f-note").value = o.note || "";
+}
+const cur = () => (design.els[sel] = design.els[sel] || {});
+$("f-text").oninput = () => { cur().text = $("f-text").value.trim(); push(); };
+$("f-bg").oninput = () => { cur().bg = $("f-bg").value; push(); };
+$("f-color").oninput = () => { cur().color = $("f-color").value; push(); };
+for (const b of document.querySelectorAll("[data-clear]")) b.onclick = () => { delete cur()[b.dataset.clear]; showFields(); push(); };
+$("f-size").onclick = e => { const b = e.target.closest("[data-size]"); if (!b) return; cur().size = b.dataset.size; showFields(); push(); };
+$("f-hide").onchange = () => { cur().hide = $("f-hide").checked; push(); };
+$("f-goes").onchange = () => { cur().goes = $("f-goes").value; push(); };
+$("f-note").oninput = () => { cur().note = $("f-note").value; push(); };
+$("reset-el").onclick = () => { if (sel) { delete design.els[sel]; sel = null; showFields(); mark(); push(); } };
+$("screen-note").oninput = () => { design.screens[screen] = Object.assign({}, design.screens[screen], { note: $("screen-note").value }); push(); };
+
+$("theme").innerHTML = THEME.map(([k, t]) => `<div class="f">${esc(t)}<div class="color"><input type="color" data-th="${k}"><button class="btn clear" data-thclear="${k}">Reset</button></div></div>`).join("");
+const VARS = { accent: "--accent", bg: "--bg", panel: "--panel", ink: "--ink", vault: "--vault", lb: "--lb" };
+function showTheme() {   // unset colours show what the app uses now
+  let cs = null; try { cs = win().getComputedStyle(doc().documentElement); } catch {}
+  for (const i of document.querySelectorAll("[data-th]")) {
+    const v = design.theme[i.dataset.th] || (cs && cs.getPropertyValue(VARS[i.dataset.th]).trim());
+    if (/^#[0-9a-f]{6}$/i.test(v || "")) i.value = v;
+  }
+}
+$("theme").oninput = e => { const i = e.target.closest("[data-th]"); if (i) { design.theme[i.dataset.th] = i.value; push(); } };
+$("theme").onclick = e => { const b = e.target.closest("[data-thclear]"); if (b) { delete design.theme[b.dataset.thclear]; push(); setTimeout(showTheme, 50); } };
+
+function renderFlow() {
+  const name = k => (SCREENS.find(s => s[0] === k) || [k, k === "stay" ? "Stay on this screen" : "Somewhere else"])[1];
+  const rows = Object.entries(design.els).filter(([, o]) => o.goes || o.note);
+  $("flow").innerHTML = rows.map(([s, o]) => `<li><b>${esc(o.label || s)}</b>${o.goes ? " → " + esc(name(o.goes)) : ""}${o.note ? `<br><span class="muted">${esc(o.note)}</span>` : ""}</li>`).join("");
+  $("flow-none").hidden = rows.length > 0;
+}
+
+(async () => { await load(); showTheme(); renderFlow(); frame.src = "./?design=1"; })();
+</script>
+</body>
+</html>
