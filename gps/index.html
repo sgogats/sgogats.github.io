@@ -88,6 +88,9 @@ label.field span { font: 600 14px/1 var(--display); letter-spacing: .08em; text-
 .pick-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
 .pick-btns .btn { min-height: 60px; font: 700 18px/1.1 var(--display); letter-spacing: .04em; text-transform: uppercase; }
 .st-pill { font: 600 12px/1 var(--display); letter-spacing: .06em; text-transform: uppercase; padding: 5px 7px; border-radius: 6px; border: 1px solid var(--line); color: var(--muted); }
+.item.lrow { grid-template-columns: 1fr auto; padding: 0 10px 0 0; cursor: default; }
+.lrow .lname { background: none; border: 0; text-align: left; font: 600 17px var(--body); padding: 14px; min-height: 52px; cursor: pointer; color: #000; }
+.lrow .st-pill { background: var(--panel); min-height: 40px; padding: 8px 12px; font-size: 14px; cursor: pointer; }
 .st-pill.complete { color: var(--good); border-color: var(--good); }
 .st-pill.canceled { color: var(--bad); border-color: var(--bad); }
 .slide { position: absolute; top: 4px; bottom: 4px; right: 4px; width: 14px; border-radius: 7px; background: color-mix(in srgb, var(--muted) 25%, transparent); touch-action: none; }
@@ -260,7 +263,6 @@ summary { font-weight: 600; cursor: pointer; }
         <button class="btn primary" id="ni-add">Add item</button>
       </div>
     </details>
-    <button class="btn big" id="proj-status-btn" style="margin-top:18px">Change project status</button>
   </div>
 </section>
 
@@ -344,7 +346,7 @@ summary { font-weight: 600; cursor: pointer; }
 <div class="gmap" id="gmap" hidden><iframe id="gmap-frame" title="Google Maps" loading="lazy"></iframe><button class="btn big primary" id="gmap-back">Back</button></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-02.9";
+const APP_VERSION = "2026-10-02.10";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -433,11 +435,10 @@ function renderProjects() {
   sel.value = home ? "" : current;
   if (!$("new-project-box").hidden && $("np-name").value.trim() === "") showNewProject(false);
 }
-function homePanel(name) { for (const [k, id] of [["pick", "project-box"], ["new", "new-project-box"], ["lists", "lists-box"], ["status", "status-box"]]) $(id).hidden = k !== name; }
+function homePanel(name) { for (const [k, id] of [["pick", "project-box"], ["new", "new-project-box"], ["lists", "lists-box"], ["status", "status-box"]]) $(id).hidden = k !== name; tabBar(); }
 function showNewProject(on) { homePanel(on ? "new" : "pick"); if (on) { home = true; $("pick-view").hidden = false; $("collect-main").hidden = true; $("np-name").focus(); } }
 $("change-proj").onclick = goHome;
-// bottom of the project page: change this project's status
-$("proj-status-btn").onclick = () => { if (shot.running) { toast("Finish or cancel the current shot first"); return; } home = true; selected = null; finding = false; render(); showStatus(current); };
+
 $("done-btn").onclick = goHome;
 $("next-btn").onclick = () => { selected = null; group = null; cat = null; finding = true; render(); $("loc").value = ""; $("loc").focus(); };
 $("np-open").onclick = () => showNewProject(true);
@@ -502,7 +503,7 @@ function showLists(which) {
   look = which; homePanel("lists");
   $("lists-title").textContent = LOOK_TITLE[which];
   const ps = allProjects().filter(p => which === "all" || statusOf(p.slug) === which).sort((a, b) => a.name.localeCompare(b.name));
-  $("lists-list").innerHTML = ps.map(p => `<button class="item" role="option" data-lp="${esc(p.slug)}"><span class="nm">${esc(p.name)}</span><span class="st-pill ${statusOf(p.slug)}">${ST_NAME[statusOf(p.slug)]}</span></button>`).join("")
+  $("lists-list").innerHTML = ps.map(p => `<div class="item lrow"><button class="lname" data-lp="${esc(p.slug)}">${esc(p.name)}</button><button class="st-pill ${statusOf(p.slug)}" data-ls="${esc(p.slug)}" title="Change status">${ST_NAME[statusOf(p.slug)]} ▸</button></div>`).join("")
     || `<div class="item" style="cursor:default"><span class="sub">No ${which === "all" ? "" : ST_NAME[which].toLowerCase() + " "}projects</span><span></span></div>`;
   $("lists-list").scrollTop = 0; slideBar("lists"); applyDesign(); window.scrollTo(0, 0);
 }
@@ -515,6 +516,7 @@ function showStatus(slug) {
 }
 document.addEventListener("click", e => {
   const lk = e.target.closest("[data-look]"); if (lk) { $("proj-search").value = ""; showLists(lk.dataset.look); return; }
+  const ls = e.target.closest("[data-ls]"); if (ls) { showStatus(ls.dataset.ls); return; }
   const lp = e.target.closest("[data-lp]"); if (lp) { pickProject(lp.dataset.lp); return; }
   const st = e.target.closest("[data-setst]"); if (st && statusFor) { pushStatus(statusFor, st.dataset.setst); toast(`${$("status-name").textContent} is now ${ST_NAME[st.dataset.setst]}`); projList(); showStatus(statusFor); }
 });
@@ -583,7 +585,6 @@ function render() {
   tabBar();
   $("work-proj").textContent = current === RANDOM ? "Random locations" : (allProjects().find(p => p.slug === current) || {}).name || "";
   const isR = current === RANDOM;
-  $("proj-status-btn").hidden = isR || shot.running;
   $("loc-h").textContent = isR ? "Name of this point" : "Which location?";
   $("cats-h").hidden = $("newtype-h").hidden = !isR;
   if (isR) { $("type-box").hidden = false; $("type-cancel").hidden = true; } else $("type-cancel").hidden = false;
@@ -1369,6 +1370,7 @@ $("top-setup").onclick = () => showTab("setup");
 function tabBar() {
   const c = document.querySelector('.tabs [data-tab="collect"]');
   c.hidden = !$("tab-collect").hidden && !$("pick-view").hidden;
+  $("top-setup").hidden = !(!$("tab-collect").hidden && !$("pick-view").hidden && !$("project-box").hidden);
 }
 function showTab(name) {
   const b = document.querySelector(`[data-tab="${name}"]`);
