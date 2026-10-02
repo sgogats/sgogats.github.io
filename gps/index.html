@@ -193,7 +193,7 @@ summary { font-weight: 600; cursor: pointer; }
     <p style="margin:0;text-align:center;font-size:20px;font-weight:700" id="status-name"></p>
     <p class="muted" style="margin:0;text-align:center">Now: <span id="status-now"></span></p>
     <button class="btn big" data-setst="active">Active</button>
-    <button class="btn big" data-setst="complete">Complete</button>
+    <button class="btn big" data-setst="complete">Completed</button>
     <button class="btn big" data-setst="canceled">Canceled</button>
     <button class="btn big primary" id="status-done" data-home>Done</button>
   </div>
@@ -260,6 +260,7 @@ summary { font-weight: 600; cursor: pointer; }
         <button class="btn primary" id="ni-add">Add item</button>
       </div>
     </details>
+    <button class="btn big" id="proj-status-btn" style="margin-top:18px">Change project status</button>
   </div>
 </section>
 
@@ -343,7 +344,7 @@ summary { font-weight: 600; cursor: pointer; }
 <div class="gmap" id="gmap" hidden><iframe id="gmap-frame" title="Google Maps" loading="lazy"></iframe><button class="btn big primary" id="gmap-back">Back</button></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-02.8";
+const APP_VERSION = "2026-10-02.9";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -435,6 +436,8 @@ function renderProjects() {
 function homePanel(name) { for (const [k, id] of [["pick", "project-box"], ["new", "new-project-box"], ["lists", "lists-box"], ["status", "status-box"]]) $(id).hidden = k !== name; }
 function showNewProject(on) { homePanel(on ? "new" : "pick"); if (on) { home = true; $("pick-view").hidden = false; $("collect-main").hidden = true; $("np-name").focus(); } }
 $("change-proj").onclick = goHome;
+// bottom of the project page: change this project's status
+$("proj-status-btn").onclick = () => { if (shot.running) { toast("Finish or cancel the current shot first"); return; } home = true; selected = null; finding = false; render(); showStatus(current); };
 $("done-btn").onclick = goHome;
 $("next-btn").onclick = () => { selected = null; group = null; cat = null; finding = true; render(); $("loc").value = ""; $("loc").focus(); };
 $("np-open").onclick = () => showNewProject(true);
@@ -473,7 +476,7 @@ $(k + "-slide").addEventListener("pointerdown", e => {
 });
 }
 /* ---------- project status: active, complete, canceled. Shared in gps/projects.json so every device agrees ---------- */
-const ST_NAME = { active: "Active", complete: "Complete", canceled: "Canceled" };
+const ST_NAME = { active: "Active", complete: "Completed", canceled: "Canceled" };
 const LOOK_TITLE = { active: "Active projects", complete: "Finished projects", canceled: "Canceled projects", all: "All projects" };
 let statuses = LS.get("status", {}), look = "active", statusFor = null;
 const statusOf = slug => statuses[slug] || "active";
@@ -512,7 +515,7 @@ function showStatus(slug) {
 }
 document.addEventListener("click", e => {
   const lk = e.target.closest("[data-look]"); if (lk) { $("proj-search").value = ""; showLists(lk.dataset.look); return; }
-  const lp = e.target.closest("[data-lp]"); if (lp) { showStatus(lp.dataset.lp); return; }
+  const lp = e.target.closest("[data-lp]"); if (lp) { pickProject(lp.dataset.lp); return; }
   const st = e.target.closest("[data-setst]"); if (st && statusFor) { pushStatus(statusFor, st.dataset.setst); toast(`${$("status-name").textContent} is now ${ST_NAME[st.dataset.setst]}`); projList(); showStatus(statusFor); }
 });
 $("proj-search").addEventListener("input", () => projList());
@@ -580,6 +583,7 @@ function render() {
   tabBar();
   $("work-proj").textContent = current === RANDOM ? "Random locations" : (allProjects().find(p => p.slug === current) || {}).name || "";
   const isR = current === RANDOM;
+  $("proj-status-btn").hidden = isR || shot.running;
   $("loc-h").textContent = isR ? "Name of this point" : "Which location?";
   $("cats-h").hidden = $("newtype-h").hidden = !isR;
   if (isR) { $("type-box").hidden = false; $("type-cancel").hidden = true; } else $("type-cancel").hidden = false;
