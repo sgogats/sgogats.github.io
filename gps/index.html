@@ -352,7 +352,7 @@ summary { font-weight: 600; cursor: pointer; }
 <div class="gmap" id="gmap" hidden><iframe id="gmap-frame" title="Google Maps" loading="lazy"></iframe><button class="btn big primary" id="gmap-back">Back</button></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-02.15";
+const APP_VERSION = "2026-10-02.16";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -718,9 +718,23 @@ const DEFAULT_TYPES = ["Lockbox", "Vault", "Building", "Pedestal"];
 const MASTER_TYPES = ["Node", "Amplifier", "Power supply", "Lockbox", "Vault", "MDU building", "Town home", "Light pole", "Sewer", "Manhole", "Handhole",
   "Pedestal", "Doghouse", "OLT", "Splice can", "Slack loop", "Utility pole", "Riser pole", "OTN cabinet", "Fiber splitter"];
 let typeLib = LS.get("types", []) || [];
-function types() { return data.types || DEFAULT_TYPES; }
+/* A project shows buttons only for its own types: ones added on it, plus the types of items it already has.
+   Older lists copied the four starter types in by default; those count only once the project has items of that type. */
+function ownTypes() { return data.types ? (data.typesOwn ? data.types : data.types.filter(t => !DEFAULT_TYPES.includes(t))) : []; }
+let typesCache = null;
+function types() {
+  if (current === RANDOM) return data.types || DEFAULT_TYPES;
+  if (typesCache) return typesCache;
+  const own = ownTypes(), out = [...own];
+  for (const i of itemsList()) {
+    const t = /^Building /.test(i.group || "") && !own.includes(i.kind) ? "Building" : typeOf(i);
+    if (!out.includes(t)) out.push(t);
+  }
+  typesCache = out; queueMicrotask(() => { typesCache = null; });
+  return out;
+}
 function typeOf(i) {
-  const k = i.kind || "", ts = types();
+  const k = i.kind || "", ts = current === RANDOM ? types() : [...ownTypes(), ...DEFAULT_TYPES];
   if (ts.includes(k)) return k;
   if (k === "Lockbox") return "Lockbox";
   if (/pedestal/i.test(k)) return "Pedestal";
@@ -752,7 +766,7 @@ async function pushTypes() {
     } catch (e) { if (e.status !== 409 && e.status !== 422) return; }
   }
 }
-function setTypes(list, msg) { data.types = list; data.typesT = Date.now(); saveLocal(); push(msg); render(); }
+function setTypes(list, msg) { data.types = list; data.typesOwn = true; data.typesT = Date.now(); typesCache = null; saveLocal(); push(msg); render(); }
 function renderTypeSugg() {
   const q = norm($("type-name").value.trim()), have = types().map(norm);
   const opts = allTypeNames().filter(n => !have.includes(norm(n)) && (!q || norm(n).includes(q)));
@@ -1024,7 +1038,7 @@ function merge(a, b) {
   for (const [k, t] of Object.entries(out.gone)) { if (out.items[k] && out.items[k].t <= t) delete out.items[k]; out.extra = out.extra.filter(e => e.name !== k || (out.items[k] && out.items[k].t > t)); }
   out.labels = Object.assign({}, b.labels || {}, a.labels || {});
   const ta = a.types ? a.typesT || 0 : -1, tb = b.types ? b.typesT || 0 : -1;    // newest button list wins
-  if (tb > ta) { out.types = b.types; out.typesT = b.typesT; }
+  if (tb > ta) { out.types = b.types; out.typesT = b.typesT; out.typesOwn = b.typesOwn; }
   return out;
 }
 let pushing = null, pushAgain = false;
