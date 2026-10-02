@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
@@ -12,7 +12,7 @@
 <style>
 /* Layout: one-column field tool. Sticky job bar, three tabs (Collect, Print, Setup), big tap targets for gloves and sun. */
 :root {
-  --bg: #eef2ef; --panel: #ffffff; --ink: #13201b; --muted: #5b6a63; --line: #cfd8d3;
+  --bg: #eef2ef; --panel: #ffffff; --ink: #000000; --muted: #5b6a63; --line: #cfd8d3;
   --accent: #0b6e4f; --accent-ink: #ffffff; --good: #1d7a3e; --warn: #a86400; --bad: #b3261e;
   --lb: #c62828; --vault: #1f5fbf; --pole: #6d4c41; --shot: #0b6e4f; --plan: #8d9993; --plan2: #c3ccc7;
   --display: "Barlow Condensed", "Arial Narrow", system-ui, sans-serif;
@@ -54,6 +54,8 @@ p { margin: 6px 0; }
 .stack { display: grid; gap: 10px; }
 .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
 .row > * { min-width: 0; }
+input::placeholder, textarea::placeholder { color: color-mix(in srgb, var(--ink) 62%, transparent); opacity: 1; }
+input[type=text], input[type=password], input[type=number] { font-size: 19px; }
 input[type=text], input[type=password], input[type=number], select {
   width: 100%; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); min-height: 48px;
 }
@@ -76,6 +78,8 @@ label.field span { font: 600 14px/1 var(--display); letter-spacing: .08em; text-
 #next-btn { margin-top: 6px; min-height: 96px; }
 .linkish { background: none; border: 0; padding: 6px 0; color: var(--accent); font: 600 15px var(--body); cursor: pointer; text-align: left; }
 .btn.cancel { background: #ff3a2f; color: #fff; border-color: #ff3a2f; }
+/* every box has black text unless the designer sets a colour (green and red boxes keep white so they stay readable) */
+.btn:not(.primary):not(.cancel), .item, .item .nm, .item .sub, input, select, textarea, .tabs button { color: #000; }
 .pick-title { font: 700 38px/1.1 var(--display); text-transform: uppercase; letter-spacing: .03em; color: var(--ink); margin: 16px 0 8px; width: 100%; text-align: center; }
 #proj-search { width: 100%; font-size: 20px; min-height: 52px; }
 .proj-wrap { position: relative; margin: 6px 0 8px; }
@@ -209,12 +213,15 @@ summary { font-weight: 600; cursor: pointer; }
       <div><div class="muted small">Current project</div><div class="work-proj" id="work-proj"></div></div>
       <button class="btn cancel" id="change-proj">Cancel</button>
     </div>
-    <button class="btn big primary" id="next-btn">Capture next location</button>
+    <button class="btn big primary" id="next-btn">Next location</button>
+    <button class="btn big" id="done-btn" style="margin-top:8px" hidden>Done</button>
     <div id="loc-wrap" hidden>
-    <h3>Which location?</h3>
+    <h3 id="loc-h">Which location?</h3>
     <input id="loc" type="text" placeholder="Pick or type a location or box" autocomplete="off" role="combobox" aria-expanded="false" aria-controls="groups" enterkeyhint="go">
     <div class="list loc-list" id="groups" role="listbox" aria-label="Locations" hidden></div>
+    <h3 id="cats-h" hidden>Type</h3>
     <div class="cats" id="cats"></div>
+    <h3 id="newtype-h" hidden>New type</h3>
     <div class="stack" id="type-box" style="margin-top:10px" hidden>
       <input id="type-name" type="text" placeholder="Type name, e.g. Manhole, Cleanout, Panel" autocomplete="off" enterkeyhint="done">
       <div class="list loc-list" id="type-sugg" hidden></div>
@@ -339,7 +346,7 @@ summary { font-weight: 600; cursor: pointer; }
 <div class="gmap" id="gmap" hidden><iframe id="gmap-frame" title="Google Maps" loading="lazy"></iframe><button class="btn big primary" id="gmap-back">Back</button></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-02.5";
+const APP_VERSION = "2026-10-02.6";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -431,6 +438,7 @@ function renderProjects() {
 function homePanel(name) { for (const [k, id] of [["pick", "project-box"], ["new", "new-project-box"], ["lists", "lists-box"], ["status", "status-box"]]) $(id).hidden = k !== name; }
 function showNewProject(on) { homePanel(on ? "new" : "pick"); if (on) { home = true; $("pick-view").hidden = false; $("collect-main").hidden = true; $("np-name").focus(); } }
 $("change-proj").onclick = goHome;
+$("done-btn").onclick = goHome;
 $("next-btn").onclick = () => { selected = null; group = null; cat = null; finding = true; render(); $("loc").value = ""; $("loc").focus(); };
 $("np-open").onclick = () => showNewProject(true);
 function pickProject(slug) {
@@ -578,10 +586,14 @@ function render() {
   if (homeView) slideBar();
   tabBar();
   $("work-proj").textContent = current === RANDOM ? "Random locations" : (allProjects().find(p => p.slug === current) || {}).name || "";
-  $("cats").hidden = current === RANDOM;
+  const isR = current === RANDOM;
+  $("loc-h").textContent = isR ? "Name of this point" : "Which location?";
+  $("cats-h").hidden = $("newtype-h").hidden = !isR;
+  if (isR) { $("type-box").hidden = false; $("type-cancel").hidden = true; } else $("type-cancel").hidden = false;
   $("loc-wrap").hidden = !finding;
   $("next-btn").hidden = finding || shot.running;
-  $("next-btn").textContent = selected ? "Pick a different location" : Object.keys(data.items).length ? "Capture next location" : "Capture first location";
+  $("next-btn").textContent = selected ? "Pick a different location" : Object.keys(data.items).length ? "Next location" : "Capture first location";
+  $("done-btn").hidden = finding || shot.running || !!selected;
   $("next-btn").classList.toggle("primary", !selected);
   const items = itemsList();
   const groups = [...new Set(items.map(i => i.group))];
@@ -594,7 +606,7 @@ function render() {
   renderGroups(groups, items);
   if (cat && !types().includes(cat)) cat = null;
   $("cats").innerHTML = types().map(t => `<button class="btn" data-cat="${esc(t)}" aria-pressed="${t === cat}">${esc(t)}</button>`).join("")
-    + `<button class="btn" data-act="add-loc" style="grid-column:1/-1">+ Add new location</button><button class="btn" data-act="add-type" style="grid-column:1/-1">+ Add type</button>`;
+    + (current === RANDOM ? "" : `<button class="btn" data-act="add-loc" style="grid-column:1/-1">+ Add new location</button><button class="btn" data-act="add-type" style="grid-column:1/-1">+ Add type</button>`);
   const bGroups = groups.filter(g => /^Building /.test(g));
   const list = group ? items.filter(i => i.group === group) : cat ? items.filter(i => inCat(i, cat)).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true })) : [];
   const showGroups = !group && cat === "Building" && bGroups.length;
@@ -713,7 +725,7 @@ function addType(name) {
   const lib = allTypeNames().find(n => norm(n) === norm(name)); if (lib) name = lib;   // keep one spelling everywhere
   if (!types().some(n => norm(n) === norm(name))) setTypes([...types(), name], `Add type ${name}`);
   if (!typeLib.some(n => norm(n) === norm(name))) { typeLib.push(name); pushTypes(); }
-  $("type-box").hidden = true; cat = name; group = null; render();
+  $("type-box").hidden = current !== RANDOM; $("type-name").value = ""; renderTypeSugg(); cat = name; group = null; render();
 }
 $("type-name").addEventListener("input", renderTypeSugg);
 $("type-name").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); addType($("type-name").value); } });
@@ -724,6 +736,7 @@ $("cats").addEventListener("click", e => {
   if (shot.running) { toast("Finish or cancel the current shot first"); return; }
   if (b.dataset.act === "add-loc") { group = null; selected = null; $("loc").value = ""; $("loc").placeholder = "Type the new location's name"; $("loc").focus(); return; }
   if (b.dataset.act === "add-type") { $("type-box").hidden = false; $("type-name").value = ""; renderTypeSugg(); applyDesign(); $("type-name").focus(); return; }
+  if (current === RANDOM) { cat = cat === b.dataset.cat ? null : b.dataset.cat; render(); if ($("loc").value.trim()) { locOpen = true; renderGroups(); } return; }
   cat = b.dataset.cat; group = null; selected = null; locOpen = false; $("loc").value = ""; render();
   $("items-h").scrollIntoView({ behavior: "smooth", block: "start" });
 });
@@ -782,7 +795,7 @@ function renderGroups(groups, items) {
   const pl = (m.pool || []).map(n => { const r = pd.items[n], b2 = (pd.labels || {})[n];
     return `<button class="item" role="option" data-pool="${esc(n)}">${symbol("Other")}<span><span class="nm">${esc(b2 ? n + " · " + b2 : n)}</span><br><span class="sub">Random location · tap to bring it into this job</span></span><span class="pill ${accClass(r.acc_ft)}">±${Math.round(r.acc_ft)} ft</span></button>`; }).join("");
   const none = !g && !it && !pl ? `<div class="item loc-opt" style="cursor:default"><span class="nm">No location named “${esc(typed)}”</span><span></span></div>` : "";
-  const add = typed && !exists ? `<button class="item loc-opt" data-new="${esc(typed)}"><span><span class="nm" style="color:var(--accent)">+ Add new location “${esc(typed)}”</span><br><span class="sub">Goes in ${esc(group || (cat && typeGroup(cat)) || "Added in field")}${cat ? " as a " + esc(cat) : ""}</span></span><span></span></button>` : "";
+  const add = typed && !exists ? `<button class="item loc-opt" data-new="${esc(typed)}"><span><span class="nm" style="color:var(--accent)">${current === RANDOM ? "+ New point" : "+ Add new location"} “${esc(typed)}”</span><br><span class="sub">${current === RANDOM ? (cat ? "As a " + esc(cat) : "Pick its type below") : `Goes in ${esc(group || (cat && typeGroup(cat)) || "Added in field")}${cat ? " as a " + esc(cat) : ""}`}</span></span><span></span></button>` : "";
   box.innerHTML = none + g + it + pl + add;
 }
 function createItem(name) {
@@ -1389,17 +1402,25 @@ function screenNow() {
   if (finding) return cat ? "vaultlist" : "project";
   return "clean";
 }
+function autoInk(hex) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex || ""); if (!m) return null;
+  const n = parseInt(m[1], 16), lin = c => { c /= 255; return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; };
+  const L = 0.2126 * lin(n >> 16) + 0.7152 * lin((n >> 8) & 255) + 0.0722 * lin(n & 255);
+  return L > 0.3 ? "#000000" : "#ffffff";
+}
 function applyDesign() {
   const d = design || {}, th = d.theme || {};
   let css = "";
   const sn = screenNow(), sb = ((d.screens || {})[sn] || {}).bg || SCREEN_BG[sn];
-  if (sb) css += `body{background:${sb}!important}`;
+  if (sb) css += `body{background:${sb}!important;color:${autoInk(sb) || "inherit"}}.pick-title,h2,h3,.muted,.work-proj{color:${autoInk(sb) || "inherit"}}.btn,.item,input,select,.list{color:var(--ink)}`;
   const vars = Object.entries(th).filter(([k, v]) => THEME_VARS[k] && v).map(([k, v]) => `${THEME_VARS[k]}:${v}!important;`).join("");
   if (vars) css += `:root{${vars}}`;
   for (const [sel, o] of Object.entries(d.els || {})) {
     let r = "";
     if (o.bg) r += `background:${o.bg}!important;border-color:${o.bg}!important;`;
-    if (o.color) r += `color:${o.color}!important;`;
+    // no text colour picked: black on a light box, white on a dark one
+    const tc = o.color || (o.bg && autoInk(o.bg));
+    if (tc) r += `color:${tc}!important;`;
     if (o.size && SIZES[o.size]) r += `font-size:${SIZES[o.size][0]}!important;min-height:${SIZES[o.size][1]}!important;`;
     if (o.hide) r += "display:none!important;";
     if (r) css += `${sel}{${r}}`;
@@ -1407,7 +1428,7 @@ function applyDesign() {
   let st = $("design-css"); if (!st) { st = document.createElement("style"); st.id = "design-css"; document.head.appendChild(st); }
   if (st.textContent !== css) st.textContent = css;
   for (const [sel, o] of Object.entries(d.els || {})) if (o.text) {
-    try { for (const el of document.querySelectorAll(sel)) if (el.textContent !== o.text) el.textContent = o.text; } catch {}
+    try { for (const el of document.querySelectorAll(sel)) { if (el.matches("input,textarea")) { if (el.placeholder !== o.text) el.placeholder = o.text; } else if (el.textContent !== o.text) el.textContent = o.text; } } catch {}
   }
 }
 async function pullDesign() {

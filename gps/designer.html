@@ -101,9 +101,11 @@ textarea { min-height: 70px; resize: vertical; }
     </div>
 
     <div class="card">
-      <h2>Flow you've set</h2>
+      <h2>Where buttons on this screen go</h2>
+      <ul class="flow" id="flow-now"></ul>
+      <h2 style="margin-top:14px">Changes you've asked for</h2>
       <ol class="flow" id="flow"></ol>
-      <p class="muted" id="flow-none">No arrows yet. Pick a button and choose where it should go.</p>
+      <p class="muted" id="flow-none">None yet. Pick a button and choose where it should go.</p>
     </div>
   </div>
 </div>
@@ -166,6 +168,7 @@ function goScreen(name) {
   for (const b of $("screens").children) b.setAttribute("aria-pressed", b.dataset.s === name);
   $("screen-note").value = (design.screens[name] || {}).note || "";
   $("screen-bg").value = (design.screens[name] || {}).bg || SCREEN_BG[name] || "#eef2ef";
+  renderFlow();
   try { win().designScreen(name); } catch {}
   setTimeout(mark, 400);
 }
@@ -250,11 +253,31 @@ function showTheme() {   // unset colours show what the app uses now
 $("theme").oninput = e => { const i = e.target.closest("[data-th]"); if (i) { design.theme[i.dataset.th] = i.value; push(); } };
 $("theme").onclick = e => { const b = e.target.closest("[data-thclear]"); if (b) { delete design.theme[b.dataset.thclear]; push(); setTimeout(showTheme, 50); } };
 
+// what each button does in the app today, per screen
+const FLOW = {
+  main: [["A project in the list", "project"], ["New Project", "newproject"], ["System point", "random"], ["Active / Finished / Canceled / All projects", "lists"], ["Plot on Google Maps", "Google Maps with all points"], ["Setup (top)", "setup"], ["Plot on print (bottom)", "print"]],
+  lists: [["A project in the list", "project"], ["Change project status, then a project", "status"], ["Cancel", "main"]],
+  status: [["Active / Complete / Canceled", "lists"], ["Cancel", "lists"]],
+  newproject: [["Create project", "project"], ["Cancel", "main"]],
+  project: [["Next location / Capture first location", "Opens the location box here"], ["Lockbox / Vault / Building / Pedestal", "vaultlist"], ["+ Add new location", "Opens the name box here"], ["+ Add type", "addtype"], ["A location in the search list", "capture"], ["Cancel", "main"]],
+  vaultlist: [["A location in the list", "capture"], ["Another type button", "vaultlist"], ["Cancel", "main"]],
+  addtype: [["A type in the list", "vaultlist"], ["Cancel", "project"]],
+  capture: [["Capture New GPS Location Point", "hold"], ["Coordinates under the shot", "gmap"], ["Pick a different location", "project"], ["Cancel", "main"]],
+  hold: [["When the reading is done", "placing"], ["Cancel", "capture"]],
+  gmap: [["Back", "capture"]],
+  ask: [["Change its position", "placing"], ["Wrong location, don't save", "capture"]],
+  clean: [["Next location", "project"], ["Done", "main"], ["Cancel", "main"]],
+  random: [["Type buttons", "Marks the point's type here"], ["New type box", "Adds a type here"], ["A name in the list", "capture"], ["Cancel", "main"]],
+  print: [["Cancel", "main"], ["Collect (bottom)", "main"]],
+  placing: [["Save", "clean"], ["Skip", "clean"]],
+  setup: [["Save", "Stays here"], ["Cancel", "main"]],
+};
 function renderFlow() {
   const name = k => (SCREENS.find(s => s[0] === k) || [k, k === "stay" ? "Stay on this screen" : "Somewhere else"])[1];
   const rows = Object.entries(design.els).filter(([, o]) => o.goes || o.note);
   $("flow").innerHTML = rows.map(([s, o]) => `<li><b>${esc(o.label || s)}</b>${o.goes ? " → " + esc(name(o.goes)) : ""}${o.note ? `<br><span class="muted">${esc(o.note)}</span>` : ""}</li>`).join("");
   $("flow-none").hidden = rows.length > 0;
+  $("flow-now").innerHTML = (FLOW[screen] || []).map(([b, to]) => `<li><b>${esc(b)}</b> → ${esc(SCREENS.some(x => x[0] === to) ? name(to) : to)}</li>`).join("") || `<li class="muted">Nothing to tap here.</li>`;
 }
 
 (async () => { await load(); showTheme(); renderFlow(); frame.src = "./?design=1"; })();
