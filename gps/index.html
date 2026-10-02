@@ -247,6 +247,7 @@ summary { font-weight: 600; cursor: pointer; }
         <button class="btn" id="show-print" hidden>Show on print</button>
         <a class="btn maplink" id="shot-map" href="map.html" hidden>Plot on Google Maps</a>
         <button class="btn danger" id="clear-shot" hidden>Clear this shot</button>
+        <button class="btn cancel" id="shot-back" hidden>Cancel</button>
       </div>
       <div class="small mono muted" id="shot-last"></div>
     </div>
@@ -348,7 +349,7 @@ summary { font-weight: 600; cursor: pointer; }
 <div class="gmap" id="gmap" hidden><iframe id="gmap-frame" title="Google Maps" loading="lazy"></iframe><button class="btn big primary" id="gmap-back">Back</button></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-02.13";
+const APP_VERSION = "2026-10-02.14";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -440,6 +441,8 @@ function renderProjects() {
 function homePanel(name) { for (const [k, id] of [["pick", "project-box"], ["new", "new-project-box"], ["lists", "lists-box"], ["status", "status-box"]]) $(id).hidden = k !== name; tabBar(); }
 function showNewProject(on) { homePanel(on ? "new" : "pick"); if (on) { home = true; $("pick-view").hidden = false; $("collect-main").hidden = true; $("np-name").focus(); } }
 $("change-proj").onclick = goHome;
+// Cancel beside Clear this shot: back to the screen you picked the location from (type list or project page)
+$("shot-back").onclick = () => { if (shot.running) return; selected = null; group = null; finding = true; locOpen = false; $("loc").value = ""; render(); window.scrollTo(0, 0); };
 // only on the plain project page (not while capturing, adding a type or in a type list)
 $("proj-status-btn").onclick = () => { if (shot.running) return; home = true; selected = null; finding = false; render(); showStatus(current); };
 
@@ -894,6 +897,7 @@ function renderShot() {
   pill.textContent = r ? `Stored ±${Math.round(r.acc_ft)} ft` : "Not shot";
   $("shot-last").textContent = r ? `${r.lat.toFixed(7)}, ${r.lon.toFixed(7)}  ·  ${r.n} readings` : "";
   $("clear-shot").hidden = !r || shot.running;
+  $("shot-back").hidden = shot.running;
   $("show-print").hidden = shot.running || !(job && job.plan);
   $("store").hidden = shot.running;
   $("save-now").hidden = !shot.running;
