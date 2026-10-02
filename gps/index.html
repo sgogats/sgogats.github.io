@@ -263,6 +263,7 @@ summary { font-weight: 600; cursor: pointer; }
         <button class="btn primary" id="ni-add">Add item</button>
       </div>
     </details>
+    <button class="btn big" id="proj-status-btn" style="margin-top:18px" hidden>Change project status</button>
   </div>
 </section>
 
@@ -346,7 +347,7 @@ summary { font-weight: 600; cursor: pointer; }
 <div class="gmap" id="gmap" hidden><iframe id="gmap-frame" title="Google Maps" loading="lazy"></iframe><button class="btn big primary" id="gmap-back">Back</button></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-02.10";
+const APP_VERSION = "2026-10-02.11";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -438,6 +439,8 @@ function renderProjects() {
 function homePanel(name) { for (const [k, id] of [["pick", "project-box"], ["new", "new-project-box"], ["lists", "lists-box"], ["status", "status-box"]]) $(id).hidden = k !== name; tabBar(); }
 function showNewProject(on) { homePanel(on ? "new" : "pick"); if (on) { home = true; $("pick-view").hidden = false; $("collect-main").hidden = true; $("np-name").focus(); } }
 $("change-proj").onclick = goHome;
+// only on the plain project page (not while capturing, adding a type or in a type list)
+$("proj-status-btn").onclick = () => { if (shot.running) return; home = true; selected = null; finding = false; render(); showStatus(current); };
 
 $("done-btn").onclick = goHome;
 $("next-btn").onclick = () => { selected = null; group = null; cat = null; finding = true; render(); $("loc").value = ""; $("loc").focus(); };
@@ -1413,7 +1416,9 @@ function autoInk(hex) {
 function applyDesign() {
   const d = design || {}, th = d.theme || {};
   let css = "";
-  const sn = screenNow(), sb = ((d.screens || {})[sn] || {}).bg || SCREEN_BG[sn];
+  const sn = screenNow();
+  $("proj-status-btn").hidden = sn !== "project";
+  const sb = ((d.screens || {})[sn] || {}).bg || SCREEN_BG[sn];
   if (sb) css += `body{background:${sb}!important;color:${autoInk(sb) || "inherit"}}.pick-title,h2,h3,.muted,.work-proj{color:${autoInk(sb) || "inherit"}}.btn,.item,input,select,.list{color:var(--ink)}`;
   const vars = Object.entries(th).filter(([k, v]) => THEME_VARS[k] && v).map(([k, v]) => `${THEME_VARS[k]}:${v}!important;`).join("");
   if (vars) css += `:root{${vars}}`;
