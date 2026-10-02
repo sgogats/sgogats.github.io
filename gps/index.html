@@ -343,7 +343,7 @@ summary { font-weight: 600; cursor: pointer; }
 <div class="gmap" id="gmap" hidden><iframe id="gmap-frame" title="Google Maps" loading="lazy"></iframe><button class="btn big primary" id="gmap-back">Back</button></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-02.7";
+const APP_VERSION = "2026-10-02.8";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -669,6 +669,9 @@ $("name2-btn").onclick = () => { if (selected) editName2(selected); };
 $("group-name2").onclick = () => { if (group) editName2(group); };
 /* ---------- location types (buttons): per project; names shared across projects via gps/types.json ---------- */
 const DEFAULT_TYPES = ["Lockbox", "Vault", "Building", "Pedestal"];
+// Steven's master list of location types (also in gps/types.json): what type suggestions offer on every project
+const MASTER_TYPES = ["Node", "Amplifier", "Power supply", "Lockbox", "Vault", "MDU building", "Town home", "Light pole", "Sewer", "Manhole", "Handhole",
+  "Pedestal", "Doghouse", "OLT", "Splice can", "Slack loop", "Utility pole", "Riser pole", "OTN cabinet", "Fiber splitter"];
 let typeLib = LS.get("types", []) || [];
 function types() { return data.types || DEFAULT_TYPES; }
 function typeOf(i) {
@@ -683,7 +686,7 @@ function typeGroup(t) { return t === "Lockbox" ? "Added in field" : t === "Vault
 function typeKind(t) { return t === "Vault" ? "Lockbox vault" : t; }
 function allTypeNames() {
   const out = [];
-  for (const n of [...DEFAULT_TYPES, ...typeLib, ...types()]) if (n && !out.some(x => norm(x) === norm(n))) out.push(n);
+  for (const n of [...DEFAULT_TYPES, ...MASTER_TYPES, ...typeLib, ...types()]) if (n && !out.some(x => norm(x) === norm(n))) out.push(n);
   return out;
 }
 async function pullTypes() {
