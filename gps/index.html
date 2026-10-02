@@ -73,6 +73,20 @@ label.field span { font: 600 14px/1 var(--display); letter-spacing: .08em; text-
 .work-proj { font: 700 22px/1.15 var(--display); text-transform: uppercase; letter-spacing: .02em; }
 #next-btn { margin-top: 6px; min-height: 96px; }
 .linkish { background: none; border: 0; padding: 6px 0; color: var(--accent); font: 600 15px var(--body); cursor: pointer; text-align: left; }
+.btn.cancel { background: #ff3a2f; color: #fff; border-color: #ff3a2f; }
+.proj-list { margin-top: 6px; max-height: 245px; overflow-y: scroll; -webkit-overflow-scrolling: touch; }
+.proj-list::-webkit-scrollbar { width: 10px; }
+.proj-list::-webkit-scrollbar-thumb { background: var(--muted); border-radius: 5px; }
+.proj-list .item { grid-template-columns: 1fr auto; min-height: 49px; }
+.hold { position: fixed; inset: 0; z-index: 30; background: rgba(0,0,0,.82); color: #fff; display: grid; place-items: center; padding: 20px; text-align: center; }
+.hold > div { display: grid; gap: 18px; max-width: 420px; width: 100%; }
+.hold .big-warn { font: 700 34px/1.1 var(--display); text-transform: uppercase; letter-spacing: .02em; }
+.hold .meter { color: #fff; }
+.hold .btn { min-height: 60px; font-size: 20px; }
+.gmap { position: fixed; inset: 0; z-index: 30; background: var(--bg); display: grid; grid-template-rows: 1fr auto; }
+.gmap iframe { width: 100%; height: 100%; border: 0; }
+.gmap .btn { margin: 10px 16px calc(10px + env(safe-area-inset-bottom, 0px)); min-height: 60px; font-size: 20px; }
+#shot-last { cursor: pointer; text-decoration: underline; }
 .cats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
 .cats .btn { min-height: 56px; font-size: 17px; }
 .cats .btn[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
@@ -140,23 +154,26 @@ summary { font-weight: 600; cursor: pointer; }
   <div id="pick-view">
   <div class="stack" id="project-box">
     <h3>Pick project</h3>
-    <select id="project" aria-label="Pick project"></select>
+    <input id="proj-search" type="text" placeholder="Type a project name" autocomplete="off" role="combobox" aria-expanded="false" aria-controls="proj-list" enterkeyhint="go">
+    <div class="list proj-list" id="proj-list" role="listbox" aria-label="Projects" hidden></div>
+    <select id="project" aria-label="Pick project" hidden></select>
     <button class="btn" id="np-open">+ Create new project</button>
     <button class="btn big" id="random-btn" style="margin-top:8px">Random location</button>
     <p class="muted small" style="margin:0">GPS by name with no project or print yet. Bring it into a job later by typing its name.</p>
-    <a class="btn big" href="map.html" style="margin-top:8px;display:grid;place-items:center;text-decoration:none;color:inherit">See all points on a map</a>
+    <a class="btn big" href="map.html" style="margin-top:8px;display:grid;place-items:center;text-decoration:none;color:inherit">Plot on Google Maps</a>
   </div>
   <div id="new-project-box" class="stack" hidden>
     <h2>New project</h2>
     <label class="field"><span>Project name</span><input id="np-name" type="text" placeholder="e.g. Palisade Ave Townhomes" autocomplete="off"></label>
-    <div class="row"><button class="btn primary" id="np-make">Create project</button><button class="btn" id="np-cancel">Cancel</button></div>
+    <button class="btn big primary" id="np-make">Create project</button>
+    <button class="btn big cancel" id="np-cancel">Cancel</button>
   </div>
   </div>
 
   <div id="collect-main">
     <div class="work-head">
       <div><div class="muted small">Current project</div><div class="work-proj" id="work-proj"></div></div>
-      <button class="btn" id="change-proj">Change project</button>
+      <button class="btn cancel" id="change-proj">Cancel</button>
     </div>
     <button class="btn big primary" id="next-btn">Capture next location</button>
     <div id="loc-wrap" hidden>
@@ -210,7 +227,7 @@ summary { font-weight: 600; cursor: pointer; }
 
 <!-- PRINT -->
 <section id="tab-print" hidden>
-  <h2>Put shots on the print</h2>
+  <div class="row" style="justify-content:space-between;align-items:center"><h2>Put shots on the print</h2><button class="btn cancel" data-home>Cancel</button></div>
   <p class="small"><b id="print-proj"></b></p>
   <p class="small muted" id="print-help">Pick 4 to 6 shots spread around the site (corners plus one near the middle). Items already on the print line up by themselves. Tap Find to zoom to a box, or Set spot to tap where it actually is.</p>
   <div class="canvas-box" id="cbox">
@@ -250,7 +267,7 @@ summary { font-weight: 600; cursor: pointer; }
     <label class="field"><span>Branch</span><input id="s-branch" type="text" autocomplete="off"></label>
     <label class="field"><span>Seconds to average each shot</span>
       <select id="s-secs"><option>5</option><option selected>10</option><option>20</option><option>30</option><option>60</option></select></label>
-    <div class="row"><button class="btn primary" id="s-save">Save and connect</button><button class="btn" id="s-reload">Reload jobs</button></div>
+    <div class="row"><button class="btn primary" id="s-save">Save and connect</button><button class="btn" id="s-reload">Reload jobs</button><button class="btn cancel" id="s-cancel">Cancel</button></div>
     <div id="s-msg" class="note" hidden></div>
     <details>
       <summary>How to make the GitHub key</summary>
@@ -280,9 +297,16 @@ summary { font-weight: 600; cursor: pointer; }
 </div></nav>
 <div class="toast" id="toast" hidden></div>
 
+<div class="hold" id="hold" hidden><div>
+  <div class="big-warn">Do not move.<br>Hold phone or iPad steady</div>
+  <div id="hold-name" style="font-size:20px;font-weight:700"></div>
+  <div class="meter"><div><span>Accuracy</span><b id="h-acc">…</b></div><div><span>Readings</span><b id="h-n">0</b></div><div><span>Time</span><b id="h-t">0 s</b></div></div>
+  <button class="btn cancel" id="hold-cancel">Cancel</button>
+</div></div>
+<div class="gmap" id="gmap" hidden><iframe id="gmap-frame" title="Google Maps" loading="lazy"></iframe><button class="btn big primary" id="gmap-back">Back</button></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-02.1";
+const APP_VERSION = "2026-10-02.2";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -371,14 +395,45 @@ function renderProjects() {
   if (!$("new-project-box").hidden && $("np-name").value.trim() === "") showNewProject(false);
 }
 function showNewProject(on) { $("new-project-box").hidden = !on; $("project-box").hidden = on; if (on) { home = true; $("pick-view").hidden = false; $("collect-main").hidden = true; $("np-name").focus(); } }
-$("change-proj").onclick = () => { if (shot.running) { toast("Finish or cancel the current shot first"); return; } home = true; selected = null; group = null; finding = false; showNewProject(false); renderProjects(); render(); window.scrollTo(0, 0); };
+$("change-proj").onclick = goHome;
 $("next-btn").onclick = () => { selected = null; group = null; cat = null; finding = true; render(); $("loc").value = ""; $("loc").focus(); };
 $("np-open").onclick = () => showNewProject(true);
-$("project").addEventListener("change", e => {
-  if (!e.target.value) return;
-  showNewProject(false); home = false; finding = true; selected = null; group = null; openProject(e.target.value); $("loc").value = ""; window.scrollTo(0, 0);
+function pickProject(slug) {
+  if (!slug) return;
+  $("proj-search").value = ""; projList(false);
+  showNewProject(false); home = false; finding = true; selected = null; group = null; openProject(slug); $("loc").value = ""; window.scrollTo(0, 0);
+}
+$("project").addEventListener("change", e => pickProject(e.target.value));
+// project search: nothing shows until you type; only matching projects, five rows tall, scrolls
+function projList(show) {
+  const q = $("proj-search").value.trim(), box = $("proj-list");
+  if (!show || !q) { box.hidden = true; $("proj-search").setAttribute("aria-expanded", "false"); return; }
+  const words = q.toLowerCase().split(/\s+/);
+  const ps = allProjects().filter(p => hits(p.name, words));
+  box.innerHTML = ps.map(p => `<button class="item" role="option" data-p="${esc(p.slug)}"><span class="nm">${esc(p.name)}</span><span></span></button>`).join("")
+    || `<div class="item" style="cursor:default"><span class="sub">No project named “${esc(q)}”</span><span></span></div><button class="item" data-newp="${esc(q)}"><span class="nm" style="color:var(--accent)">+ Create new project “${esc(q)}”</span><span></span></button>`;
+  box.hidden = false; $("proj-search").setAttribute("aria-expanded", "true");
+}
+$("proj-search").addEventListener("input", () => projList(true));
+$("proj-search").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); const b = $("proj-list").querySelector("[data-p],[data-newp]"); if (b) b.click(); } if (e.key === "Escape") projList(false); });
+$("proj-list").addEventListener("pointerdown", e => { if (e.target.closest("[data-p],[data-newp]")) e.preventDefault(); });
+$("proj-list").addEventListener("click", e => {
+  const b = e.target.closest("[data-p],[data-newp]"); if (!b) return;
+  if (b.dataset.p) pickProject(b.dataset.p);
+  else { showNewProject(true); $("np-name").value = b.dataset.newp; $("proj-search").value = ""; projList(false); }
 });
-$("np-cancel").onclick = () => { showNewProject(false); renderProjects(); };
+// Cancel on every screen: back to the home screen, anything typed and not saved is dropped
+function goHome() {
+  if (shot.running) { stopShot(true); $("hold").hidden = true; }
+  try { if (placing) endPlacing(); } catch {}
+  $("ask").hidden = true; $("gmap").hidden = true; $("type-box").hidden = true;
+  for (const id of ["loc", "np-name", "proj-search", "type-name"]) $(id).value = "";
+  projList(false); locOpen = false;
+  home = true; selected = group = cat = null; finding = false;
+  showNewProject(false); renderProjects(); showTab("collect"); render(); window.scrollTo(0, 0);
+}
+document.addEventListener("click", e => { if (e.target.closest("[data-home]")) goHome(); });
+$("np-cancel").onclick = goHome;
 $("np-make").onclick = () => {
   const name = $("np-name").value.trim(); if (!name) { toast("Type a project name first"); return; }
   const s = slug(name);
@@ -717,6 +772,8 @@ function startShot() {
   try { navigator.wakeLock && navigator.wakeLock.request("screen").then(w => shot.wake = w).catch(() => {}); } catch {}
   shot.watch = navigator.geolocation.watchPosition(onFix, onGpsError, { enableHighAccuracy: true, maximumAge: 0, timeout: 30000 });
   shot.timer = setInterval(tick, 250);
+  $("hold-name").textContent = selected || ""; $("h-acc").textContent = "…"; $("h-n").textContent = "0"; $("h-t").textContent = "0 s";
+  if (!DESIGN_MODE) $("hold").hidden = false;
 }
 function onFix(p) {
   if (!shot.running) return;
@@ -737,14 +794,15 @@ function onGpsError(e, final) {
 }
 function tick() {
   const secs = (Date.now() - shot.start) / 1000, need = +cfg.secs || 10;
-  $("m-t").textContent = Math.floor(secs) + " s";
+  $("m-t").textContent = $("h-t").textContent = Math.floor(secs) + " s";
+  $("h-acc").textContent = $("m-acc").textContent; $("h-n").textContent = $("m-n").textContent;
   $("m-prog").style.width = Math.min(100, secs / need * 100) + "%";
   if (secs >= need && shot.samples.length >= 1) finishShot();
   if (secs > need + 50 && shot.samples.length === 0) onGpsError({ code: 3 }, true);
 }
 function stopShot(silent) {
   if (shot.watch != null) navigator.geolocation.clearWatch(shot.watch);
-  clearInterval(shot.timer); shot.watch = null; shot.running = false;
+  clearInterval(shot.timer); shot.watch = null; shot.running = false; $("hold").hidden = true;
   if (shot.wake) { shot.wake.release().catch(() => {}); shot.wake = null; }
 }
 function average(samples) {
@@ -1233,7 +1291,7 @@ async function pullDesign() {
 window.setDesign = d => { design = d; applyDesign(); };
 window.designScreen = name => {
   try { if (placing) endPlacing(); } catch {}
-  $("ask").hidden = true; $("type-box").hidden = true;
+  $("ask").hidden = true; $("type-box").hidden = true; $("hold").hidden = true; $("gmap").hidden = true;
   const first = (allProjects().find(p => p.job) || allProjects()[0] || {}).slug;
   const item = () => (itemsList()[0] || {}).name || "V-18";
   const proj = (s, then) => { home = false; selected = null; group = null; cat = null; finding = true; showNewProject(false); showTab("collect"); Promise.resolve(openProject(s)).then(() => { then && then(); render(); }); };
@@ -1248,10 +1306,21 @@ window.designScreen = name => {
   else if (name === "print") { if (current !== first && first) openProject(first); showTab("print"); }
   else if (name === "placing") { showTab("print"); startPlacing(item(), false); }
   else if (name === "setup") showTab("setup");
+  else if (name === "hold") proj(first, () => { finding = false; selected = item(); setTimeout(() => { $("hold-name").textContent = item(); $("hold").hidden = false; }, 50); });
+  else if (name === "gmap") { $("gmap-frame").src = "about:blank"; $("gmap").hidden = false; }
   else if (name === "ask") { proj(first, () => { finding = false; selected = item(); }); ask(`${item()} is already in, 120 ft from where you are now. Are you changing its position, or did you pick the wrong location?`, `Change ${item()}'s position`, "Wrong location, don't save"); }
   applyDesign();
 };
 
+$("hold-cancel").onclick = () => { $("cancel-shot").click(); $("hold").hidden = true; };
+// tap the coordinates under a shot: Google Maps right there, Back returns
+$("shot-last").onclick = () => {
+  const r = selected && data.items[selected]; if (!r) return;
+  $("gmap-frame").src = `https://maps.google.com/maps?q=${r.lat.toFixed(7)},${r.lon.toFixed(7)}&t=k&z=20&output=embed`;
+  $("gmap").hidden = false;
+};
+$("gmap-back").onclick = () => { $("gmap").hidden = true; $("gmap-frame").src = "about:blank"; };
+$("s-cancel").onclick = () => { fillSetup(); goHome(); };
 /* ---------- start ---------- */
 renderProjects();
 if (current && allProjects().some(p => p.slug === current)) openProject(current);
