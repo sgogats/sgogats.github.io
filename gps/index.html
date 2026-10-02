@@ -40,7 +40,9 @@ header.bar { position: sticky; top: 0; z-index: 5; background: var(--bg); paddin
 .brand span { color: var(--accent); }
 .bar select { flex: 1 1 100%; order: 3; min-width: 0; font-weight: 600; }
 nav.tabs { position: fixed; left: 0; right: 0; bottom: 0; z-index: 6; background: var(--panel); border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom, 0px); }
-.tabs-in { max-width: 720px; margin: 0 auto; display: grid; grid-template-columns: repeat(3, 1fr); }
+.tabs-in { max-width: 720px; margin: 0 auto; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; }
+.top-setup { min-height: 36px; padding: 6px 12px; font: 600 15px/1 var(--display); letter-spacing: .06em; text-transform: uppercase; }
+.top-setup[aria-selected="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
 .tabs button { background: none; border: 0; padding: 12px 4px 14px; font: 600 17px/1 var(--display); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
 .tabs button[aria-selected="true"] { color: var(--accent); box-shadow: inset 0 3px 0 var(--accent); }
 h2 { font: 700 26px/1.1 var(--display); text-transform: uppercase; letter-spacing: .02em; margin: 18px 0 8px; text-wrap: balance; }
@@ -74,9 +76,13 @@ label.field span { font: 600 14px/1 var(--display); letter-spacing: .08em; text-
 #next-btn { margin-top: 6px; min-height: 96px; }
 .linkish { background: none; border: 0; padding: 6px 0; color: var(--accent); font: 600 15px var(--body); cursor: pointer; text-align: left; }
 .btn.cancel { background: #ff3a2f; color: #fff; border-color: #ff3a2f; }
-.proj-list { margin-top: 6px; max-height: 245px; overflow-y: scroll; -webkit-overflow-scrolling: touch; }
-.proj-list::-webkit-scrollbar { width: 10px; }
-.proj-list::-webkit-scrollbar-thumb { background: var(--muted); border-radius: 5px; }
+.pick-title { font: 700 38px/1.1 var(--display); text-transform: uppercase; letter-spacing: .03em; color: var(--ink); margin: 16px 0 8px; width: 100%; text-align: center; }
+#proj-search { width: 100%; font-size: 20px; min-height: 52px; }
+.proj-wrap { position: relative; margin: 6px 0 8px; }
+.proj-list { max-height: 245px; overflow-y: scroll; -webkit-overflow-scrolling: touch; scrollbar-width: none; padding-right: 22px; }
+.proj-list::-webkit-scrollbar { display: none; }
+.slide { position: absolute; top: 4px; bottom: 4px; right: 4px; width: 14px; border-radius: 7px; background: color-mix(in srgb, var(--muted) 25%, transparent); touch-action: none; }
+.slide > div { position: absolute; left: 0; right: 0; border-radius: 7px; background: var(--muted); min-height: 30px; }
 .proj-list .item { grid-template-columns: 1fr auto; min-height: 49px; }
 .hold { position: fixed; inset: 0; z-index: 30; background: rgba(0,0,0,.82); color: #fff; display: grid; place-items: center; padding: 20px; text-align: center; }
 .hold > div { display: grid; gap: 18px; max-width: 420px; width: 100%; }
@@ -142,7 +148,7 @@ summary { font-weight: 600; cursor: pointer; }
 <body>
 <header class="bar">
   <div class="bar-in">
-    <div class="brand">GPS<span>Shots</span></div>
+    <div class="row" style="gap:10px"><div class="brand">GPS<span>Shots</span></div><button class="btn top-setup" id="top-setup" data-tab="setup" aria-selected="false">Setup</button></div>
     <span id="sync" class="sync" title="GitHub sync">Phone only</span>
   </div>
 </header>
@@ -153,11 +159,11 @@ summary { font-weight: 600; cursor: pointer; }
 <section id="tab-collect">
   <div id="pick-view">
   <div class="stack" id="project-box">
-    <h3>Pick project</h3>
-    <input id="proj-search" type="text" placeholder="Type a project name" autocomplete="off" role="combobox" aria-expanded="false" aria-controls="proj-list" enterkeyhint="go">
-    <div class="list proj-list" id="proj-list" role="listbox" aria-label="Projects" hidden></div>
+    <h2 class="pick-title" id="pick-title">Pick a project</h2>
+    <input id="proj-search" type="text" placeholder="Type a project name" autocomplete="off" role="combobox" aria-expanded="true" aria-controls="proj-list" enterkeyhint="go">
+    <div class="proj-wrap"><div class="list proj-list" id="proj-list" role="listbox" aria-label="Projects"></div><div class="slide" id="proj-slide" hidden><div id="proj-thumb"></div></div></div>
     <select id="project" aria-label="Pick project" hidden></select>
-    <button class="btn" id="np-open">+ Create new project</button>
+    <button class="btn big" id="np-open">+ Create new project</button>
     <button class="btn big" id="random-btn" style="margin-top:8px">Random location</button>
     <p class="muted small" style="margin:0">GPS by name with no project or print yet. Bring it into a job later by typing its name.</p>
     <a class="btn big" href="map.html" style="margin-top:8px;display:grid;place-items:center;text-decoration:none;color:inherit">Plot on Google Maps</a>
@@ -292,8 +298,7 @@ summary { font-weight: 600; cursor: pointer; }
 
 <nav class="tabs" aria-label="Sections"><div class="tabs-in" role="tablist">
   <button role="tab" data-tab="collect" aria-selected="true">Collect</button>
-  <button role="tab" data-tab="print" aria-selected="false">Print</button>
-  <button role="tab" data-tab="setup" aria-selected="false">Setup</button>
+  <button role="tab" data-tab="print" aria-selected="false">Plot on print</button>
 </div></nav>
 <div class="toast" id="toast" hidden></div>
 
@@ -306,7 +311,7 @@ summary { font-weight: 600; cursor: pointer; }
 <div class="gmap" id="gmap" hidden><iframe id="gmap-frame" title="Google Maps" loading="lazy"></iframe><button class="btn big primary" id="gmap-back">Back</button></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-02.2";
+const APP_VERSION = "2026-10-02.3";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -386,6 +391,7 @@ function allProjects() {
 }
 function renderProjects() {
   const sel = $("project"), ps = allProjects();
+  projList();
   sel.innerHTML = ps.length ? ps.map(p => `<option value="${esc(p.slug)}">${esc(p.name)}</option>`).join("") : `<option value="">${gh.on() ? "No projects yet" : "No projects. Add your GitHub key on Setup"}</option>`;
   sel.disabled = !ps.length;
   if (!ps.length) { home = true; return; }          // keep the home screen (Random location, + Create new project) even with no projects
@@ -400,27 +406,40 @@ $("next-btn").onclick = () => { selected = null; group = null; cat = null; findi
 $("np-open").onclick = () => showNewProject(true);
 function pickProject(slug) {
   if (!slug) return;
-  $("proj-search").value = ""; projList(false);
+  $("proj-search").value = ""; projList();
   showNewProject(false); home = false; finding = true; selected = null; group = null; openProject(slug); $("loc").value = ""; window.scrollTo(0, 0);
 }
 $("project").addEventListener("change", e => pickProject(e.target.value));
-// project search: nothing shows until you type; only matching projects, five rows tall, scrolls
-function projList(show) {
+// project box: active projects, five rows tall with a slide bar; typing narrows it
+function projList() {
   const q = $("proj-search").value.trim(), box = $("proj-list");
-  if (!show || !q) { box.hidden = true; $("proj-search").setAttribute("aria-expanded", "false"); return; }
   const words = q.toLowerCase().split(/\s+/);
-  const ps = allProjects().filter(p => hits(p.name, words));
+  const ps = allProjects().filter(p => !q || hits(p.name, words));
+  if (!q && !ps.length) { box.innerHTML = `<div class="item" style="cursor:default"><span class="sub">${gh.on() ? "No projects yet" : "No projects. Add your GitHub key on Setup"}</span><span></span></div>`; slideBar(); return; }
   box.innerHTML = ps.map(p => `<button class="item" role="option" data-p="${esc(p.slug)}"><span class="nm">${esc(p.name)}</span><span></span></button>`).join("")
     || `<div class="item" style="cursor:default"><span class="sub">No project named “${esc(q)}”</span><span></span></div><button class="item" data-newp="${esc(q)}"><span class="nm" style="color:var(--accent)">+ Create new project “${esc(q)}”</span><span></span></button>`;
-  box.hidden = false; $("proj-search").setAttribute("aria-expanded", "true");
+  box.scrollTop = 0; slideBar();
 }
-$("proj-search").addEventListener("input", () => projList(true));
-$("proj-search").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); const b = $("proj-list").querySelector("[data-p],[data-newp]"); if (b) b.click(); } if (e.key === "Escape") projList(false); });
+function slideBar() {
+  const box = $("proj-list"), tr = $("proj-slide"), th = $("proj-thumb");
+  const over = box.scrollHeight - box.clientHeight;
+  tr.hidden = over <= 1; if (over <= 1) return;
+  const h = Math.max(30, tr.clientHeight * box.clientHeight / box.scrollHeight);
+  th.style.height = h + "px"; th.style.top = (tr.clientHeight - h) * box.scrollTop / over + "px";
+}
+$("proj-list").addEventListener("scroll", slideBar);
+$("proj-slide").addEventListener("pointerdown", e => {
+  const tr = $("proj-slide"), box = $("proj-list"); tr.setPointerCapture(e.pointerId);
+  const to = y => { const r = tr.getBoundingClientRect(), h = $("proj-thumb").offsetHeight; box.scrollTop = Math.min(1, Math.max(0, (y - r.top - h / 2) / (r.height - h))) * (box.scrollHeight - box.clientHeight); };
+  to(e.clientY); tr.onpointermove = ev => to(ev.clientY); tr.onpointerup = tr.onpointercancel = () => { tr.onpointermove = null; };
+});
+$("proj-search").addEventListener("input", () => projList());
+$("proj-search").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); const b = $("proj-list").querySelector("[data-p],[data-newp]"); if (b) b.click(); } if (e.key === "Escape") { $("proj-search").value = ""; projList(); } });
 $("proj-list").addEventListener("pointerdown", e => { if (e.target.closest("[data-p],[data-newp]")) e.preventDefault(); });
 $("proj-list").addEventListener("click", e => {
   const b = e.target.closest("[data-p],[data-newp]"); if (!b) return;
   if (b.dataset.p) pickProject(b.dataset.p);
-  else { showNewProject(true); $("np-name").value = b.dataset.newp; $("proj-search").value = ""; projList(false); }
+  else { showNewProject(true); $("np-name").value = b.dataset.newp; $("proj-search").value = ""; projList(); }
 });
 // Cancel on every screen: back to the home screen, anything typed and not saved is dropped
 function goHome() {
@@ -428,7 +447,7 @@ function goHome() {
   try { if (placing) endPlacing(); } catch {}
   $("ask").hidden = true; $("gmap").hidden = true; $("type-box").hidden = true;
   for (const id of ["loc", "np-name", "proj-search", "type-name"]) $(id).value = "";
-  projList(false); locOpen = false;
+  projList(); locOpen = false;
   home = true; selected = group = cat = null; finding = false;
   showNewProject(false); renderProjects(); showTab("collect"); render(); window.scrollTo(0, 0);
 }
@@ -475,6 +494,8 @@ function symbol(kind) {
 function render() {
   const newProj = !$("new-project-box").hidden, homeView = (home && !selected && !shot.running) || newProj;
   $("pick-view").hidden = !homeView; $("collect-main").hidden = homeView;
+  if (homeView) slideBar();
+  tabBar();
   $("work-proj").textContent = current === RANDOM ? "Random locations" : (allProjects().find(p => p.slug === current) || {}).name || "";
   $("cats").hidden = current === RANDOM;
   $("loc-wrap").hidden = !finding;
@@ -616,12 +637,12 @@ function addType(name) {
 $("type-name").addEventListener("input", renderTypeSugg);
 $("type-name").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); addType($("type-name").value); } });
 $("type-sugg").addEventListener("click", e => { const b = e.target.closest("[data-t]"); if (b) addType(b.dataset.t); });
-$("type-cancel").onclick = () => { $("type-box").hidden = true; };
+$("type-cancel").onclick = () => { $("type-box").hidden = true; applyDesign(); };
 $("cats").addEventListener("click", e => {
   const b = e.target.closest("button"); if (!b) return;
   if (shot.running) { toast("Finish or cancel the current shot first"); return; }
   if (b.dataset.act === "add-loc") { group = null; selected = null; $("loc").value = ""; $("loc").placeholder = "Type the new location's name"; $("loc").focus(); return; }
-  if (b.dataset.act === "add-type") { $("type-box").hidden = false; $("type-name").value = ""; renderTypeSugg(); $("type-name").focus(); return; }
+  if (b.dataset.act === "add-type") { $("type-box").hidden = false; $("type-name").value = ""; renderTypeSugg(); applyDesign(); $("type-name").focus(); return; }
   cat = b.dataset.cat; group = null; selected = null; locOpen = false; $("loc").value = ""; render();
   $("items-h").scrollIntoView({ behavior: "smooth", block: "start" });
 });
@@ -1249,6 +1270,12 @@ document.querySelector(".tabs").addEventListener("click", e => {
   if (b.dataset.tab === "collect" && !shot.running) { home = true; selected = null; group = null; finding = false; showNewProject(false); renderProjects(); render(); $("loc").value = ""; }
   showTab(b.dataset.tab);
 });
+$("top-setup").onclick = () => showTab("setup");
+// on the home screen you're already in Collect, so only Plot on print shows at the bottom
+function tabBar() {
+  const c = document.querySelector('.tabs [data-tab="collect"]');
+  c.hidden = !$("tab-collect").hidden && !$("pick-view").hidden;
+}
 function showTab(name) {
   const b = document.querySelector(`[data-tab="${name}"]`);
   for (const x of document.querySelectorAll("[data-tab]")) x.setAttribute("aria-selected", x === b);
@@ -1256,6 +1283,7 @@ function showTab(name) {
   try { sessionStorage.setItem("gps.tab", b.dataset.tab); } catch {}
   if (b.dataset.tab === "print") { $("print-proj").textContent = (allProjects().find(p => p.slug === current) || {}).name || ""; $("lock-scale").checked = data.lockScale !== false; view.fitted = false; drawPrint(); }
   if (b.dataset.tab === "setup") fillSetup();
+  tabBar();
   applyDesign();
   window.scrollTo(0, 0);
 }
@@ -1264,9 +1292,25 @@ function showTab(name) {
 let design = LS.get("design", null);
 const SIZES = { S: ["14px", "40px"], M: ["17px", "48px"], L: ["21px", "60px"], XL: ["26px", "72px"] };
 const THEME_VARS = { accent: "--accent", bg: "--bg", panel: "--panel", ink: "--ink", vault: "--vault", lb: "--lb" };
+let forcedScreen = null;
+const SCREEN_BG = { main: "#e3f2ff", addtype: "#e2e4e7" };   // Steven's screen notes; the designer can change them
+function screenNow() {
+  if (DESIGN_MODE && forcedScreen) return forcedScreen;
+  if (!$("tab-print").hidden) { let pl = false; try { pl = !!placing; } catch {} return pl ? "placing" : "print"; }
+  if (!$("tab-setup").hidden) return "setup";
+  if (!$("new-project-box").hidden) return "newproject";
+  if (!$("pick-view").hidden) return "main";
+  if (current === RANDOM) return "random";
+  if (!$("type-box").hidden) return "addtype";
+  if (selected) return "capture";
+  if (finding) return cat ? "vaultlist" : "project";
+  return "clean";
+}
 function applyDesign() {
   const d = design || {}, th = d.theme || {};
   let css = "";
+  const sn = screenNow(), sb = ((d.screens || {})[sn] || {}).bg || SCREEN_BG[sn];
+  if (sb) css += `body{background:${sb}!important}`;
   const vars = Object.entries(th).filter(([k, v]) => THEME_VARS[k] && v).map(([k, v]) => `${THEME_VARS[k]}:${v}!important;`).join("");
   if (vars) css += `:root{${vars}}`;
   for (const [sel, o] of Object.entries(d.els || {})) {
@@ -1290,6 +1334,7 @@ async function pullDesign() {
 // designer.html drives these through the frame
 window.setDesign = d => { design = d; applyDesign(); };
 window.designScreen = name => {
+  forcedScreen = name;
   try { if (placing) endPlacing(); } catch {}
   $("ask").hidden = true; $("type-box").hidden = true; $("hold").hidden = true; $("gmap").hidden = true;
   const first = (allProjects().find(p => p.job) || allProjects()[0] || {}).slug;
@@ -1326,6 +1371,7 @@ renderProjects();
 if (current && allProjects().some(p => p.slug === current)) openProject(current);
 if (gh.on()) { loadJobs(false); pullTypes(); pullDesign(); }
 else setSync("", "Phone only");
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") pullDesign(); });
 render();
 </script>
 <div class="ask" id="ask" hidden><div><div id="ask-msg"></div><button class="btn primary" id="ask-yes"></button><button class="btn" id="ask-no"></button></div></div>

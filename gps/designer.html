@@ -92,6 +92,7 @@ textarea { min-height: 70px; resize: vertical; }
     <div class="card stack">
       <h2>Notes for this screen</h2>
       <textarea id="screen-note" placeholder="How this screen should look or work. e.g. put Lockbox and Vault on top, hide Pedestal"></textarea>
+      <div class="f">Background colour for this screen<div class="color"><input type="color" id="screen-bg"><button class="btn clear" id="screen-bg-clear">Reset</button></div></div>
     </div>
 
     <div class="card">
@@ -164,6 +165,7 @@ function goScreen(name) {
   screen = name; sel = null; selEl = null; showFields();
   for (const b of $("screens").children) b.setAttribute("aria-pressed", b.dataset.s === name);
   $("screen-note").value = (design.screens[name] || {}).note || "";
+  $("screen-bg").value = (design.screens[name] || {}).bg || SCREEN_BG[name] || "#eef2ef";
   try { win().designScreen(name); } catch {}
   setTimeout(mark, 400);
 }
@@ -231,6 +233,9 @@ $("f-hide").onchange = () => { cur().hide = $("f-hide").checked; push(); };
 $("f-goes").onchange = () => { cur().goes = $("f-goes").value; push(); };
 $("f-note").oninput = () => { cur().note = $("f-note").value; push(); };
 $("reset-el").onclick = () => { if (sel) { delete design.els[sel]; sel = null; showFields(); mark(); push(); } };
+$("screen-bg").oninput = () => { design.screens[screen] = Object.assign({}, design.screens[screen], { bg: $("screen-bg").value }); push(); };
+$("screen-bg-clear").onclick = () => { if (design.screens[screen]) delete design.screens[screen].bg; $("screen-bg").value = SCREEN_BG[screen] || "#eef2ef"; push(); };
+const SCREEN_BG = { main: "#e3f2ff", addtype: "#e2e4e7" };
 $("screen-note").oninput = () => { design.screens[screen] = Object.assign({}, design.screens[screen], { note: $("screen-note").value }); push(); };
 
 $("theme").innerHTML = THEME.map(([k, t]) => `<div class="f">${esc(t)}<div class="color"><input type="color" data-th="${k}"><button class="btn clear" data-thclear="${k}">Reset</button></div></div>`).join("");
