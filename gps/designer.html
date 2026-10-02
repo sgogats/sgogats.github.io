@@ -117,7 +117,7 @@ const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;",
 const SCREENS = [
   ["main", "Main screen"], ["lists", "Project lists"], ["status", "Change status of job"], ["newproject", "New project"], ["project", "Project page"], ["vaultlist", "Vault list"],
   ["addtype", "Add type"], ["capture", "Capture (Store GPS)"], ["hold", "Hold still pop-up"], ["gmap", "Map from coordinates"], ["ask", "Already-in pop-up"], ["clean", "After save"],
-  ["random", "Random location"], ["print", "Print"], ["placing", "Set spot on print"], ["setup", "Setup"],
+  ["random", "System point"], ["print", "Print"], ["placing", "Set spot on print"], ["setup", "Setup"],
 ];
 const THEME = [["accent", "Main colour"], ["bg", "Background"], ["panel", "Cards"], ["ink", "Text"], ["vault", "Vault"], ["lb", "Lockbox"]];
 let cfg = {}; try { cfg = JSON.parse(localStorage.getItem("gps.cfg") || "{}") || {}; } catch {}
@@ -255,14 +255,14 @@ $("theme").onclick = e => { const b = e.target.closest("[data-thclear]"); if (b)
 
 // what each button does in the app today, per screen
 const FLOW = {
-  main: [["A project in the list", "project"], ["New Project", "newproject"], ["System point", "random"], ["Active / Finished / Canceled / All projects", "lists"], ["Plot on Google Maps", "Google Maps with all points"], ["Setup (top)", "setup"], ["Plot on print (bottom)", "print"]],
+  main: [["A project in the list", "project"], ["New Project", "newproject"], ["System point", "random"], ["Active / Finished / Canceled / All projects", "lists"], ["Setup (top)", "setup"], ["Plot on print (bottom)", "print"]],
   lists: [["A job's name", "project"], ["The status tag beside it", "status"], ["Cancel", "main"]],
   status: [["Active / Completed / Canceled", "Saves the status, stays here"], ["Done", "main"]],
   newproject: [["Create project", "project"], ["Cancel", "main"]],
-  project: [["Next location / Capture first location", "Opens the location box here"], ["Lockbox / Vault / Building / Pedestal", "vaultlist"], ["+ Add new location", "Opens the name box here"], ["+ Add type", "addtype"], ["A location in the search list", "capture"], ["Change project status (bottom)", "status"], ["Cancel", "main"]],
+  project: [["Next location / Capture first location", "Opens the location box here"], ["Lockbox / Vault / Building / Pedestal", "vaultlist"], ["+ Add new location", "Opens the name box here"], ["+ Add type", "addtype"], ["A location in the search list", "capture"], ["Plot on Google Maps (bottom)", "Map of this project's points"], ["Change project status (bottom)", "status"], ["Cancel", "main"]],
   vaultlist: [["A location in the list", "capture"], ["Another type button", "vaultlist"], ["Cancel", "main"]],
   addtype: [["A type in the list", "vaultlist"], ["Cancel", "project"]],
-  capture: [["Capture New GPS Location Point", "hold"], ["Coordinates under the shot", "gmap"], ["Pick a different location", "project"], ["Cancel", "main"]],
+  capture: [["Capture New GPS Location Point", "hold"], ["Coordinates under the shot", "gmap"], ["Plot on Google Maps", "Map zoomed to this point"], ["Pick a different location", "project"], ["Cancel", "main"]],
   hold: [["When the reading is done", "placing"], ["Cancel", "capture"]],
   gmap: [["Back", "capture"]],
   ask: [["Change its position", "placing"], ["Wrong location, don't save", "capture"]],

@@ -31,7 +31,7 @@ select { flex: 1; min-width: 0; min-height: 44px; font: inherit; padding: 6px 8p
 </head>
 <body>
 <header>
-  <a href="./">‹ GPS Shots</a>
+  <a href="./" onclick="if (history.length > 1) { history.back(); return false; }">‹ Back</a>
   <select id="proj" aria-label="Project"></select>
 </header>
 <div id="map"></div>
@@ -97,9 +97,13 @@ async function load() {
     docs.forEach((d, i) => { d.slug = d.slug || list[i].name.replace(/\.json$/, ""); });
     const withPts = docs.filter(d => Object.values(d.items || {}).some(r => r.lat != null));
     let last = ""; try { last = JSON.parse(localStorage.getItem("gps.current") || '""'); } catch {}
-    $("proj").innerHTML = `<option value="">All projects</option>` + withPts.map(d => `<option value="${esc(d.slug)}">${esc(d.project || d.slug)}</option>`).join("");
+    const q = new URLSearchParams(location.search); if (q.get("p")) last = q.get("p");
+    $("proj").innerHTML = `<option value="">All projects</option>` + withPts.map(d => `<option value="${esc(d.slug)}">${esc(d.slug === "random-locations" ? "System locations" : d.project || d.slug)}</option>`).join("");
     if (withPts.some(d => d.slug === last)) $("proj").value = last;
     draw();
+    // opened from one point: zoom in on it and show its details
+    const n = q.get("n"), d = docs.find(x => x.slug === last), r = n && d && (d.items || {})[n];
+    if (r && r.lat != null) { map.setView([r.lat, r.lon], 20); layer.eachLayer(l => { if (l.getPopup && l.getPopup() && l.getLatLng().lat === r.lat && l.getLatLng().lng === r.lon) l.openPopup(); }); }
   } catch (e) { say("Could not load shots: " + esc(e.message)); }
 }
 $("proj").onchange = draw;

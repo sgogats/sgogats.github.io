@@ -77,6 +77,7 @@ label.field span { font: 600 14px/1 var(--display); letter-spacing: .08em; text-
 .work-proj { font: 700 22px/1.15 var(--display); text-transform: uppercase; letter-spacing: .02em; }
 #next-btn { margin-top: 6px; min-height: 96px; }
 .linkish { background: none; border: 0; padding: 6px 0; color: var(--accent); font: 600 15px var(--body); cursor: pointer; text-align: left; }
+.maplink { display: grid; place-items: center; text-decoration: none; }
 .btn.cancel { background: #ff3a2f; color: #fff; border-color: #ff3a2f; }
 /* every box has black text unless the designer sets a colour (green and red boxes keep white so they stay readable) */
 .btn:not(.primary):not(.cancel), .item, .item .nm, .item .sub, input, select, textarea, .tabs button { color: #000; }
@@ -176,15 +177,13 @@ summary { font-weight: 600; cursor: pointer; }
     <div class="proj-wrap"><div class="list proj-list" id="proj-list" role="listbox" aria-label="Projects"></div><div class="slide" id="proj-slide" hidden><div id="proj-thumb"></div></div></div>
     <select id="project" aria-label="Pick project" hidden></select>
     <button class="btn big" id="np-open">+ Create new project</button>
-    <button class="btn big" id="random-btn" style="margin-top:8px">Random location</button>
-    <p class="muted small" style="margin:0">GPS by name with no project or print yet. Bring it into a job later by typing its name.</p>
+    <button class="btn big" id="random-btn" style="margin-top:8px">System point</button>
     <div class="pick-btns">
       <button class="btn" data-look="active">Active projects</button>
       <button class="btn" data-look="complete">Finished projects</button>
       <button class="btn" data-look="canceled">Canceled projects</button>
       <button class="btn" data-look="all">All projects</button>
     </div>
-    <a class="btn big" href="map.html" style="margin-top:8px;display:grid;place-items:center;text-decoration:none;color:inherit">Plot on Google Maps</a>
   </div>
   <div id="lists-box" class="stack" hidden>
     <h2 class="pick-title" id="lists-title">Active projects</h2>
@@ -246,6 +245,7 @@ summary { font-weight: 600; cursor: pointer; }
         <button class="btn" id="save-now" hidden>Save now</button>
         <button class="btn" id="cancel-shot" hidden>Cancel</button>
         <button class="btn" id="show-print" hidden>Show on print</button>
+        <a class="btn maplink" id="shot-map" href="map.html" hidden>Plot on Google Maps</a>
         <button class="btn danger" id="clear-shot" hidden>Clear this shot</button>
       </div>
       <div class="small mono muted" id="shot-last"></div>
@@ -263,7 +263,8 @@ summary { font-weight: 600; cursor: pointer; }
         <button class="btn primary" id="ni-add">Add item</button>
       </div>
     </details>
-    <button class="btn big" id="proj-status-btn" style="margin-top:18px" hidden>Change project status</button>
+    <a class="btn big maplink" id="proj-map" href="map.html" style="margin-top:18px" hidden>Plot on Google Maps</a>
+    <button class="btn big" id="proj-status-btn" style="margin-top:10px" hidden>Change project status</button>
   </div>
 </section>
 
@@ -347,7 +348,7 @@ summary { font-weight: 600; cursor: pointer; }
 <div class="gmap" id="gmap" hidden><iframe id="gmap-frame" title="Google Maps" loading="lazy"></iframe><button class="btn big primary" id="gmap-back">Back</button></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-02.12";
+const APP_VERSION = "2026-10-02.13";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -582,7 +583,7 @@ $("np-make").onclick = () => {
 
 async function openProject(s) {
   current = s; LS.set("current", s); group = null; selected = null; cat = null; stopShot(true);
-  const p = s === RANDOM ? { name: "Random locations", slug: RANDOM, job: false } : allProjects().find(x => x.slug === s);
+  const p = s === RANDOM ? { name: "System locations", slug: RANDOM, job: false } : allProjects().find(x => x.slug === s);
   job = p && p.job ? LS.get("job." + s, null) : null;
   data = LS.get("data." + s, null) || { project: p ? p.name : s, slug: s, items: {}, extra: [], controls: {}, lockScale: true };
   render();
@@ -616,7 +617,7 @@ function render() {
   $("pick-view").hidden = !homeView; $("collect-main").hidden = homeView;
   if (homeView) slideBar();
   tabBar();
-  $("work-proj").textContent = current === RANDOM ? "Random locations" : (allProjects().find(p => p.slug === current) || {}).name || "";
+  $("work-proj").textContent = current === RANDOM ? "System locations" : (allProjects().find(p => p.slug === current) || {}).name || "";
   const isR = current === RANDOM;
   $("loc-h").textContent = isR ? "Name of this point" : "Which location?";
   $("cats-h").hidden = $("newtype-h").hidden = !isR;
@@ -662,7 +663,7 @@ function render() {
 const RANDOM = "random-locations";
 function poolDoc() {
   if (current === RANDOM) return data;
-  return LS.get("data." + RANDOM, null) || { project: "Random locations", slug: RANDOM, items: {}, extra: [], controls: {}, labels: {} };
+  return LS.get("data." + RANDOM, null) || { project: "System locations", slug: RANDOM, items: {}, extra: [], controls: {}, labels: {} };
 }
 async function loadPool() {
   if (!gh.on() || current === RANDOM) return;
@@ -676,7 +677,7 @@ async function poolRemove(n, project) {
     try {
       const m = await gh.meta(`gps/readings/${RANDOM}.json`); if (!m) return;
       const doc = mark(merge(poolDoc(), JSON.parse(decodeB64(m.content))));
-      await gh.put(`gps/readings/${RANDOM}.json`, doc, m.sha, `GPS Shots: Random locations: ${n} moved to ${project}`);
+      await gh.put(`gps/readings/${RANDOM}.json`, doc, m.sha, `GPS Shots: System locations: ${n} moved to ${project}`);
       LS.set("data." + RANDOM, doc); return;
     } catch (e) { if (e.status !== 409 && e.status !== 422) return; }
   }
@@ -686,10 +687,10 @@ function bringIn(n) {
   if (shot.running) { toast("Finish or cancel the current shot first"); return; }
   const g = group || (cat && typeGroup(cat)) || "Added in field", kind = cat ? typeKind(cat) : /^Building /.test(g) ? "Lockbox" : null;
   data.extra = (data.extra || []).filter(e => e.name !== n); data.extra.push(kind ? { name: n, group: g, kind } : { name: n, group: g });
-  data.items[n] = Object.assign({}, r, { group: g, from: "Random locations" });
+  data.items[n] = Object.assign({}, r, { group: g, from: "System locations" });
   if (data.deleted) delete data.deleted[n];
   const b2 = (pd.labels || {})[n]; if (b2) data.labels = Object.assign({}, data.labels, { [n]: b2 });
-  saveLocal(); push(`${n} brought in from Random locations`);
+  saveLocal(); push(`${n} brought in from System locations`);
   const proj = data.project || current; poolRemove(n, proj);
   group = g; selected = n; locOpen = false; finding = false; $("loc").blur(); render(); toast(`${n} brought in with its GPS`);
   if (job && job.plan) { showTab("print"); startPlacing(n, true); }
@@ -827,7 +828,7 @@ function renderGroups(groups, items) {
   const exists = typed && (locGroups.some(x => norm(x) === norm(typed)) || locItems.some(x => norm(x.name) === norm(typed)));
   const pd = poolDoc();
   const pl = (m.pool || []).map(n => { const r = pd.items[n], b2 = (pd.labels || {})[n];
-    return `<button class="item" role="option" data-pool="${esc(n)}">${symbol("Other")}<span><span class="nm">${esc(b2 ? n + " · " + b2 : n)}</span><br><span class="sub">Random location · tap to bring it into this job</span></span><span class="pill ${accClass(r.acc_ft)}">±${Math.round(r.acc_ft)} ft</span></button>`; }).join("");
+    return `<button class="item" role="option" data-pool="${esc(n)}">${symbol("Other")}<span><span class="nm">${esc(b2 ? n + " · " + b2 : n)}</span><br><span class="sub">System location · tap to bring it into this job</span></span><span class="pill ${accClass(r.acc_ft)}">±${Math.round(r.acc_ft)} ft</span></button>`; }).join("");
   const none = !g && !it && !pl ? `<div class="item loc-opt" style="cursor:default"><span class="nm">No location named “${esc(typed)}”</span><span></span></div>` : "";
   const add = typed && !exists ? `<button class="item loc-opt" data-new="${esc(typed)}"><span><span class="nm" style="color:var(--accent)">${current === RANDOM ? "+ New point" : "+ Add new location"} “${esc(typed)}”</span><br><span class="sub">${current === RANDOM ? (cat ? "As a " + esc(cat) : "Pick its type below") : `Goes in ${esc(group || (cat && typeGroup(cat)) || "Added in field")}${cat ? " as a " + esc(cat) : ""}`}</span></span><span></span></button>` : "";
   box.innerHTML = none + g + it + pl + add;
@@ -1450,7 +1451,11 @@ function applyDesign() {
   const d = design || {}, th = d.theme || {};
   let css = "";
   const sn = screenNow();
-  $("proj-status-btn").hidden = sn !== "project";
+  $("proj-status-btn").hidden = $("proj-map").hidden = sn !== "project";
+  $("proj-map").href = "map.html?p=" + encodeURIComponent(current || "");
+  const sr = selected && data.items && data.items[selected];
+  $("shot-map").hidden = !(sn === "capture" && sr && sr.lat != null && !shot.running);
+  if (sr) $("shot-map").href = `map.html?p=${encodeURIComponent(current)}&n=${encodeURIComponent(selected)}`;
   const sb = ((d.screens || {})[sn] || {}).bg || SCREEN_BG[sn];
   if (sb) css += `body{background:${sb}!important;color:${autoInk(sb) || "inherit"}}.pick-title,h2,h3,.muted,.work-proj{color:${autoInk(sb) || "inherit"}}.btn,.item,input,select,.list{color:var(--ink)}`;
   const vars = Object.entries(th).filter(([k, v]) => THEME_VARS[k] && v).map(([k, v]) => `${THEME_VARS[k]}:${v}!important;`).join("");
