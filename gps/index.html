@@ -347,7 +347,7 @@ summary { font-weight: 600; cursor: pointer; }
 <div class="gmap" id="gmap" hidden><iframe id="gmap-frame" title="Google Maps" loading="lazy"></iframe><button class="btn big primary" id="gmap-back">Back</button></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-02.11";
+const APP_VERSION = "2026-10-02.12";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -484,24 +484,52 @@ const ST_NAME = { active: "Active", complete: "Completed", canceled: "Canceled" 
 const LOOK_TITLE = { active: "Active projects", complete: "Finished projects", canceled: "Canceled projects", all: "All projects" };
 let statuses = LS.get("status", {}), look = "active", statusFor = null;
 const statusOf = slug => statuses[slug] || "active";
+/* gps/projects.json = { status: {slug: st}, projects: [{name, slug, t}] } so a project made on one device shows on every device */
+function addCustom(list) {
+  let changed = false;
+  for (const p of list || []) {
+    if (!p || !p.slug || p.slug === RANDOM || jobs.some(j => j.slug === p.slug)) continue;
+    const have = custom.find(c => c.slug === p.slug);
+    if (!have) { custom.push({ name: p.name || p.slug, slug: p.slug }); changed = true; }
+    else if (p.name && have.name !== p.name && have.name === p.slug.replace(/-/g, " ")) { have.name = p.name; changed = true; }   // real name over a file-name guess
+  }
+  if (changed) { LS.set("custom", custom); renderProjects(); }
+  return changed;
+}
 async function pullStatus() {
   if (!gh.on()) return;
-  try { const t = await gh.raw("gps/projects.json"); if (t && t.status) { statuses = Object.assign({}, t.status); LS.set("status", statuses); projList(); if (!$("lists-box").hidden) showLists(look); } } catch {}
+  try {
+    const t = await gh.raw("gps/projects.json") || {};
+    statuses = Object.assign({}, t.status || {}); LS.set("status", statuses);
+    addCustom(t.projects);
+    // projects made on this device before syncing existed: send them up once
+    const remote = new Set((t.projects || []).map(p => p.slug));
+    const missing = custom.filter(c => c.slug !== RANDOM && !remote.has(c.slug) && !jobs.some(j => j.slug === c.slug));
+    if (missing.length) editProjects(d => { for (const c of missing) if (!d.projects.some(p => p.slug === c.slug)) d.projects.push({ name: c.name, slug: c.slug, t: Date.now() }); }, "GPS Shots: projects from this device");
+    projList(); if (!$("lists-box").hidden) showLists(look);
+  } catch {}
+}
+async function editProjects(fn, msg) {
+  if (!gh.on()) return false;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    try {
+      const m = await gh.meta("gps/projects.json");
+      const d = m ? JSON.parse(decodeB64(m.content)) : {};
+      d.status = d.status || {}; d.projects = d.projects || [];
+      fn(d);
+      await gh.put("gps/projects.json", d, m && m.sha, msg);
+      statuses = d.status; LS.set("status", statuses); return true;
+    } catch (e) { if (e.status !== 409 && e.status !== 422) return false; }
+  }
+  return false;
 }
 async function pushStatus(slug, st) {
   statuses[slug] = st; LS.set("status", statuses);
-  if (!gh.on()) return;
-  for (let attempt = 0; attempt < 3; attempt++) {
-    try {
-      const m = await gh.meta("gps/projects.json");
-      const remote = m ? (JSON.parse(decodeB64(m.content)).status || {}) : {};
-      remote[slug] = st;
-      await gh.put("gps/projects.json", { status: remote }, m && m.sha, `GPS Shots: ${slug} is ${st}`);
-      statuses = remote; LS.set("status", statuses); return;
-    } catch (e) { if (e.status !== 409 && e.status !== 422) { toast("Status saved on this phone only"); return; } }
-  }
+  if (gh.on() && !(await editProjects(d => { d.status[slug] = st; }, `GPS Shots: ${slug} is ${st}`))) toast("Status saved on this phone only");
 }
-// each lookup page is just its list; tapping a job opens "Change status of job"
+async function pushProject(name, s) {
+  if (gh.on() && !(await editProjects(d => { if (!d.projects.some(p => p.slug === s)) d.projects.push({ name, slug: s, t: Date.now() }); }, `GPS Shots: new project ${name}`))) toast("Project saved on this phone only for now");
+}
 function showLists(which) {
   look = which; homePanel("lists");
   $("lists-title").textContent = LOOK_TITLE[which];
@@ -540,6 +568,7 @@ function goHome() {
   projList(); locOpen = false;
   home = true; selected = group = cat = null; finding = false;
   showNewProject(false); renderProjects(); showTab("collect"); render(); window.scrollTo(0, 0);
+  pullStatus();
 }
 document.addEventListener("click", e => { if (e.target.closest("[data-home]")) goHome(); });
 $("np-cancel").onclick = goHome;
@@ -547,6 +576,7 @@ $("np-make").onclick = () => {
   const name = $("np-name").value.trim(); if (!name) { toast("Type a project name first"); return; }
   const s = slug(name);
   if (!allProjects().some(p => p.slug === s)) { custom.push({ name, slug: s }); LS.set("custom", custom); }
+  pushProject(name, s);
   $("np-name").value = ""; showNewProject(false); home = false; finding = true; current = s; renderProjects(); openProject(s);
 };
 
@@ -1350,10 +1380,13 @@ async function loadJobs(loud) {
     if (list) { jobs = list; LS.set("jobs", jobs); }
     // projects started on another phone
     try {
-      const r = await fetch(gh.url("gps/readings") + "?ref=" + encodeURIComponent(cfg.branch), { headers: gh.headers(false), cache: "no-store" });
+      const r = await fetch(gh.url("gps/readings") + "?ref=" + encodeURIComponent(cfg.branch) + "&t=" + Date.now(), { headers: gh.headers(false), cache: "no-store" });
       if (r.ok) for (const f of await r.json()) {
         const s = f.name.replace(/\.json$/, "");
-        if (f.name.endsWith(".json") && !allProjects().some(p => p.slug === s)) custom.push({ name: s.replace(/-/g, " "), slug: s });
+        if (f.name.endsWith(".json") && s !== RANDOM && !allProjects().some(p => p.slug === s)) {
+          let name = s.replace(/-/g, " "); try { const d = await gh.raw("gps/readings/" + f.name); if (d && d.project) name = d.project; } catch {}
+          custom.push({ name, slug: s });
+        }
       }
       LS.set("custom", custom);
     } catch {}
@@ -1484,7 +1517,7 @@ renderProjects();
 if (current && allProjects().some(p => p.slug === current)) openProject(current);
 if (gh.on()) { loadJobs(false); pullTypes(); pullDesign(); pullStatus(); }
 else setSync("", "Phone only");
-document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") pullDesign(); });
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") { pullDesign(); pullStatus(); } });
 render();
 </script>
 <div class="ask" id="ask" hidden><div><div id="ask-msg"></div><button class="btn primary" id="ask-yes"></button><button class="btn" id="ask-no"></button></div></div>
