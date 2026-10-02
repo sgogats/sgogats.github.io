@@ -113,7 +113,7 @@ textarea { min-height: 70px; resize: vertical; }
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const SCREENS = [
-  ["main", "Main screen"], ["newproject", "New project"], ["project", "Project page"], ["vaultlist", "Vault list"],
+  ["main", "Main screen"], ["lists", "Project lists"], ["status", "Change project status"], ["newproject", "New project"], ["project", "Project page"], ["vaultlist", "Vault list"],
   ["addtype", "Add type"], ["capture", "Capture (Store GPS)"], ["hold", "Hold still pop-up"], ["gmap", "Map from coordinates"], ["ask", "Already-in pop-up"], ["clean", "After save"],
   ["random", "Random location"], ["print", "Print"], ["placing", "Set spot on print"], ["setup", "Setup"],
 ];
