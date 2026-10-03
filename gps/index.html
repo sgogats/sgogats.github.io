@@ -275,7 +275,7 @@ summary { font-weight: 600; cursor: pointer; }
 
     <div id="shot" class="shot" style="margin-top:14px" hidden>
       <div class="row" style="justify-content:space-between">
-        <div><div class="muted small" id="shot-group"></div><div class="target" id="shot-name"></div><div class="muted" id="shot-name2"></div><button class="linkish" id="name2-btn"></button></div>
+        <div><div class="muted small" id="shot-group"></div><div class="target" id="shot-name"></div><div class="muted" id="shot-name2"></div><button class="linkish" id="name2-btn"></button><button class="btn gray" id="editloc-btn" style="margin-top:8px;width:100%">Edit name and/or location type</button></div>
         <span id="shot-pill" class="pill none">Not shot</span>
       </div>
       <div class="meter">
@@ -414,6 +414,14 @@ summary { font-weight: 600; cursor: pointer; }
   <div class="list loc-list" id="td-list" style="max-height:48vh"></div>
   <button class="btn" id="td-done">Done</button>
 </div></div>
+<div class="ask" id="editloc" hidden><div>
+  <span class="ask-no-label" id="editloc-page">Page 2-6 · Edit location</span>
+  <label class="field"><span>Name</span><input id="editloc-name" type="text" autocomplete="off" enterkeyhint="done"></label>
+  <div class="small muted" style="margin:0">Location type (now <b id="editloc-now"></b>)</div>
+  <div class="list loc-list" id="editloc-types" style="max-height:38vh"></div>
+  <button class="btn primary" id="editloc-save">Save</button>
+  <button class="btn cancel" id="editloc-cancel">Cancel</button>
+</div></div>
 <div id="empty-flash" hidden onclick="this.hidden=true"><div id="empty-flash-msg"></div></div>
 <div class="ask" id="settings-sheet" hidden><div>
   <span class="ask-no-label">Settings</span>
@@ -438,7 +446,7 @@ summary { font-weight: 600; cursor: pointer; }
 </div></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-03.34";
+const APP_VERSION = "2026-10-03.35";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -1127,6 +1135,7 @@ function renderShot() {
   $("shot-name").textContent = it.name;
   $("shot-name2").textContent = name2(it.name); $("shot-name2").hidden = !name2(it.name);
   $("name2-btn").textContent = name2(it.name) ? "Change second name" : "+ Add second name (job name or address)"; $("name2-btn").hidden = shot.running;
+  $("editloc-btn").hidden = shot.running;
   const r = data.items[selected];
   const pill = $("shot-pill");
   pill.className = "pill " + accClass(r && r.acc_ft);
@@ -1897,6 +1906,41 @@ $("td-list").addEventListener("click", async e => {
   }
   showTestData();
 });
+/* ---------- page 2-3: Edit name and/or location type (Steven 2026-10-03: fix a mistake, e.g. "OLT" saved as a Pedestal) ---------- */
+let editLoc = null;
+$("editloc-btn").onclick = () => {
+  const it = itemsList().find(i => i.name === selected); if (!it) return;
+  if (job && job.items.some(i => i.name === it.name)) { toast("This one comes from the print. Change it in the designer."); return; }
+  editLoc = { old: it.name, type: typeOf(it) };
+  $("editloc-name").value = it.name; $("editloc-now").textContent = editLoc.type;
+  const list = allTypeNames().filter(n => !isRemovedType(n) || n === editLoc.type).sort((a, b) => a.localeCompare(b));
+  $("editloc-types").innerHTML = list.map(n => `<button class="item loc-opt" style="display:block;text-align:left;width:100%" data-elt="${esc(n)}"><span class="nm">${esc(n)}</span></button>`).join("");
+  showEditLocPick(); $("editloc").hidden = false;
+  const on = $("editloc-types").querySelector(".on-type"); if (on) on.scrollIntoView({ block: "center" });
+};
+function showEditLocPick() { for (const b of $("editloc-types").children) { const on = b.dataset.elt === editLoc.type; b.classList.toggle("on-type", on); b.style.background = on ? "#b9f0c4" : ""; } }
+$("editloc-types").onclick = e => { const b = e.target.closest("[data-elt]"); if (b && editLoc) { editLoc.type = b.dataset.elt; showEditLocPick(); } };
+$("editloc-cancel").onclick = () => { $("editloc").hidden = true; editLoc = null; };
+$("editloc-save").onclick = () => {
+  if (!editLoc) return;
+  const old = editLoc.old, nu = $("editloc-name").value.trim(), t = editLoc.type;
+  if (!nu) { toast("Type a name"); return; }
+  if (nu !== old && itemsList().some(i => norm(i.name) === norm(nu))) { toast(`${nu} is already in this project`); return; }
+  const oldX = (data.extra || []).find(x => x.name === old) || {};
+  const now = Date.now(), g = current === RANDOM ? oldX.group : (typeGroup(t) || "Added in field"), kind = typeKind(t);
+  data.extra = (data.extra || []).filter(x => x.name !== old);
+  data.extra.push(g ? { name: nu, group: g, kind } : { name: nu, kind });
+  if (nu !== old) {
+    if (data.items[old]) { data.items[nu] = Object.assign({}, data.items[old], { t: now }); delete data.items[old]; }
+    if (data.controls && data.controls[old] && data.controls[old].x != null) { data.controls[nu] = data.controls[old]; data.controls[old] = {}; }
+    if (data.labels && data.labels[old]) { data.labels[nu] = data.labels[old]; data.labels[old] = ""; }
+    data.gone = Object.assign({}, data.gone, { [old]: now }); data.deleted = Object.assign({}, data.deleted, { [old]: now });
+    if (data.gone[nu]) delete data.gone[nu]; if (data.deleted[nu]) delete data.deleted[nu];
+  }
+  if (current !== RANDOM && !types().includes(t)) { data.types = [...types(), t]; data.typesOwn = true; data.typesT = now; }
+  typesCache = null; saveLocal(); push(nu !== old ? `Rename ${old} to ${nu} (${t})` : `${nu} is now a ${t}`);
+  $("editloc").hidden = true; editLoc = null; selected = nu; cat = t; group = null; render(); toast("Saved");
+};
 $("open-setup").onclick = () => { $("settings-sheet").hidden = true; showTab("setup"); };
 let editSnap = null, editChanged = false;   // the look before this edit, so Cancel can put it all back
 function setEditing(on) {
