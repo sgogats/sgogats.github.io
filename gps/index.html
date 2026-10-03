@@ -355,7 +355,7 @@ summary { font-weight: 600; cursor: pointer; }
 <div class="gmap" id="gmap" hidden><iframe id="gmap-frame" title="Google Maps" loading="lazy"></iframe><button class="btn big primary" id="gmap-back">Back</button></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-03.4";
+const APP_VERSION = "2026-10-03.5";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -1364,7 +1364,23 @@ function endPtr(e) {
     pending = toPrint(p.x, p.y); $("place-save").disabled = false;
     $("placing-msg").textContent = `${placing}: tap again to adjust, or Save spot.`;
     drawPrint();
+  } else if (p && !gesture && ptrs.size === 0 && job && !shot.running) {
+    // tap a triangle or square: go to GPS capture for that point
+    let hit = null, best = 24;
+    for (const it of job.items) {
+      const q = controlPos(it.name); if (!q) continue;
+      const sp = toScreen(q), d = Math.hypot(sp.x - p.x, sp.y - p.y);
+      if (d < best) { best = d; hit = it; }
+    }
+    if (hit) openCapture(hit.name);
   }
+}
+function openCapture(n) {
+  if ($("cbox").classList.contains("full")) { $("cbox").classList.remove("full"); document.body.style.overflow = ""; }
+  const it = itemsList().find(i => i.name === n) || {};
+  group = it.group || group; selected = n; finding = false; home = false; locOpen = false;
+  showTab("collect"); render();
+  $("shot").scrollIntoView({ behavior: "smooth", block: "start" });
 }
 cv.addEventListener("pointerup", endPtr); cv.addEventListener("pointercancel", endPtr);
 cv.addEventListener("wheel", e => { e.preventDefault(); zoomAt(e.offsetX, e.offsetY, e.deltaY < 0 ? 1.15 : 1 / 1.15); }, { passive: false });
@@ -1482,9 +1498,7 @@ async function checkOffSpots() {
     showTab("print"); findOnPrint(n, true);
     if (!await ask(`Please go to ${n}. When you arrive, tap OK.`, "OK, I'm there", "Cancel")) return;
     if (!await ask(`Would you like to capture ${n} GPS location?`, `Yes, capture ${n}`, "Cancel")) return;
-    const it = itemsList().find(i => i.name === n) || {};
-    reverify = n; group = it.group || group; selected = n; finding = false; home = false; locOpen = false;
-    showTab("collect"); render(); startShot();
+    reverify = n; openCapture(n); startShot();
   } finally { offAsking = false; }
 }
 
