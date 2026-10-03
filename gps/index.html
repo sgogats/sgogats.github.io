@@ -355,7 +355,7 @@ summary { font-weight: 600; cursor: pointer; }
 <div class="gmap" id="gmap" hidden><iframe id="gmap-frame" title="Google Maps" loading="lazy"></iframe><button class="btn big primary" id="gmap-back">Back</button></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-03.3";
+const APP_VERSION = "2026-10-03.4";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -1015,12 +1015,13 @@ function feetApart(a, b) {
   return Math.hypot((b.lat - a.lat) * Math.PI / 180 * k, (b.lon - a.lon) * Math.PI / 180 * k * Math.cos(la));
 }
 const MOVE_CHECK_FT = 50;
+let reverify = null;
 async function finishShot() {
   const samples = shot.samples.slice(); stopShot(true);
   if (!samples.length) { $("shot-msg").textContent = "No GPS readings came in. Try again in the open."; renderShot(); return; }
   const a = average(samples), it = itemsList().find(i => i.name === selected) || {};
-  const old = data.items[selected];
-  if (old && old.lat != null) {
+  const old = data.items[selected], again = reverify === selected; reverify = null;
+  if (old && old.lat != null && !again) {   // a re-shoot asked for by the off-spot check skips the "changing position?" question
     const d = feetApart(old, a);
     if (d > MOVE_CHECK_FT && !await ask(`${selected} is already in, ${Math.round(d)} ft from where you are now. Are you changing its position, or did you pick the wrong location?`,
         `Change ${selected}'s position`, "Wrong location, don't save")) {
@@ -1454,11 +1455,37 @@ function showTab(name) {
   for (const x of document.querySelectorAll("[data-tab]")) x.setAttribute("aria-selected", x === b);
   for (const t of ["collect", "print", "setup"]) $("tab-" + t).hidden = t !== b.dataset.tab;
   try { sessionStorage.setItem("gps.tab", b.dataset.tab); } catch {}
-  if (b.dataset.tab === "print") { $("print-proj").textContent = (allProjects().find(p => p.slug === current) || {}).name || ""; $("lock-scale").checked = data.lockScale !== false; view.fitted = false; drawPrint(); }
+  if (b.dataset.tab === "print") { $("print-proj").textContent = (allProjects().find(p => p.slug === current) || {}).name || ""; $("lock-scale").checked = data.lockScale !== false; view.fitted = false; drawPrint(); setTimeout(checkOffSpots, 400); }
   if (b.dataset.tab === "setup") fillSetup();
   tabBar();
   applyDesign();
   window.scrollTo(0, 0);
+}
+
+/* ---------- points whose GPS lands far from their spot on the print: offer to walk there and re-shoot ---------- */
+const OFF_SPOT_FT = 100;
+let offSkipped = new Set(), offAsking = false;
+async function checkOffSpots() {
+  if (offAsking || shot.running || placing || $("tab-print").hidden || !job || !job.plan) return;
+  const sl = solve(); if (!sl || !sl.ok) return;
+  let worst = null;
+  for (const [n, r] of Object.entries(data.items)) {
+    const d = controlPos(n); if (!d || offSkipped.has(current + "/" + n)) continue;
+    const q = sl.map(sl.local(r)), ft = Math.hypot(q.x - d.x, q.y - d.y) / sl.unit;
+    if (ft > OFF_SPOT_FT && (!worst || ft > worst.ft)) worst = { n, ft };
+  }
+  if (!worst) return;
+  const n = worst.n; offAsking = true;
+  try {
+    offSkipped.add(current + "/" + n);   // ask once per point each time the app is opened
+    if (!await ask(`${n} does not look like it's in the right place. Its GPS is about ${Math.round(worst.ft)} ft from its spot on the print. Would you like to verify its location now?`, "Yes, verify now", "Not now")) return;
+    showTab("print"); findOnPrint(n, true);
+    if (!await ask(`Please go to ${n}. When you arrive, tap OK.`, "OK, I'm there", "Cancel")) return;
+    if (!await ask(`Would you like to capture ${n} GPS location?`, `Yes, capture ${n}`, "Cancel")) return;
+    const it = itemsList().find(i => i.name === n) || {};
+    reverify = n; group = it.group || group; selected = n; finding = false; home = false; locOpen = false;
+    showTab("collect"); render(); startShot();
+  } finally { offAsking = false; }
 }
 
 /* ---------- look set in designer.html (gps/design.json): theme colours, and per-button colour, text, size, hide ---------- */
