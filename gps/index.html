@@ -38,6 +38,9 @@ header.bar { position: sticky; top: 0; z-index: 5; background: var(--bg); paddin
 .bar-in { max-width: 720px; margin: 0 auto; padding: 10px 16px; display: flex; flex-wrap: wrap; gap: 8px 10px; align-items: center; justify-content: space-between; }
 .brand { font: 700 22px/1 var(--display); letter-spacing: .02em; text-transform: uppercase; white-space: nowrap; }
 .brand span { color: var(--accent); }
+.edit-words { min-height: 30px; padding: 3px 10px; font: 700 14px/1 var(--display); margin-top: 4px; background: #e6e8eb; color: #1d2329; border-color: #cfd3d8; }
+.edit-words.on { background: #d6007a !important; color: #fff !important; border-color: #d6007a !important; }
+body.editing button:not(#edit-words), body.editing input, body.editing textarea { outline: 2px dashed #d6007a !important; outline-offset: 2px; }
 .ver-no { font: 700 22px/1 var(--display); letter-spacing: .02em; color: var(--ink); white-space: nowrap; }
 .page-no { font: 700 22px/1 var(--display); letter-spacing: .02em; text-transform: uppercase; color: var(--ink); margin-top: 4px; white-space: nowrap; }
 .ask-no-label { display: block; font: 700 22px/1 var(--display); letter-spacing: .02em; text-transform: uppercase; margin-bottom: 10px; }
@@ -172,7 +175,7 @@ summary { font-weight: 600; cursor: pointer; }
 <body>
 <header class="bar">
   <div class="bar-in">
-    <div class="row" style="gap:10px;flex-wrap:nowrap"><div><div class="brand">GPS<span>Shots</span></div><div class="page-no" id="page-no"></div></div><button class="btn top-setup" id="top-setup" data-tab="setup" aria-selected="false">Setup</button><div class="ver-no" id="ver-no"></div></div>
+    <div class="row" style="gap:10px;flex-wrap:nowrap"><div><div class="brand">GPS<span>Shots</span></div><div class="row" style="gap:8px;flex-wrap:nowrap;align-items:center"><div class="page-no" id="page-no"></div><button class="btn edit-words" id="edit-words">Edit</button></div></div><button class="btn top-setup" id="top-setup" data-tab="setup" aria-selected="false">Setup</button><div class="ver-no" id="ver-no"></div></div>
     <span id="sync" class="sync" title="GitHub sync">Phone only</span>
   </div>
 </header>
@@ -375,7 +378,7 @@ summary { font-weight: 600; cursor: pointer; }
 <div class="gmap" id="gmap" hidden><iframe id="gmap-frame" title="Google Maps" loading="lazy"></iframe><button class="btn big primary" id="gmap-back">Back</button></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-03.14";
+const APP_VERSION = "2026-10-03.15";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -859,7 +862,7 @@ function renderAddLoc() {
   $("addloc-types").innerHTML = types().map(t => `<button class="btn" data-addt="${esc(t)}">${esc(t)}</button>`).join("")
     + `<button class="btn" data-addt-new="1" style="grid-column:1/-1">Add new type</button>`;
   $("addloc-type").textContent = adding.type || "";
-  $("addloc-name").placeholder = adding.type ? `${adding.type} - enter name` : "";
+  $("addloc-name").placeholder = adding.type ? `${adding.type} - ${(((design || {}).els || {})["#addloc-name"] || {}).text || "enter name"}` : "";
 }
 function typeBoxMode() {   // page 2-5 Add new type: no small Cancel, list of types 5 lines tall, scrolls
   const a = !!adding && current !== RANDOM;
@@ -1658,14 +1661,54 @@ function applyDesign() {
   }
   let st = $("design-css"); if (!st) { st = document.createElement("style"); st.id = "design-css"; document.head.appendChild(st); }
   if (st.textContent !== css) st.textContent = css;
-  for (const [sel, o] of Object.entries(d.els || {})) if (o.text) {
-    try { for (const el of document.querySelectorAll(sel)) { if (el.matches("input,textarea")) { if (el.placeholder !== o.text) el.placeholder = o.text; } else if (el.textContent !== o.text) el.textContent = o.text; } } catch {}
+  for (const [sel, o] of Object.entries(d.els || {})) if (o.text && sel !== "#addloc-name") {
+    try { for (const el of document.querySelectorAll(sel)) {
+      if (el.dataset.orig == null) el.dataset.orig = el.matches("input,textarea") ? el.placeholder : el.textContent; if (el.matches("input,textarea")) { if (el.placeholder !== o.text) el.placeholder = o.text; } else if (el.textContent !== o.text) el.textContent = o.text; } } catch {}
   }
 }
 async function pullDesign() {
   if (!gh.on() || DESIGN_MODE) return;
   try { const d = await gh.raw("gps/design.json"); if (d) { design = d; LS.set("design", d); applyDesign(); } } catch {}
 }
+/* ---------- Edit button (Steven 2026-10-03): tap Edit, tap any button or box, type new words; saved to gps/design.json for every phone. Only words change, never what a button does. ---------- */
+let editing = false;
+$("edit-words").onclick = () => {
+  editing = !editing; document.body.classList.toggle("editing", editing);
+  $("edit-words").classList.toggle("on", editing); $("edit-words").textContent = editing ? "Done" : "Edit";
+  if (editing) toast("Tap any button or box to change its words. Tap Done when finished.");
+};
+function editTarget(el) {
+  const t = el.closest("button, a.btn, input, textarea"); if (!t || t.id === "edit-words") return null;
+  if (t.closest("[data-n],[data-g],[data-i],[data-pool],[data-p],[data-lp],[data-ls],[data-t]") || t.matches("[data-cat],[data-addt],[data-setst],#ask-yes,#ask-no")) return { fixed: true };
+  for (const a of ["data-act", "data-tab", "data-size", "data-look", "data-addt-new"]) if (t.hasAttribute(a)) return { sel: `[${a}="${t.getAttribute(a).replace(/"/g, '\\"')}"]`, el: t };
+  if (t.id) return { sel: "#" + t.id, el: t };
+  return null;
+}
+document.addEventListener("click", async e => {
+  if (!editing) return;
+  const t = e.target.closest("button, a, input, textarea, select"); if (!t || t.id === "edit-words") return;
+  e.preventDefault(); e.stopImmediatePropagation(); if (t.matches("input,textarea")) t.blur();
+  const tg = editTarget(t);
+  if (!tg || tg.fixed) { toast("That one's words come from your job (names, types, statuses), so they can't be changed here."); return; }
+  const box = tg.el.matches("input,textarea"), d = design || {}, old = ((d.els || {})[tg.sel] || {}).text;
+  const now = tg.sel === "#addloc-name" ? (old || "enter name") : box ? tg.el.placeholder : tg.el.textContent.trim();
+  const orig = tg.sel === "#addloc-name" ? "enter name" : tg.el.dataset.orig != null ? tg.el.dataset.orig : now;
+  const v = prompt(`New words${box ? " for the example in this box" : " for this button"}.\nLeave empty to put back the original (“${orig}”).`, now);
+  if (v == null) return;
+  const text = v.trim();
+  if (!gh.on()) { toast("Needs the GitHub key (open from the Home Screen icon)"); return; }
+  try {
+    const m = await gh.meta("gps/design.json"), fresh = m ? JSON.parse(decodeURIComponent(escape(atob(m.content.replace(/\s/g, ""))))) : {};
+    fresh.els = fresh.els || {};
+    const o = fresh.els[tg.sel] = fresh.els[tg.sel] || {};
+    if (text && text !== orig) { o.text = text; if (!o.label) o.label = orig.slice(0, 40) + " (page " + pageNo() + ")"; } else delete o.text;
+    if (!Object.keys(o).some(k => k !== "label")) delete fresh.els[tg.sel];
+    fresh.updated = new Date().toISOString();
+    await gh.put("gps/design.json", fresh, m && m.sha, `GPS Shots words: ${orig.slice(0, 40)} -> ${text || "(original)"}`);
+    if (!text || text === orig) { if (box) tg.el.placeholder = orig; else tg.el.textContent = orig; }
+    design = fresh; LS.set("design", fresh); render(); applyDesign(); toast("Saved for every phone");
+  } catch (err) { toast("Couldn't save: " + err.message); }
+}, true);
 // designer.html drives these through the frame
 window.setDesign = d => { design = d; applyDesign(); };
 window.designScreen = name => {
