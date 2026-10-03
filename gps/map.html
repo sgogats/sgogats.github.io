@@ -67,8 +67,24 @@ function draw() {
   for (const d of docs) {
     if (pick && d.slug !== pick) continue;
     const kinds = {}; for (const e of d.extra || []) kinds[e.name] = e.kind;
+    // conduit runs: one continuous line through their points, joined to the vault/pole at each end (Steven 2026-10-03)
+    const runs = {};
+    for (const [n, r] of Object.entries(d.items || {})) if (r.run && r.lat != null) (runs[r.group] = runs[r.group] || []).push([parseInt(n.split(" point ")[1]) || 0, r]);
+    for (const [rn, list] of Object.entries(runs)) {
+      const info = (d.runs || {})[rn] || {}, end = k => { const e = info[k] && (d.items || {})[info[k]]; return e && e.lat != null ? [[e.lat, e.lon]] : []; };
+      const ll = [...end("from"), ...list.sort((a, b) => a[0] - b[0]).map(([, r]) => [r.lat, r.lon]), ...end("to")];
+      ll.forEach(p => pts.push(p));
+      L.polyline(ll, { color: "#ff8c1a", weight: 5, opacity: 0.95 }).addTo(layer).bindTooltip(esc(rn), { sticky: true, className: "lbl" });
+    }
+    // walked buildings: outline through the corners
+    const bs = {};
+    for (const [n, r] of Object.entries(d.items || {})) if (r.corner && r.lat != null) (bs[r.group] = bs[r.group] || []).push([parseInt(n.split(" corner ")[1]) || 0, r]);
+    for (const [g, list] of Object.entries(bs)) {
+      const ll = list.sort((a, b) => a[0] - b[0]).map(([, r]) => [r.lat, r.lon]); ll.forEach(p => pts.push(p));
+      L.polygon(ll, { color: "#ff3fa4", weight: 3, fillOpacity: 0.15 }).addTo(layer).bindTooltip(esc(g), { sticky: true, className: "lbl" });
+    }
     for (const [n, r] of Object.entries(d.items || {})) {
-      if (r.lat == null) continue;
+      if (r.lat == null || r.run || r.corner) continue;
       const ll = [r.lat, r.lon], b2 = (d.labels || {})[n], c = color(n, kinds[n]);
       pts.push(ll);
       L.circle(ll, { radius: (r.acc_ft || 0) / 3.28084, color: c, weight: 1, fillOpacity: 0.12, interactive: false }).addTo(layer);

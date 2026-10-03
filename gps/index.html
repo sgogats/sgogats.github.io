@@ -459,7 +459,7 @@ summary { font-weight: 600; cursor: pointer; }
 </div></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-03.46";
+const APP_VERSION = "2026-10-03.47";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -1358,7 +1358,8 @@ async function push(message) {
         if (m) doc = merge(doc, JSON.parse(decodeB64(m.content)));
         doc.project = doc.project || s; doc.slug = s;
         await gh.put(`gps/readings/${s}.json`, doc, m && m.sha, `GPS Shots: ${doc.project}: ${message}`);
-        LS.set("data." + s, doc); if (s === current) data = doc;
+        if (s === current) { const c = data.controls; data = merge(data, doc); data.controls = Object.assign({}, doc.controls || {}, c || {}); LS.set("data." + s, data); }   // keep anything added while this save was on its way (a new location lost 2026-10-03)
+        else LS.set("data." + s, doc);
         setSync("ok", "Saved to GitHub"); return;
       } catch (e) {
         if (e.status === 409 || e.status === 422) continue;
@@ -1423,7 +1424,48 @@ function sizeCanvas() {
 }
 function extent() {
   if (job && job.plan && job.plan.size) return { x0: 0, y0: 0, x1: job.plan.size[0], y1: job.plan.size[1] };
-  return null;
+  const g = gsheet(); if (!g) return null;
+  const q = Object.values(data.items).filter(r => r.lat != null).map(g.map), xs = q.map(p => p.x), ys = q.map(p => p.y);
+  const pad = Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)) * 0.08 + 20;
+  return { x0: Math.min(...xs) - pad, y0: Math.min(...ys) - pad, x1: Math.max(...xs) + pad, y1: Math.max(...ys) + pad };
+}
+// no print: a blank white sheet laid out in feet from the GPS points, north up (Steven 2026-10-03)
+function gsheet() {
+  if (job && job.plan) return null;
+  const ps = Object.values(data.items).filter(r => r.lat != null); if (!ps.length) return null;
+  const lat0 = ps.reduce((a, p) => a + p.lat, 0) / ps.length, lon0 = ps.reduce((a, p) => a + p.lon, 0) / ps.length, c = Math.cos(lat0 * Math.PI / 180);
+  return { map: p => ({ x: (p.lon - lon0) * 364000 * c, y: -(p.lat - lat0) * 364000 }) };
+}
+function drawSheet(g) {
+  const r = cv.getBoundingClientRect(), S = p => toScreen(g.map(p));
+  ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, r.width, r.height);
+  ctx.lineCap = "round"; ctx.lineJoin = "round"; ctx.font = "700 12px " + css("--body");
+  for (const b of [...new Set(Object.values(data.items).filter(x => x.corner).map(x => x.group))]) {   // walked buildings
+    const qs = buildingCorners(b).map(n => S(data.items[n])); if (qs.length < 2) continue;
+    ctx.fillStyle = "#e6e8eb"; ctx.strokeStyle = "#111"; ctx.lineWidth = 2;
+    ctx.beginPath(); qs.forEach((q, i) => i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y)); ctx.closePath(); ctx.fill(); ctx.stroke();
+    const cx = qs.reduce((a, q) => a + q.x, 0) / qs.length, cy = qs.reduce((a, q) => a + q.y, 0) / qs.length;
+    ctx.fillStyle = "#111"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(both(b), cx, cy);
+  }
+  for (const rn of runNames()) {   // conduit runs: one continuous orange line
+    const pts = runPath(rn), qs = pts.map(S); if (qs.length < 2) continue;
+    ctx.strokeStyle = "#e07000"; ctx.lineWidth = 3; ctx.beginPath(); qs.forEach((q, i) => i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y)); ctx.stroke();
+    const m = Math.floor((qs.length - 1) / 2), a = qs[m], b = qs[m + 1];
+    ctx.fillStyle = "#b35600"; ctx.textAlign = "center"; ctx.textBaseline = "bottom"; const lab = `${rn} · ${Math.round(runFeet(pts)).toLocaleString()} ft`, hw = ctx.measureText(lab).width / 2 + 4;
+    ctx.fillText(lab, Math.min(Math.max((a.x + b.x) / 2, hw), r.width - hw), (a.y + b.y) / 2 - 6);
+  }
+  const kinds = {}; for (const i of itemsList()) kinds[i.name] = i.kind;
+  for (const [n, rd] of Object.entries(data.items)) {   // locations
+    if (rd.corner || rd.run || rd.lat == null) continue;
+    const q = S(rd), k = kinds[n] || "", t = typeOf({ name: n, kind: k });
+    ctx.fillStyle = /lockbox/i.test(k) && !/vault/i.test(k) ? css("--lb") : /pole/i.test(k) ? "#7a4b00" : /pedestal/i.test(k) ? "#555" : css("--vault");
+    ctx.beginPath();
+    if (ctx.fillStyle === css("--lb")) { ctx.moveTo(q.x, q.y - 8); ctx.lineTo(q.x + 8, q.y + 6); ctx.lineTo(q.x - 8, q.y + 6); ctx.closePath(); }
+    else if (/pole/i.test(k)) ctx.arc(q.x, q.y, 6, 0, 7); else ctx.rect(q.x - 6, q.y - 6, 12, 12);
+    ctx.fill();
+    ctx.fillStyle = "#111"; ctx.textAlign = "left"; ctx.textBaseline = "middle"; ctx.fillText(both(n), q.x + 10, q.y);
+  }
+  ctx.fillStyle = "#111"; ctx.textAlign = "right"; ctx.textBaseline = "top"; ctx.font = "700 14px " + css("--body"); ctx.fillText("N ↑", r.width - 10, 10);
 }
 function fitView() {
   const r = cv.getBoundingClientRect(), e = extent();
@@ -1441,6 +1483,7 @@ function drawPrint() {
   ctx.fillStyle = css("--panel"); ctx.fillRect(0, 0, r.width, r.height);
   sol = solve();
   renderFitNote(); renderCtrlRows();
+  if ((!job || !job.plan) && gsheet()) { drawSheet(gsheet()); return; }
   if (!job || !job.plan) {
     ctx.fillStyle = css("--muted"); ctx.font = "16px " + css("--body"); ctx.textAlign = "center";
     ctx.fillText(job ? "This job has no site plan." : "No print for this project yet.", r.width / 2, r.height / 2 - 10);
@@ -2129,6 +2172,7 @@ async function settleEnd(r, run, end, p, nb) {   // what this end of the run con
       data.extra = data.extra || []; data.extra.push({ name: nl.name, group: typeGroup(nl.type) || "Added in field", kind });
       data.items[nl.name] = { lat: p.lat, lon: p.lon, acc_ft: p.acc_ft, alt: p.alt, n: p.n, t: Date.now(), group: typeGroup(nl.type) || "Added in field" };
       if (data.deleted) delete data.deleted[nl.name];
+      saveLocal(); push(`Add ${nl.name}`);
       run[end] = nl.name; if (!/riser/i.test(nl.type)) run[end + "Wall"] = wallOf(p, nb); return;
     }
   }
