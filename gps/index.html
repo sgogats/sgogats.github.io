@@ -429,7 +429,7 @@ summary { font-weight: 600; cursor: pointer; }
 </div></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-03.29";
+const APP_VERSION = "2026-10-03.30";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -912,22 +912,32 @@ $("type-name").addEventListener("keydown", e => { if (e.key === "Enter") { e.pre
 let typeCheckLib = false, typeCheckPick = null, typeCheckNew = null, typeCheckName = "";
 function checkNewType(typed, onPick, onNew) {
   typed = typed.trim(); if (!typed) return;
-  const have = allTypeNames().find(n => norm(n) === norm(typed)); if (have) { onPick(have); return; }
+  // exact name, or the only type that contains what was typed ("splice" = Splice can): just use it
+  const all = allTypeNames(), part = all.filter(n => norm(n).includes(norm(typed)));
+  const have = all.find(n => norm(n) === norm(typed)) || (part.length === 1 ? part[0] : null);
+  if (have) { onPick(have); return; }
   typeCheckPick = onPick; typeCheckNew = onNew; typeCheckName = typed;
   if (document.activeElement) document.activeElement.blur();
   $("type-check-list").innerHTML = allTypeNames().slice().sort((a, b) => a.localeCompare(b)).map(n => `<button class="item loc-opt" data-tc="${esc(n)}"><span class="nm">${esc(n)}</span><span></span></button>`).join("")
-    + `<button class="btn primary" id="type-check-new" style="width:100%;margin-top:10px">Continue: add “${esc(typed)}”</button>`;
+    + `<button class="btn primary" id="type-check-new" style="width:100%;margin-top:10px">Confirm adding new location type “${esc(typed)}”</button>`;
   $("type-check").hidden = false; $("type-check-list").scrollTop = 0;
+  // several types contain it ("box"): show them first, no red flash
+  if (part.length > 1) { const first = $("type-check-list").querySelector(`[data-tc="${CSS.escape(part.sort((a, b) => a.localeCompare(b))[0])}"]`); if (first) first.scrollIntoView({ block: "start" }); return; }
   flashEmpty("Location type does not exist. Verify you want to add it");
 }
-function typeEntered() { typeCheckLib = false; checkNewType($("type-name").value, addType, addType); }
+function typeEntered() {
+  typeCheckLib = false;
+  // from a project page, picking or adding a type goes straight on to adding a location of that type (page 2-5 naming)
+  const go = n => { if (current !== RANDOM && !adding) { adding = { type: null }; group = null; selected = null; } addType(n); };
+  checkNewType($("type-name").value, go, go);
+}
 $("type-next").onclick = typeEntered;
 $("type-check-list").addEventListener("click", e => {
   const b = e.target.closest("[data-tc]"); if (b) { $("type-check").hidden = true; typeCheckPick && typeCheckPick(b.dataset.tc); return; }
   if (e.target.closest("#type-check-new")) { $("type-check").hidden = true; typeCheckNew && typeCheckNew(typeCheckName); }
 });
 $("type-check-cancel").onclick = () => { $("type-check").hidden = true; if (typeCheckLib) $("type-lib").hidden = false; };
-$("type-sugg").addEventListener("click", e => { const b = e.target.closest("[data-t]"); if (b) addType(b.dataset.t); });
+$("type-sugg").addEventListener("click", e => { const b = e.target.closest("[data-t]"); if (b) { $("type-name").value = b.dataset.t; typeEntered(); } });
 $("type-cancel").onclick = () => { $("type-box").hidden = true; if (current === RANDOM) render(); applyDesign(); };
 $("cats").addEventListener("click", e => {
   const b = e.target.closest("button"); if (!b) return;
