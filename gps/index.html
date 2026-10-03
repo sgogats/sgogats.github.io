@@ -349,6 +349,7 @@ summary { font-weight: 600; cursor: pointer; }
   <div class="row" style="margin-top:12px">
     <button class="btn primary" id="export-csv">Export CSV</button>
     <button class="btn" id="export-json">Export JSON</button>
+    <button class="btn" id="save-pdf" hidden>Save as PDF (24 x 36)</button>
   </div>
 </section>
 
@@ -459,7 +460,7 @@ summary { font-weight: 600; cursor: pointer; }
 </div></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-03.47";
+const APP_VERSION = "2026-10-03.49";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -1434,38 +1435,97 @@ function gsheet() {
   if (job && job.plan) return null;
   const ps = Object.values(data.items).filter(r => r.lat != null); if (!ps.length) return null;
   const lat0 = ps.reduce((a, p) => a + p.lat, 0) / ps.length, lon0 = ps.reduce((a, p) => a + p.lon, 0) / ps.length, c = Math.cos(lat0 * Math.PI / 180);
-  return { map: p => ({ x: (p.lon - lon0) * 364000 * c, y: -(p.lat - lat0) * 364000 }) };
+  return { map: p => ({ x: (p.lon - lon0) * 364000 * c, y: -(p.lat - lat0) * 364000 }), inv: q => ({ lat: lat0 - q.y / 364000, lon: lon0 + q.x / (364000 * c) }), lat0 };
 }
-function drawSheet(g) {
-  const r = cv.getBoundingClientRect(), S = p => toScreen(g.map(p));
-  ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, r.width, r.height);
-  ctx.lineCap = "round"; ctx.lineJoin = "round"; ctx.font = "700 12px " + css("--body");
+// terrain map behind the no-print sheet (Steven 2026-10-03), same imagery as the map page
+const tileImgs = new Map(); let tileRedraw = 0;
+// o = { c: 2d context, v: view {s,x,y}, r: {width,height}, zUp: extra tile zoom, max: tile cap, keys: collects tile keys used }
+function drawTiles(g, o) {
+  const { c, v, r } = o, mpp = 0.3048 / v.s;   // meters per pixel
+  const z = Math.max(1, Math.min(19, Math.round(Math.log2(156543.03 * Math.cos(g.lat0 * Math.PI / 180) / mpp)) + (o.zUp || 0)));
+  const n = 2 ** z, tx = lon => (lon + 180) / 360 * n, ty = lat => { const a = lat * Math.PI / 180; return (1 - Math.log(Math.tan(a) + 1 / Math.cos(a)) / Math.PI) / 2 * n; };
+  const lonOf = x => x / n * 360 - 180, latOf = y => Math.atan(Math.sinh(Math.PI * (1 - 2 * y / n))) * 180 / Math.PI;
+  const sh = q => ({ x: (q.x - v.x) / v.s, y: (q.y - v.y) / v.s }), ts = p => ({ x: p.x * v.s + v.x, y: p.y * v.s + v.y });
+  const a = g.inv(sh({ x: 0, y: 0 })), b = g.inv(sh({ x: r.width, y: r.height }));
+  const x0 = Math.floor(tx(a.lon)), x1 = Math.floor(tx(b.lon)), y0 = Math.floor(ty(a.lat)), y1 = Math.floor(ty(b.lat));
+  if ((x1 - x0 + 1) * (y1 - y0 + 1) > (o.max || 80)) return;
+  for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) {
+    if (y < 0 || y >= n) continue;
+    const key = `${z}/${y}/${((x % n) + n) % n}`;
+    let im = tileImgs.get(key);
+    if (!im) {
+      im = new Image(); im.crossOrigin = "anonymous";
+      im.onload = () => { cancelAnimationFrame(tileRedraw); tileRedraw = requestAnimationFrame(() => { if (!$("tab-print").hidden) drawPrint(); }); };
+      im.src = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/${key}`;
+      tileImgs.set(key, im);
+    }
+    if (o.keys) o.keys.push(key);
+    if (!im.complete || !im.naturalWidth) continue;
+    const p = ts(g.map({ lat: latOf(y), lon: lonOf(x) })), q = ts(g.map({ lat: latOf(y + 1), lon: lonOf(x + 1) }));
+    c.drawImage(im, p.x, p.y, q.x - p.x + 0.5, q.y - p.y + 0.5);
+  }
+}
+function outText(c, t, x, y) { c.lineWidth = 3.5; c.strokeStyle = "rgba(0,0,0,.85)"; c.strokeText(t, x, y); c.fillStyle = "#fff"; c.fillText(t, x, y); }   // readable on the photo
+function drawSheet(g, o) {
+  o = o || { c: ctx, v: view, r: cv.getBoundingClientRect() };
+  const { c, v, r } = o, S = p => { const q = g.map(p); return { x: q.x * v.s + v.x, y: q.y * v.s + v.y }; };
+  c.fillStyle = "#fff"; c.fillRect(0, 0, r.width, r.height);
+  drawTiles(g, o);
+  c.lineCap = "round"; c.lineJoin = "round"; c.font = "700 12px " + css("--body");
   for (const b of [...new Set(Object.values(data.items).filter(x => x.corner).map(x => x.group))]) {   // walked buildings
     const qs = buildingCorners(b).map(n => S(data.items[n])); if (qs.length < 2) continue;
-    ctx.fillStyle = "#e6e8eb"; ctx.strokeStyle = "#111"; ctx.lineWidth = 2;
-    ctx.beginPath(); qs.forEach((q, i) => i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y)); ctx.closePath(); ctx.fill(); ctx.stroke();
+    c.fillStyle = "rgba(230,232,235,.85)"; c.strokeStyle = "#111"; c.lineWidth = 2;
+    c.beginPath(); qs.forEach((q, i) => i ? c.lineTo(q.x, q.y) : c.moveTo(q.x, q.y)); c.closePath(); c.fill(); c.stroke();
     const cx = qs.reduce((a, q) => a + q.x, 0) / qs.length, cy = qs.reduce((a, q) => a + q.y, 0) / qs.length;
-    ctx.fillStyle = "#111"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(both(b), cx, cy);
+    c.textAlign = "center"; c.textBaseline = "middle"; outText(c, both(b), cx, cy);
   }
   for (const rn of runNames()) {   // conduit runs: one continuous orange line
     const pts = runPath(rn), qs = pts.map(S); if (qs.length < 2) continue;
-    ctx.strokeStyle = "#e07000"; ctx.lineWidth = 3; ctx.beginPath(); qs.forEach((q, i) => i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y)); ctx.stroke();
+    c.strokeStyle = "#ff8c1a"; c.lineWidth = 3; c.beginPath(); qs.forEach((q, i) => i ? c.lineTo(q.x, q.y) : c.moveTo(q.x, q.y)); c.stroke();
     const m = Math.floor((qs.length - 1) / 2), a = qs[m], b = qs[m + 1];
-    ctx.fillStyle = "#b35600"; ctx.textAlign = "center"; ctx.textBaseline = "bottom"; const lab = `${rn} · ${Math.round(runFeet(pts)).toLocaleString()} ft`, hw = ctx.measureText(lab).width / 2 + 4;
-    ctx.fillText(lab, Math.min(Math.max((a.x + b.x) / 2, hw), r.width - hw), (a.y + b.y) / 2 - 6);
+    c.textAlign = "center"; c.textBaseline = "bottom"; const lab = `${rn} · ${Math.round(runFeet(pts)).toLocaleString()} ft`, hw = c.measureText(lab).width / 2 + 4;
+    outText(c, lab, Math.min(Math.max((a.x + b.x) / 2, hw), r.width - hw), (a.y + b.y) / 2 - 6);
   }
   const kinds = {}; for (const i of itemsList()) kinds[i.name] = i.kind;
   for (const [n, rd] of Object.entries(data.items)) {   // locations
     if (rd.corner || rd.run || rd.lat == null) continue;
-    const q = S(rd), k = kinds[n] || "", t = typeOf({ name: n, kind: k });
-    ctx.fillStyle = /lockbox/i.test(k) && !/vault/i.test(k) ? css("--lb") : /pole/i.test(k) ? "#7a4b00" : /pedestal/i.test(k) ? "#555" : css("--vault");
-    ctx.beginPath();
-    if (ctx.fillStyle === css("--lb")) { ctx.moveTo(q.x, q.y - 8); ctx.lineTo(q.x + 8, q.y + 6); ctx.lineTo(q.x - 8, q.y + 6); ctx.closePath(); }
-    else if (/pole/i.test(k)) ctx.arc(q.x, q.y, 6, 0, 7); else ctx.rect(q.x - 6, q.y - 6, 12, 12);
-    ctx.fill();
-    ctx.fillStyle = "#111"; ctx.textAlign = "left"; ctx.textBaseline = "middle"; ctx.fillText(both(n), q.x + 10, q.y);
+    const q = S(rd), k = kinds[n] || "", lb = /lockbox/i.test(k) && !/vault/i.test(k);
+    c.fillStyle = lb ? css("--lb") : /pole/i.test(k) ? "#c68a2e" : /pedestal/i.test(k) ? "#777" : css("--vault");
+    c.strokeStyle = "#fff"; c.lineWidth = 1.5; c.beginPath();
+    if (lb) { c.moveTo(q.x, q.y - 8); c.lineTo(q.x + 8, q.y + 6); c.lineTo(q.x - 8, q.y + 6); c.closePath(); }
+    else if (/pole/i.test(k)) c.arc(q.x, q.y, 6, 0, 7); else c.rect(q.x - 6, q.y - 6, 12, 12);
+    c.fill(); c.stroke();
+    c.textAlign = "left"; c.textBaseline = "middle"; outText(c, both(n), q.x + 10, q.y);
   }
-  ctx.fillStyle = "#111"; ctx.textAlign = "right"; ctx.textBaseline = "top"; ctx.font = "700 14px " + css("--body"); ctx.fillText("N ↑", r.width - 10, 10);
+  c.textAlign = "right"; c.textBaseline = "top"; c.font = "700 14px " + css("--body"); outText(c, "N ↑", r.width - 10, 10);
+}
+/* ---------- Save as PDF, 24 x 36 in (Steven 2026-10-03): the no-print sheet with its satellite photo ---------- */
+function loadScript(src) { return new Promise((ok, no) => { const s = document.createElement("script"); s.src = src; s.onload = ok; s.onerror = no; document.head.appendChild(s); }); }
+async function savePdf() {
+  const g = gsheet(); if (!g) { toast("No GPS points to put on a sheet yet"); return; }
+  toast("Making the 24 x 36 PDF…");
+  try { if (!window.jspdf) await loadScript("https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"); } catch { toast("Could not load the PDF maker. Check your connection."); return; }
+  const e = extent(), wide = (e.x1 - e.x0) >= (e.y1 - e.y0), W = wide ? 36 : 24, H = wide ? 24 : 36, DPI = 50, K = 3;   // 50 layout px per inch, drawn 3x sharper
+  const r = { width: W * DPI, height: H * DPI }, top = 70;   // room for the title at the top
+  const s = Math.min(r.width / (e.x1 - e.x0), (r.height - top) / (e.y1 - e.y0));
+  const v = { s, x: (r.width - (e.x1 - e.x0) * s) / 2 - e.x0 * s, y: top + (r.height - top - (e.y1 - e.y0) * s) / 2 - e.y0 * s };
+  const c2 = document.createElement("canvas"); c2.width = r.width * K; c2.height = r.height * K;
+  const c = c2.getContext("2d"); c.scale(K, K);
+  const o = { c, v, r, zUp: 2, max: 400, keys: [] };
+  drawSheet(g, o);   // first pass asks for the photo tiles
+  const t0 = Date.now();
+  while (o.keys.some(k => { const im = tileImgs.get(k); return im && !im.complete; }) && Date.now() - t0 < 30000) await new Promise(ok => setTimeout(ok, 300));
+  o.keys = []; drawSheet(g, o);
+  const name = (allProjects().find(p => p.slug === current) || {}).name || current;
+  c.fillStyle = "rgba(255,255,255,.92)"; c.fillRect(0, 0, r.width, top - 10);
+  c.fillStyle = "#111"; c.textAlign = "left"; c.textBaseline = "middle"; c.font = "700 30px " + css("--body"); c.fillText(name, 24, 30);
+  c.font = "16px " + css("--body"); c.fillText(`GPS as-built · ${new Date().toLocaleDateString()} · North is up · Map: Esri World Topographic`, 24, 50);
+  let img;
+  try { img = c2.toDataURL("image/jpeg", 0.85); }
+  catch { o.keys = []; tileImgs.clear(); c.setTransform(K, 0, 0, K, 0, 0); drawSheet(g, Object.assign(o, { max: 0 })); img = c2.toDataURL("image/jpeg", 0.85); toast("The photo could not go in the PDF; saved the drawing only"); }
+  const pdf = new window.jspdf.jsPDF({ orientation: wide ? "landscape" : "portrait", unit: "in", format: [24, 36] });
+  pdf.addImage(img, "JPEG", 0, 0, W, H);
+  pdf.save(`${name.replace(/[\\/:*?"<>|]+/g, "-")} 24x36.pdf`);
 }
 function fitView() {
   const r = cv.getBoundingClientRect(), e = extent();
@@ -1483,6 +1543,7 @@ function drawPrint() {
   ctx.fillStyle = css("--panel"); ctx.fillRect(0, 0, r.width, r.height);
   sol = solve();
   renderFitNote(); renderCtrlRows();
+  $("save-pdf").hidden = !!(job && job.plan) || !gsheet();
   if ((!job || !job.plan) && gsheet()) { drawSheet(gsheet()); return; }
   if (!job || !job.plan) {
     ctx.fillStyle = css("--muted"); ctx.font = "16px " + css("--body"); ctx.textAlign = "center";
@@ -2218,6 +2279,7 @@ function drawRun(r) {
     + ((ru.splices || []).length ? `Spliced at point ${ru.splices.map(n => n.split(" point ")[1]).join(", ")}. ` : "") + "North is up.";
   $("bdraw").hidden = false;
 }
+$("save-pdf").onclick = savePdf;
 $("bdraw-close").onclick = () => { $("bdraw").hidden = true; };
 /* ---------- page 2-3: Edit name and/or location type (Steven 2026-10-03: fix a mistake, e.g. "OLT" saved as a Pedestal) ---------- */
 let editLoc = null;
