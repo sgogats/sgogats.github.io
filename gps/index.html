@@ -175,7 +175,7 @@ summary { font-weight: 600; cursor: pointer; }
 <body>
 <header class="bar">
   <div class="bar-in">
-    <div class="row" style="gap:10px;flex-wrap:nowrap"><div><div class="brand">GPS<span>Shots</span></div><div class="row" style="gap:8px;flex-wrap:nowrap;align-items:center"><div class="page-no" id="page-no"></div><button class="btn edit-words" id="edit-words">Edit</button></div></div><button class="btn top-setup" id="top-setup" data-tab="setup" aria-selected="false">Setup</button><div class="ver-no" id="ver-no"></div></div>
+    <div class="row" style="gap:10px;flex-wrap:nowrap"><div><div class="brand">GPS<span>Shots</span></div><div class="row" style="gap:8px;flex-wrap:nowrap;align-items:center"><div class="page-no" id="page-no"></div><button class="btn edit-words" id="edit-words" hidden>Edit</button></div></div><button class="btn top-setup" id="top-setup" data-tab="setup" aria-selected="false">Settings</button><div class="ver-no" id="ver-no"></div></div>
     <span id="sync" class="sync" title="GitHub sync">Phone only</span>
   </div>
 </header>
@@ -330,7 +330,9 @@ summary { font-weight: 600; cursor: pointer; }
 
 <!-- SETUP -->
 <section id="tab-setup" hidden>
-  <h2>Setup</h2>
+  <h2>Settings</h2>
+  <button class="btn big gray" id="edit-layout">Edit layout: OFF</button>
+  <p class="small muted" style="margin:0">Turn on to get an Edit button on every screen, so you can change the words on buttons and the examples in boxes.</p>
   <a class="btn" href="designer.html" style="display:grid;place-items:center;text-decoration:none;color:inherit">Design the app's screens</a>
   <p class="small muted mono" id="ver"></p>
   <p class="small muted">Shots are always kept on this phone. Add a GitHub key to also save them to your repo and to load jobs from the Town House Designer.</p>
@@ -378,7 +380,7 @@ summary { font-weight: 600; cursor: pointer; }
 <div class="gmap" id="gmap" hidden><iframe id="gmap-frame" title="Google Maps" loading="lazy"></iframe><button class="btn big primary" id="gmap-back">Back</button></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-03.15";
+const APP_VERSION = "2026-10-03.16";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -441,7 +443,7 @@ const gh = {
 };
 async function errText(r) {
   let m = ""; try { m = (await r.json()).message; } catch {}
-  if (r.status === 401) return "GitHub key was refused. Check it on Setup.";
+  if (r.status === 401) return "GitHub key was refused. Check it on Settings.";
   if (r.status === 403) return "GitHub key can't write here. It needs Contents: Read and write on this repo.";
   if (r.status === 404) return "Repo or branch not found. Check Setup.";
   return `GitHub said ${r.status}${m ? ": " + m : ""}`;
@@ -459,7 +461,7 @@ function allProjects() {
 function renderProjects() {
   const sel = $("project"), ps = allProjects();
   projList();
-  sel.innerHTML = ps.length ? ps.map(p => `<option value="${esc(p.slug)}">${esc(p.name)}</option>`).join("") : `<option value="">${gh.on() ? "No projects yet" : "No projects. Add your GitHub key on Setup"}</option>`;
+  sel.innerHTML = ps.length ? ps.map(p => `<option value="${esc(p.slug)}">${esc(p.name)}</option>`).join("") : `<option value="">${gh.on() ? "No projects yet" : "No projects. Add your GitHub key on Settings"}</option>`;
   sel.disabled = !ps.length;
   if (!ps.length) { home = true; return; }          // keep the home screen (Random location, + Create new project) even with no projects
   if (current !== RANDOM && !ps.some(p => p.slug === current)) current = ps[0].slug;
@@ -492,7 +494,7 @@ function projList() {
   // most recently edited or opened first, the rest by name
   const rec = LS.get("recent", {}), when = p => Math.max(rec[p.slug] || 0, (LS.get("data." + p.slug, null) || {}).updated || 0);
   const ps = allProjects().filter(p => statusOf(p.slug) === "active" && (!q || hits(p.name, words))).map(p => [when(p), p]).sort((a, b) => b[0] - a[0] || a[1].name.localeCompare(b[1].name)).map(x => x[1]);
-  if (!q && !ps.length) { box.innerHTML = `<div class="item" style="cursor:default"><span class="sub">${gh.on() ? "No projects yet" : "No projects. Add your GitHub key on Setup"}</span><span></span></div>`; slideBar(); return; }
+  if (!q && !ps.length) { box.innerHTML = `<div class="item" style="cursor:default"><span class="sub">${gh.on() ? "No projects yet" : "No projects. Add your GitHub key on Settings"}</span><span></span></div>`; slideBar(); return; }
   box.innerHTML = ps.map(p => `<button class="item" role="option" data-p="${esc(p.slug)}"><span class="nm">${esc(p.name)}</span><span></span></button>`).join("")
     || `<div class="item" style="cursor:default"><span class="sub">No project named “${esc(q)}”</span><span></span></div><button class="item" data-newp="${esc(q)}"><span class="nm" style="color:var(--accent)">+ Create new project “${esc(q)}”</span><span></span></button>`;
   box.scrollTop = 0; slideBar();
@@ -1671,7 +1673,14 @@ async function pullDesign() {
   try { const d = await gh.raw("gps/design.json"); if (d) { design = d; LS.set("design", d); applyDesign(); } } catch {}
 }
 /* ---------- Edit button (Steven 2026-10-03): tap Edit, tap any button or box, type new words; saved to gps/design.json for every phone. Only words change, never what a button does. ---------- */
-let editing = false;
+let editing = false, editLayout = !!LS.get("editLayout", false);
+function showEditLayout() {
+  $("edit-words").hidden = !editLayout; $("edit-layout").textContent = "Edit layout: " + (editLayout ? "ON" : "OFF");
+  $("edit-layout").classList.toggle("primary", editLayout); $("edit-layout").classList.toggle("gray", !editLayout);
+  if (!editLayout && editing) $("edit-words").click();
+}
+$("edit-layout").onclick = () => { editLayout = !editLayout; LS.set("editLayout", editLayout); showEditLayout(); toast(editLayout ? "Edit button is on every screen now" : "Edit button is hidden"); };
+showEditLayout();
 $("edit-words").onclick = () => {
   editing = !editing; document.body.classList.toggle("editing", editing);
   $("edit-words").classList.toggle("on", editing); $("edit-words").textContent = editing ? "Done" : "Edit";
