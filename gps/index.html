@@ -40,7 +40,13 @@ header.bar { position: sticky; top: 0; z-index: 5; background: var(--bg); paddin
 .brand span { color: var(--accent); }
 .edit-words { min-height: 30px; padding: 3px 10px; font: 700 14px/1 var(--display); margin-top: 4px; background: #e6e8eb; color: #1d2329; border-color: #cfd3d8; }
 .edit-words.on { background: #d6007a !important; color: #fff !important; border-color: #d6007a !important; }
-body.editing button:not(#edit-words), body.editing input, body.editing textarea { outline: 2px dashed #d6007a !important; outline-offset: 2px; }
+body.editing button:not(#edit-words):not(#edit-sheet *), body.editing input:not(#edit-sheet *), body.editing textarea { outline: 2px dashed #d6007a !important; outline-offset: 2px; }
+.es-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.es-sw { width: 44px; height: 44px; border-radius: 10px; border: 2px solid #cfd3d8; font: 600 11px/1 var(--display); padding: 0; }
+.es-sw:first-child { width: auto; padding: 0 10px; }
+.es-sz { min-width: 52px; height: 44px; border-radius: 10px; border: 2px solid #cfd3d8; background: var(--panel); color: var(--ink); font: 700 16px/1 var(--display); padding: 0 10px; }
+.es-sw.on, .es-sz.on { outline: 3px solid #d6007a; outline-offset: 2px; }
+#edit-sheet > div { max-height: 92vh; overflow-y: auto; }
 .ver-no { font: 700 22px/1 var(--display); letter-spacing: .02em; color: var(--ink); white-space: nowrap; }
 .page-no { font: 700 22px/1 var(--display); letter-spacing: .02em; text-transform: uppercase; color: var(--ink); margin-top: 4px; white-space: nowrap; }
 .ask-no-label { display: block; font: 700 22px/1 var(--display); letter-spacing: .02em; text-transform: uppercase; margin-bottom: 10px; }
@@ -378,9 +384,21 @@ summary { font-weight: 600; cursor: pointer; }
   <button class="btn cancel" id="hold-cancel">Cancel</button>
 </div></div>
 <div class="gmap" id="gmap" hidden><iframe id="gmap-frame" title="Google Maps" loading="lazy"></iframe><button class="btn big primary" id="gmap-back">Back</button></div>
+<div class="ask" id="edit-sheet" hidden><div>
+  <span class="ask-no-label" id="es-title">Edit this button</span>
+  <label class="field"><span>Words</span><input id="es-text" type="text" autocomplete="off"></label>
+  <div id="es-look" class="stack" style="gap:10px">
+    <div class="small muted" style="margin:0">Color</div><div class="es-row" id="es-colors"></div>
+    <div class="small muted" style="margin:0">Size</div>
+    <div class="es-row" id="es-sizes"><button class="es-sz" data-sz="">Normal</button><button class="es-sz" data-sz="S">S</button><button class="es-sz" data-sz="M">M</button><button class="es-sz" data-sz="L">L</button><button class="es-sz" data-sz="XL">XL</button></div>
+  </div>
+  <button class="btn primary" id="es-save">Save</button>
+  <button class="btn" id="es-reset">Put back the original (“<span id="es-orig"></span>”)</button>
+  <button class="btn cancel" id="es-cancel">Cancel</button>
+</div></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-03.16";
+const APP_VERSION = "2026-10-03.17";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -1693,30 +1711,55 @@ function editTarget(el) {
   if (t.id) return { sel: "#" + t.id, el: t };
   return null;
 }
-document.addEventListener("click", async e => {
-  if (!editing) return;
+const EDIT_COLORS = [["", "Normal"], ["#e6e8eb", "Light gray"], ["#ffffff", "White"], ["#0b7a4b", "Green"], ["#b9f0c4", "Light green"], ["#1f6fd1", "Blue"], ["#cfe3ff", "Light blue"], ["#ff3a2f", "Red"], ["#ff9f1a", "Orange"], ["#ffe14d", "Yellow"], ["#1d2329", "Black"]];
+let editTg = null, editPick = {};
+function editSheet(tg) {
+  editTg = tg; const box = tg.el.matches("input,textarea"), o = (((design || {}).els || {})[tg.sel]) || {};
+  const orig = tg.sel === "#addloc-name" ? "enter name" : tg.el.dataset.orig != null ? tg.el.dataset.orig : (box ? tg.el.placeholder : tg.el.textContent.trim());
+  tg.orig = orig; editPick = { bg: o.bg || "", size: o.size || "" };
+  $("es-title").textContent = box ? "Edit the example in this box" : "Edit this button";
+  $("es-text").value = o.text || (tg.sel === "#addloc-name" ? "enter name" : box ? tg.el.placeholder : tg.el.textContent.trim());
+  $("es-orig").textContent = orig;
+  $("es-look").hidden = box;
+  $("es-colors").innerHTML = EDIT_COLORS.map(([c, n]) => `<button class="es-sw" data-col="${c}" title="${n}" style="background:${c || "var(--panel)"};color:${c ? autoInk(c) : "var(--ink)"}">${c ? "" : "Normal"}</button>`).join("");
+  showEditPicks(); $("edit-sheet").hidden = false;
+}
+function showEditPicks() {
+  for (const b of $("es-colors").children) b.classList.toggle("on", b.dataset.col === editPick.bg);
+  for (const b of $("es-sizes").children) b.classList.toggle("on", b.dataset.sz === editPick.size);
+}
+$("es-colors").onclick = e => { const b = e.target.closest("[data-col]"); if (b) { editPick.bg = b.dataset.col; showEditPicks(); } };
+$("es-sizes").onclick = e => { const b = e.target.closest("[data-sz]"); if (b) { editPick.size = b.dataset.sz; showEditPicks(); } };
+$("es-cancel").onclick = () => { $("edit-sheet").hidden = true; editTg = null; };
+$("es-reset").onclick = () => saveEdit(true);
+$("es-save").onclick = () => saveEdit(false);
+async function saveEdit(reset) {
+  const tg = editTg; if (!tg) return;
+  if (!gh.on()) { toast("Needs the GitHub key (open from the Home Screen icon)"); return; }
+  const text = $("es-text").value.trim(), box = tg.el.matches("input,textarea");
+  try {
+    const m = await gh.meta("gps/design.json"), fresh = m ? JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(m.content.replace(/\s/g, "")), c => c.charCodeAt(0)))) : {};
+    fresh.els = fresh.els || {};
+    const o = fresh.els[tg.sel] = fresh.els[tg.sel] || {};
+    if (!reset && text && text !== tg.orig) o.text = text; else delete o.text;
+    if (!reset && !box && editPick.bg) { o.bg = editPick.bg; delete o.color; } else delete o.bg;
+    if (!reset && !box && editPick.size) o.size = editPick.size; else delete o.size;
+    if (reset) delete o.color;
+    if (!o.label) o.label = tg.orig.slice(0, 40) + " (page " + pageNo() + ")";
+    if (!Object.keys(o).some(k => k !== "label")) delete fresh.els[tg.sel];
+    fresh.updated = new Date().toISOString();
+    await gh.put("gps/design.json", fresh, m && m.sha, `GPS Shots edit: ${tg.orig.slice(0, 40)}${reset ? " back to original" : ""}`);
+    if (!o.text) { if (box) tg.el.placeholder = tg.orig; else tg.el.textContent = tg.orig; }
+    design = fresh; LS.set("design", fresh); $("edit-sheet").hidden = true; editTg = null; render(); applyDesign(); toast("Saved for every phone");
+  } catch (err) { toast("Couldn't save: " + err.message); }
+}
+document.addEventListener("click", e => {
+  if (!editing || e.target.closest("#edit-sheet")) return;
   const t = e.target.closest("button, a, input, textarea, select"); if (!t || t.id === "edit-words") return;
   e.preventDefault(); e.stopImmediatePropagation(); if (t.matches("input,textarea")) t.blur();
   const tg = editTarget(t);
   if (!tg || tg.fixed) { toast("That one's words come from your job (names, types, statuses), so they can't be changed here."); return; }
-  const box = tg.el.matches("input,textarea"), d = design || {}, old = ((d.els || {})[tg.sel] || {}).text;
-  const now = tg.sel === "#addloc-name" ? (old || "enter name") : box ? tg.el.placeholder : tg.el.textContent.trim();
-  const orig = tg.sel === "#addloc-name" ? "enter name" : tg.el.dataset.orig != null ? tg.el.dataset.orig : now;
-  const v = prompt(`New words${box ? " for the example in this box" : " for this button"}.\nLeave empty to put back the original (“${orig}”).`, now);
-  if (v == null) return;
-  const text = v.trim();
-  if (!gh.on()) { toast("Needs the GitHub key (open from the Home Screen icon)"); return; }
-  try {
-    const m = await gh.meta("gps/design.json"), fresh = m ? JSON.parse(decodeURIComponent(escape(atob(m.content.replace(/\s/g, ""))))) : {};
-    fresh.els = fresh.els || {};
-    const o = fresh.els[tg.sel] = fresh.els[tg.sel] || {};
-    if (text && text !== orig) { o.text = text; if (!o.label) o.label = orig.slice(0, 40) + " (page " + pageNo() + ")"; } else delete o.text;
-    if (!Object.keys(o).some(k => k !== "label")) delete fresh.els[tg.sel];
-    fresh.updated = new Date().toISOString();
-    await gh.put("gps/design.json", fresh, m && m.sha, `GPS Shots words: ${orig.slice(0, 40)} -> ${text || "(original)"}`);
-    if (!text || text === orig) { if (box) tg.el.placeholder = orig; else tg.el.textContent = orig; }
-    design = fresh; LS.set("design", fresh); render(); applyDesign(); toast("Saved for every phone");
-  } catch (err) { toast("Couldn't save: " + err.message); }
+  editSheet(tg);
 }, true);
 // designer.html drives these through the frame
 window.setDesign = d => { design = d; applyDesign(); };
