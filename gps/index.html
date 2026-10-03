@@ -408,7 +408,7 @@ summary { font-weight: 600; cursor: pointer; }
 </div></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-03.21";
+const APP_VERSION = "2026-10-03.22";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -627,7 +627,8 @@ document.addEventListener("click", e => {
   const lk = e.target.closest("[data-look]"); if (lk) { $("proj-search").value = ""; showLists(lk.dataset.look); return; }
   const ls = e.target.closest("[data-ls]"); if (ls) { showStatus(ls.dataset.ls); return; }
   const lp = e.target.closest("[data-lp]"); if (lp) { pickProject(lp.dataset.lp); return; }
-  const st = e.target.closest("[data-setst]"); if (st && statusFor && !st.disabled) { statusPick = statusPick === st.dataset.setst ? null : st.dataset.setst; for (const b of document.querySelectorAll("[data-setst]")) b.classList.toggle("st-pick", b.dataset.setst === statusPick); return; }
+  // Steven 2026-10-03: a status button saves that status right away and goes back to the home page
+  const st = e.target.closest("[data-setst]"); if (st && statusFor && !st.disabled) { pushStatus(statusFor, st.dataset.setst); toast(`${$("status-name").textContent} is now ${ST_NAME[st.dataset.setst]}`); projList(); statusPick = null; goHome(); return; }
   if (e.target.closest("#status-done")) {
     if (statusFor && statusPick) { pushStatus(statusFor, statusPick); toast(`${$("status-name").textContent} is now ${ST_NAME[statusPick]}`); projList(); }
     statusPick = null; goHome(); return;
