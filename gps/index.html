@@ -261,6 +261,7 @@ summary { font-weight: 600; cursor: pointer; }
         <p style="margin:0">Type: <b id="addloc-type"></b> <button class="btn" id="addloc-retype" style="min-height:36px;padding:4px 10px;margin-left:6px">Change</button></p>
         <label class="field"><span>Name</span><input id="addloc-name" type="text" placeholder="e.g. OLT-1" autocomplete="off" enterkeyhint="done"></label>
         <button class="btn big gray" id="addloc-make">Add and capture GPS location</button>
+        <button class="btn big gray" id="addloc-bmap" hidden>Map building with GPS coordinates</button>
         <button class="btn big gray" id="addloc-more">Add another location of the same type</button>
         <button class="btn big gray" id="addloc-finish">Finish adding locations</button>
       </div>
@@ -458,7 +459,7 @@ summary { font-weight: 600; cursor: pointer; }
 </div></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-03.38";
+const APP_VERSION = "2026-10-03.39";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -775,8 +776,8 @@ function render() {
   $("done-btn").hidden = finding || shot.running || !!selected;
   $("next-btn").classList.toggle("primary", !selected);
   const items = itemsList();
-  const groups = [...new Set(items.map(i => i.group))];
-  groups.sort((a, b) => { const na = parseInt(a.replace(/\D+/g, "")) || 9999, nb = parseInt(b.replace(/\D+/g, "")) || 9999; return /^Building/.test(a) && /^Building/.test(b) ? na - nb : a.localeCompare(b); });
+  const groups = [...new Set([...items.map(i => i.group), ...(current !== RANDOM ? data.bldgs || [] : [])])];
+  groups.sort((a, b) => { const na = parseInt(a.replace(/\D+/g, "")) || 9999, nb = parseInt(b.replace(/\D+/g, "")) || 9999; return isBldg(a) && isBldg(b) ? na - nb : a.localeCompare(b); });
   if (group && !groups.includes(group)) group = null;
   if (!group && groups.length === 1) group = groups[0];
   $("group-list").innerHTML = groups.map(g => `<option value="${esc(g)}">`).join("");
@@ -785,11 +786,11 @@ function render() {
   renderGroups(groups, items);
   if (cat && !types().includes(cat)) cat = null;
   // a type with no points has no button (projects, and page 4 system points too: Steven 2026-10-03)
-  const shownTypes = types().filter(t => t === cat || items.some(i => inCat(i, t)) || (!isR && t === "Building" && groups.some(g => /^Building /.test(g))));
+  const shownTypes = types().filter(t => t === cat || items.some(i => inCat(i, t)) || (!isR && t === "Building" && groups.some(isBldg)));
   shownTypesNow = shownTypes;
   $("cats").innerHTML = shownTypes.map(t => `<button class="btn" data-cat="${esc(t)}" aria-pressed="${t === cat}">${esc(t)}</button>`).join("")
     + (current === RANDOM ? `<button class="btn" data-act="add-loctype" style="grid-column:1/-1">Add Location Type</button>` : (cat ? `<button class="btn" data-act="add-loc" style="grid-column:1/-1">+ Add new location</button>` : `<button class="btn" data-act="add-ltype" style="grid-column:1/-1">Add new location</button>`));   // page 2: opens the add new type page (Steven 2026-10-03)   // + Add type lives on page 2-5 now
-  const bGroups = groups.filter(g => /^Building /.test(g));
+  const bGroups = groups.filter(isBldg);
   const list = group ? items.filter(i => i.group === group) : cat ? items.filter(i => inCat(i, cat)).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true })) : [];
   const showGroups = !group && cat === "Building" && bGroups.length;
   $("items-h").textContent = group ? both(group) : cat || "Items";
@@ -805,7 +806,7 @@ function render() {
     const sub = r ? `Shot ${new Date(r.t).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}` : i.kind;
     return `<button class="item" data-n="${esc(i.name)}" aria-current="${selected === i.name}">${symbol(i.kind)}<span><span class="nm">${esc(i.name)}</span><br><span class="sub">${esc(sub)}</span></span>${pill}</button>`;
   }).join("") || (cat && !group ? `<div class="item" style="cursor:default"><span></span><span class="sub">${current === RANDOM ? `No ${esc(cat)} points yet. Type a name above.` : `No ${esc(cat)} locations yet. Tap + Add new location.`}</span><span></span></div><button class="item" data-rm="${esc(cat)}"><span></span><span class="sub">Remove the ${esc(cat)} button${current === RANDOM ? "" : " from this project"}</span><span></span></button>` : "");
-  const bm = finding && !selected && group && /^Building /.test(group) && current !== RANDOM;
+  const bm = finding && !selected && group && isBldg(group) && current !== RANDOM;
   $("bmap").hidden = !bm;
   if (bm) { const n = buildingCorners(group).length; $("bmap-count").textContent = n ? `${n} corner${n === 1 ? "" : "s"} captured for ${group}.` : `No corners captured for ${group} yet.`; $("bmap-next").textContent = n ? "Capture next corner" : "Capture first corner"; }
   renderAddLoc();
@@ -879,6 +880,7 @@ function types() {
     const t = /^Building /.test(i.group || "") && !own.includes(i.kind) ? "Building" : typeOf(i);
     if (!out.includes(t)) out.push(t);
   }
+  if (current !== RANDOM && (data.bldgs || []).length && !out.includes("Building")) out.push("Building");   // buildings added on page 2-5
   typesCache = out; queueMicrotask(() => { typesCache = null; });
   return out;
 }
@@ -1003,6 +1005,8 @@ function renderAddLoc() {
   $("addloc-types").innerHTML = types().map(t => `<button class="btn" data-addt="${esc(t)}">${esc(t)}</button>`).join("")
     + `<button class="btn" data-addt-new="1" style="grid-column:1/-1">Add new type</button>`;
   $("addloc-type").textContent = adding.type || "";
+  const isB = adding.type === "Building";   // Building: map its corners instead of one GPS point (Steven 2026-10-03)
+  $("addloc-make").hidden = isB; $("addloc-bmap").hidden = !isB;
   $("addloc-name").placeholder = adding.type ? `${adding.type} - ${(((design || {}).els || {})["#addloc-name"] || {}).text || "enter name"}` : "";
 }
 function typeBoxMode() {   // page 2-5 Add new type: no small Cancel, list of types 5 lines tall, scrolls
@@ -1027,6 +1031,16 @@ function makeAddLoc(mode = "gps") {
   if (!name) { toast("Type a name first"); return; }
   if (itemsList().some(i => norm(i.name) === norm(name))) { toast(`${name} is already in this project`); return; }
   if (mode === "gps") { cat = adding.type; adding = null; $("addloc-name").value = ""; $("cats").hidden = false; createItem(name); return; }
+  if (adding.type === "Building" && (mode === "bmap" || mode === "more" || mode === "finish")) {   // a building is a place you map, not a point
+    if (data.bldgs && data.bldgs.some(b => norm(b) === norm(name))) { toast(`${name} is already in this project`); return; }
+    data.bldgs = [...(data.bldgs || []), name]; saveLocal(); push(`Add building ${name}`); $("addloc-name").value = "";
+    if (mode === "more") { toast(`Added ${name}`); $("addloc-name").focus(); return; }
+    adding = null; $("type-box").hidden = true; $("cats").hidden = false; selected = null; finding = true;
+    if (mode === "finish") { cat = null; group = null; render(); window.scrollTo(0, 0); toast(`Added ${name}`); return; }
+    cat = "Building"; group = name; render(); window.scrollTo(0, 0);
+    ask("You are now entering the building mapping section. Walk around the building, stop at every corner and capture the GPS data.", "OK", "", true);
+    return;
+  }
   const t = adding.type, g = typeGroup(t) || "Added in field", kind = typeKind(t);
   data.extra = data.extra || []; data.extra.push(kind ? { name, group: g, kind } : { name, group: g }); saveLocal(); push(`Add ${name}`);
   toast(`Added ${name}`); $("addloc-name").value = "";
@@ -1035,8 +1049,9 @@ function makeAddLoc(mode = "gps") {
 }
 $("addloc-make").onclick = () => makeAddLoc("gps");
 $("addloc-more").onclick = () => makeAddLoc("more");
+$("addloc-bmap").onclick = () => makeAddLoc("bmap");
 $("addloc-finish").onclick = () => makeAddLoc("finish");
-$("addloc-name").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); makeAddLoc(); } });
+$("addloc-name").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); makeAddLoc(adding && adding.type === "Building" ? "bmap" : "gps"); } });
 let locOpen = false, locGroups = [], locItems = [];
 function norm(t) { return String(t).toLowerCase(); }
 function squash(t) { return norm(t).replace(/[^a-z0-9]/g, ""); }
@@ -1129,7 +1144,7 @@ $("items").addEventListener("click", e => {
   if (b.dataset.rm) { const t = b.dataset.rm; cat = null; setTypes(types().filter(x => x !== t), `Remove type ${t}`); toast(`Removed ${t}`); return; }
   if (b.dataset.g) {
     group = b.dataset.g; render();
-    if (/^Building /.test(group) && current !== RANDOM) ask("You are now entering the building mapping section. Walk around the building, stop at every corner and capture the GPS data.", "OK", "", true);
+    if (isBldg(group) && current !== RANDOM) ask("You are now entering the building mapping section. Walk around the building, stop at every corner and capture the GPS data.", "OK", "", true);
     return;
   }
   selected = b.dataset.n; finding = false; render();
@@ -1294,6 +1309,7 @@ function merge(a, b) {
   out.assigned = Object.assign({}, b.assigned || {}, a.assigned || {});
   for (const [k, t] of Object.entries(out.gone)) { if (out.items[k] && out.items[k].t <= t) delete out.items[k]; out.extra = out.extra.filter(e => e.name !== k || (out.items[k] && out.items[k].t > t)); }
   out.labels = Object.assign({}, b.labels || {}, a.labels || {});
+  out.bldgs = [...new Set([...(a.bldgs || []), ...(b.bldgs || [])])];   // buildings added on page 2-5
   const ta = a.types ? a.typesT || 0 : -1, tb = b.types ? b.typesT || 0 : -1;    // newest button list wins
   if (tb > ta) { out.types = b.types; out.typesT = b.typesT; out.typesOwn = b.typesOwn; }
   return out;
@@ -1950,6 +1966,7 @@ $("td-list").addEventListener("click", async e => {
 /* ---------- building mapping (Steven 2026-10-03): walk around a building, stop at every corner, capture GPS.
    Corners are saved in walking order as "Building 1 corner 1", "... corner 2" and so on, so the outline can be drawn without a print. ---------- */
 var cornerFor = null, hideCorners = false;
+function isBldg(g) { return /^Building /.test(g || "") || (data.bldgs || []).includes(g); }
 function buildingCorners(g) { return Object.keys(data.items).filter(n => data.items[n].corner && data.items[n].group === g).sort((a, b) => (parseInt(a.split(" corner ")[1]) || 0) - (parseInt(b.split(" corner ")[1]) || 0)); }
 $("bmap-next").onclick = () => {
   if (shot.running || !group) return;
