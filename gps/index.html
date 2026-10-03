@@ -355,7 +355,7 @@ summary { font-weight: 600; cursor: pointer; }
 <div class="gmap" id="gmap" hidden><iframe id="gmap-frame" title="Google Maps" loading="lazy"></iframe><button class="btn big primary" id="gmap-back">Back</button></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-03.2";
+const APP_VERSION = "2026-10-03.3";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -511,10 +511,18 @@ async function pullStatus() {
   try {
     const t = await gh.raw("gps/projects.json") || {};
     statuses = Object.assign({}, t.status || {}); LS.set("status", statuses);
-    addCustom(t.projects);
+    // projects removed for good (test data): drop them from this phone too, so they are never sent back up
+    const gone = t.removed || {};
+    if (Object.keys(gone).length) {
+      const before = custom.length;
+      custom = custom.filter(c => !gone[c.slug]); LS.set("custom", custom);
+      for (const k of Object.keys(gone)) { try { localStorage.removeItem("gps.data." + k); } catch {} }
+      if (custom.length !== before) { if (gone[current]) current = null; renderProjects(); }
+    }
+    addCustom((t.projects || []).filter(p => !gone[p.slug]));
     // projects made on this device before syncing existed: send them up once
     const remote = new Set((t.projects || []).map(p => p.slug));
-    const missing = custom.filter(c => c.slug !== RANDOM && !remote.has(c.slug) && !jobs.some(j => j.slug === c.slug));
+    const missing = custom.filter(c => c.slug !== RANDOM && !remote.has(c.slug) && !gone[c.slug] && !jobs.some(j => j.slug === c.slug));
     if (missing.length) editProjects(d => { for (const c of missing) if (!d.projects.some(p => p.slug === c.slug)) d.projects.push({ name: c.name, slug: c.slug, t: Date.now() }); }, "GPS Shots: projects from this device");
     projList(); if (!$("lists-box").hidden) showLists(look);
   } catch {}
@@ -538,7 +546,7 @@ async function pushStatus(slug, st) {
   if (gh.on() && !(await editProjects(d => { d.status[slug] = st; }, `GPS Shots: ${slug} is ${st}`))) toast("Status saved on this phone only");
 }
 async function pushProject(name, s) {
-  if (gh.on() && !(await editProjects(d => { if (!d.projects.some(p => p.slug === s)) d.projects.push({ name, slug: s, t: Date.now() }); }, `GPS Shots: new project ${name}`))) toast("Project saved on this phone only for now");
+  if (gh.on() && !(await editProjects(d => { if (d.removed) delete d.removed[s]; if (!d.projects.some(p => p.slug === s)) d.projects.push({ name, slug: s, t: Date.now() }); }, `GPS Shots: new project ${name}`))) toast("Project saved on this phone only for now");
 }
 function showLists(which) {
   look = which; homePanel("lists");
