@@ -38,6 +38,8 @@ header.bar { position: sticky; top: 0; z-index: 5; background: var(--bg); paddin
 .bar-in { max-width: 720px; margin: 0 auto; padding: 10px 16px; display: flex; flex-wrap: wrap; gap: 8px 10px; align-items: center; justify-content: space-between; }
 .brand { font: 700 22px/1 var(--display); letter-spacing: .02em; text-transform: uppercase; white-space: nowrap; }
 .brand span { color: var(--accent); }
+.page-no { font: 700 13px/1 var(--body); color: var(--muted); border: 1px solid currentColor; border-radius: 6px; padding: 4px 6px; white-space: nowrap; }
+.ask-no-label { display: block; font: 700 12px/1 var(--body); color: var(--muted); margin-bottom: 8px; }
 .bar select { flex: 1 1 100%; order: 3; min-width: 0; font-weight: 600; }
 nav.tabs { position: fixed; left: 0; right: 0; bottom: 0; z-index: 6; background: var(--panel); border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom, 0px); }
 .tabs-in { max-width: 720px; margin: 0 auto; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; }
@@ -166,7 +168,7 @@ summary { font-weight: 600; cursor: pointer; }
 <body>
 <header class="bar">
   <div class="bar-in">
-    <div class="row" style="gap:10px"><div class="brand">GPS<span>Shots</span></div><button class="btn top-setup" id="top-setup" data-tab="setup" aria-selected="false">Setup</button></div>
+    <div class="row" style="gap:10px"><div class="brand">GPS<span>Shots</span></div><span class="page-no" id="page-no"></span><button class="btn top-setup" id="top-setup" data-tab="setup" aria-selected="false">Setup</button></div>
     <span id="sync" class="sync" title="GitHub sync">Phone only</span>
   </div>
 </header>
@@ -355,7 +357,7 @@ summary { font-weight: 600; cursor: pointer; }
 <div class="gmap" id="gmap" hidden><iframe id="gmap-frame" title="Google Maps" loading="lazy"></iframe><button class="btn big primary" id="gmap-back">Back</button></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-03.5";
+const APP_VERSION = "2026-10-03.6";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -1502,6 +1504,17 @@ async function checkOffSpots() {
   } finally { offAsking = false; }
 }
 
+/* ---------- page numbers, so a problem can be reported as "page 2-3" ---------- */
+// 1 = home and its pages, 2 = inside a project, 3 = the print, 4 = system points; a pop-up on a page adds a letter (2-3a)
+const PAGE_NO = { main: "1", newproject: "1-1", lists: "1-2", status: "1-3", setup: "1-4",
+  project: "2", vaultlist: "2-1", addtype: "2-2", capture: "2-3", clean: "2-4",
+  print: "3", placing: "3-1", random: "4" };
+function pageNo() { let sn = "main"; try { sn = screenNow(); } catch {} const n = PAGE_NO[sn] || "?"; return shot.running ? n + "a" : n; }
+setInterval(() => {
+  const t = "Page " + pageNo(); if ($("page-no").textContent !== t) $("page-no").textContent = t;
+  if (!$("ask").hidden) { const a = "Page " + pageNo().replace(/a$/, "") + (shot.running ? "b" : "a"); if ($("ask-page").textContent !== a) $("ask-page").textContent = a; }
+}, 300);
+
 /* ---------- look set in designer.html (gps/design.json): theme colours, and per-button colour, text, size, hide ---------- */
 let design = LS.get("design", null);
 const SIZES = { S: ["14px", "40px"], M: ["17px", "48px"], L: ["21px", "60px"], XL: ["26px", "72px"] };
@@ -1606,6 +1619,6 @@ else setSync("", "Phone only");
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") { pullDesign(); pullStatus(); } });
 render();
 </script>
-<div class="ask" id="ask" hidden><div><div id="ask-msg"></div><button class="btn primary" id="ask-yes"></button><button class="btn" id="ask-no"></button></div></div>
+<div class="ask" id="ask" hidden><div><span class="ask-no-label" id="ask-page"></span><div id="ask-msg"></div><button class="btn primary" id="ask-yes"></button><button class="btn" id="ask-no"></button></div></div>
 </body>
 </html>
