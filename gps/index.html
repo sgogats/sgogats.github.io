@@ -459,7 +459,7 @@ summary { font-weight: 600; cursor: pointer; }
 </div></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-03.44";
+const APP_VERSION = "2026-10-03.45";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -2004,7 +2004,8 @@ $("bmap-done").onclick = () => {
   const g = group, cs = buildingCorners(g || "");
   group = null; render(); window.scrollTo(0, 0);
   // no print: show the building drawn from its corners on a white screen (Steven 2026-10-03)
-  if (!(job && job.plan) && cs.length >= 3) drawBuilding(g, cs);
+  if (!(job && job.plan) && cs.length >= 4) drawBuilding(g, cs);   // a building needs 4 corners or more (Steven 2026-10-03)
+  else if (!(job && job.plan) && cs.length) toast(`${g} has ${cs.length} corner${cs.length === 1 ? "" : "s"}. A building needs at least 4 to be drawn.`);
   else if (job && job.plan && cs.length >= 2) { showTab("print"); toast(`${g}: your walked corners are drawn in pink over the print`); }
 };
 function drawBuilding(g, cs) {
