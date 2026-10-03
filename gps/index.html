@@ -306,6 +306,7 @@ summary { font-weight: 600; cursor: pointer; }
       <p style="margin:0" id="bmap-count"></p>
       <button class="btn big primary" id="bmap-next">Capture next corner</button>
       <button class="btn big gray" id="bmap-done">Done</button>
+      <button class="btn big cancel" id="bmap-cancel">Cancel</button>
     </div>
     <div class="list" id="items"></div>
     <details style="margin-top:12px" hidden>
@@ -459,7 +460,7 @@ summary { font-weight: 600; cursor: pointer; }
 </div></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-03.42";
+const APP_VERSION = "2026-10-03.43";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -779,7 +780,7 @@ function render() {
   const groups = [...new Set([...items.map(i => i.group), ...(current !== RANDOM ? data.bldgs || [] : [])])];
   groups.sort((a, b) => { const na = parseInt(a.replace(/\D+/g, "")) || 9999, nb = parseInt(b.replace(/\D+/g, "")) || 9999; return isBldg(a) && isBldg(b) ? na - nb : a.localeCompare(b); });
   if (group && !groups.includes(group)) group = null;
-  if (!group && groups.length === 1) group = groups[0];
+  if (!group && groups.length === 1 && !isBldg(groups[0])) group = groups[0];
   $("group-list").innerHTML = groups.map(g => `<option value="${esc(g)}">`).join("");
   if (!locOpen) $("loc").value = group || "";
   $("loc").placeholder = current === RANDOM ? "Type a name, e.g. CANSP-57-01" : groups.length ? "Pick or type a location or box" : "No locations yet. Add an item below.";
@@ -810,6 +811,11 @@ function render() {
   $("bmap").hidden = !bm;
   if (bm) { const n = buildingCorners(group).length; $("bmap-count").textContent = n ? `${n} corner${n === 1 ? "" : "s"} captured for ${group}.` : `No corners captured for ${group} yet.`; $("bmap-next").textContent = n ? "Capture next corner" : "Capture first corner"; }
   renderAddLoc();
+  bmOn = bm;
+  if (bm) {   // building page: only Capture corner, Done (once a corner is in), Cancel and the building's items (Steven 2026-10-03)
+    $("cats").hidden = $("loc-h").hidden = $("cats-h").hidden = $("group-name2").hidden = true;
+    $("bmap-done").hidden = !buildingCorners(group).length;
+  }
   renderShot();
   if (!$("tab-print").hidden) drawPrint();
   applyDesign();
@@ -1846,7 +1852,7 @@ function applyDesign() {
   let css = "";
   const sn = screenNow();
   $("proj-status-btn").hidden = $("proj-map").hidden = sn !== "project";
-  $("change-proj").hidden = sn === "addloc" || sn === "capture";   // a page with a big bottom Cancel gets no small top Cancel (Steven)
+  $("change-proj").hidden = sn === "addloc" || sn === "capture" || bmOn;   // a page with a big bottom Cancel gets no small top Cancel (Steven)
   $("proj-map").href = "map.html?p=" + encodeURIComponent(current || "");
   const sr = selected && data.items && data.items[selected];
   $("shot-map").hidden = !(sn === "capture" && sr && sr.lat != null && !shot.running);
@@ -1986,7 +1992,8 @@ $("td-list").addEventListener("click", async e => {
 });
 /* ---------- building mapping (Steven 2026-10-03): walk around a building, stop at every corner, capture GPS.
    Corners are saved in walking order as "Building 1 corner 1", "... corner 2" and so on, so the outline can be drawn without a print. ---------- */
-var cornerFor = null, hideCorners = false;
+var cornerFor = null, hideCorners = false, bmOn = false;
+$("bmap-cancel").onclick = () => { group = null; cat = "Building"; selected = null; finding = true; render(); window.scrollTo(0, 0); };
 function isBldg(g) { return /^Building /.test(g || "") || (data.bldgs || []).includes(g); }
 function buildingCorners(g) { return Object.keys(data.items).filter(n => data.items[n].corner && data.items[n].group === g).sort((a, b) => (parseInt(a.split(" corner ")[1]) || 0) - (parseInt(b.split(" corner ")[1]) || 0)); }
 $("bmap-next").onclick = () => {
