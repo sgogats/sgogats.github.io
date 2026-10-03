@@ -422,7 +422,7 @@ summary { font-weight: 600; cursor: pointer; }
 </div></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-03.26";
+const APP_VERSION = "2026-10-03.27";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -752,7 +752,7 @@ function render() {
   const shownTypes = types().filter(t => t === cat || items.some(i => inCat(i, t)) || (!isR && t === "Building" && groups.some(g => /^Building /.test(g))));
   shownTypesNow = shownTypes;
   $("cats").innerHTML = shownTypes.map(t => `<button class="btn" data-cat="${esc(t)}" aria-pressed="${t === cat}">${esc(t)}</button>`).join("")
-    + (current === RANDOM ? `<button class="btn" data-act="add-loctype" style="grid-column:1/-1">Add Location Type</button>` : `<button class="btn" data-act="add-loc" style="grid-column:1/-1">+ Add new location</button>`);   // + Add type lives on page 2-5 now
+    + (current === RANDOM ? `<button class="btn" data-act="add-loctype" style="grid-column:1/-1">Add Location Type</button>` : (cat ? `<button class="btn" data-act="add-loc" style="grid-column:1/-1">+ Add new location</button>` : `<button class="btn" data-act="add-ltype" style="grid-column:1/-1">Add new location type</button>`));   // page 2: opens the add new type page (Steven 2026-10-03)   // + Add type lives on page 2-5 now
   const bGroups = groups.filter(g => /^Building /.test(g));
   const list = group ? items.filter(i => i.group === group) : cat ? items.filter(i => inCat(i, cat)).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true })) : [];
   const showGroups = !group && cat === "Building" && bGroups.length;
@@ -875,14 +875,15 @@ async function pushTypes() {
   }
 }
 function setTypes(list, msg) { data.types = list; data.typesOwn = true; data.typesT = Date.now(); typesCache = null; saveLocal(); push(msg); render(); }
-var shownTypesNow = [];
+var shownTypesNow = [], typeCheck = false;   // typeCheck: type box opened from page 2's Add new location type
+function checkingTypes() { return current === RANDOM || (typeCheck && !adding); }
 function renderTypeSugg() {
   // page 4 hides empty types, so offer those again here
-  const q = norm($("type-name").value.trim()), have = (current === RANDOM ? shownTypesNow : types()).map(norm);
+  const q = norm($("type-name").value.trim()), have = (checkingTypes() ? shownTypesNow : types()).map(norm);
   const opts = allTypeNames().filter(n => !have.includes(norm(n)) && (!q || norm(n).includes(q)));
   const typed = $("type-name").value.trim(), exact = typed && allTypeNames().some(n => norm(n) === norm(typed));
   $("type-sugg").innerHTML = opts.map(n => `<button class="item loc-opt" data-t="${esc(n)}"><span class="nm">${esc(n)}</span><span class="sub">Used before</span></button>`).join("")
-    + (typed && !exact && current !== RANDOM ? `<button class="item loc-opt" data-t="${esc(typed)}"><span class="nm" style="color:var(--accent)">+ New type “${esc(typed)}”</span><span></span></button>` : "");
+    + (typed && !exact && !checkingTypes() ? `<button class="item loc-opt" data-t="${esc(typed)}"><span class="nm" style="color:var(--accent)">+ New type “${esc(typed)}”</span><span></span></button>` : "");
   $("type-sugg").hidden = !$("type-sugg").innerHTML;
   typeBoxMode();
 }
@@ -901,7 +902,7 @@ $("type-name").addEventListener("keydown", e => { if (e.key === "Enter") { e.pre
 // with "Location type not in list" at the bottom to confirm a brand-new one
 function typeEntered() {
   const typed = $("type-name").value.trim(); if (!typed) return;
-  if (current !== RANDOM || allTypeNames().some(n => norm(n) === norm(typed))) { addType(typed); return; }
+  if (!checkingTypes() || allTypeNames().some(n => norm(n) === norm(typed))) { addType(typed); return; }
   $("type-name").blur();
   $("type-check-list").innerHTML = allTypeNames().slice().sort((a, b) => a.localeCompare(b)).map(n => `<button class="item loc-opt" data-tc="${esc(n)}"><span class="nm">${esc(n)}</span><span></span></button>`).join("");
   $("type-check-new").textContent = `Location type not in list: add “${typed}”`;
@@ -918,7 +919,8 @@ $("cats").addEventListener("click", e => {
   const b = e.target.closest("button"); if (!b) return;
   if (shot.running) { toast("Finish or cancel the current shot first"); return; }
   if (b.dataset.act === "add-loc") { adding = { type: null }; group = null; selected = null; render(); window.scrollTo(0, 0); return; }
-  if (b.dataset.act === "add-type" || b.dataset.act === "add-loctype") { if (current === RANDOM) { $("type-box").hidden = false; render(); }  $("type-box").hidden = false; $("type-name").value = ""; renderTypeSugg(); applyDesign(); $("type-name").focus(); return; }
+  typeCheck = b.dataset.act === "add-ltype";
+  if (b.dataset.act === "add-type" || b.dataset.act === "add-loctype" || b.dataset.act === "add-ltype") { if (current === RANDOM) { $("type-box").hidden = false; render(); }  $("type-box").hidden = false; $("type-name").value = ""; renderTypeSugg(); applyDesign(); $("type-name").focus(); return; }
   if (current === RANDOM) { cat = cat === b.dataset.cat ? null : b.dataset.cat; render(); if (cat && $("loc").value.trim()) { locOpen = true; renderGroups(); } if (cat) $("loc").focus(); return; }
   cat = b.dataset.cat; group = null; selected = null; locOpen = false; $("loc").value = ""; render();
   $("items-h").scrollIntoView({ behavior: "smooth", block: "start" });
@@ -939,7 +941,7 @@ function renderAddLoc() {
 }
 function typeBoxMode() {   // page 2-5 Add new type: no small Cancel, list of types 5 lines tall, scrolls
   const a = !!adding && current !== RANDOM;
-  $("type-cancel").hidden = a; $("type-next").hidden = current !== RANDOM;
+  $("type-cancel").hidden = a; $("type-next").hidden = !checkingTypes();
   $("type-name").placeholder = a ? "Enter type or select below" : "Type name, e.g. Manhole, Cleanout, Panel";
   const row = $("type-sugg").firstElementChild;
   $("type-sugg").style.maxHeight = a && row ? (row.offsetHeight * 5 + 2) + "px" : "";
@@ -1630,8 +1632,9 @@ function tabBar() {
   const c = document.querySelector('.tabs [data-tab="collect"]');
   c.hidden = !$("tab-collect").hidden && !$("pick-view").hidden;
   document.querySelector("nav.tabs").hidden = !$("tab-collect").hidden && !$("pick-view").hidden;   // no job picked yet: nothing to plot
-  $("top-setup").hidden = !(!$("tab-collect").hidden && !$("pick-view").hidden && !$("project-box").hidden);
-  $("ver-no").hidden = $("top-setup").hidden;   // version shows on the home page, next to Setup
+  $("top-setup").hidden = true;   // home Settings button gone: the gear does it (Steven 2026-10-03)
+  $("ver-no").hidden = !(!$("tab-collect").hidden && !$("pick-view").hidden && !$("project-box").hidden);
+   // version shows on the home page, next to Setup
 }
 function showTab(name) {
   const b = document.querySelector(`[data-tab="${name}"]`);
