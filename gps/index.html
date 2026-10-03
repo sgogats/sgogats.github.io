@@ -38,8 +38,8 @@ header.bar { position: sticky; top: 0; z-index: 5; background: var(--bg); paddin
 .bar-in { max-width: 720px; margin: 0 auto; padding: 10px 16px; display: flex; flex-wrap: wrap; gap: 8px 10px; align-items: center; justify-content: space-between; }
 .brand { font: 700 22px/1 var(--display); letter-spacing: .02em; text-transform: uppercase; white-space: nowrap; }
 .brand span { color: var(--accent); }
-.page-no { font: 700 12px/1 var(--body); color: var(--muted); margin-top: 3px; white-space: nowrap; }
-.ask-no-label { display: block; font: 700 12px/1 var(--body); color: var(--muted); margin-bottom: 8px; }
+.page-no { font: 700 22px/1 var(--display); letter-spacing: .02em; text-transform: uppercase; color: var(--ink); margin-top: 4px; white-space: nowrap; }
+.ask-no-label { display: block; font: 700 22px/1 var(--display); letter-spacing: .02em; text-transform: uppercase; margin-bottom: 10px; }
 .bar select { flex: 1 1 100%; order: 3; min-width: 0; font-weight: 600; }
 nav.tabs { position: fixed; left: 0; right: 0; bottom: 0; z-index: 6; background: var(--panel); border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom, 0px); }
 .tabs-in { max-width: 720px; margin: 0 auto; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; }
@@ -357,7 +357,7 @@ summary { font-weight: 600; cursor: pointer; }
 <div class="gmap" id="gmap" hidden><iframe id="gmap-frame" title="Google Maps" loading="lazy"></iframe><button class="btn big primary" id="gmap-back">Back</button></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-03.8";
+const APP_VERSION = "2026-10-03.9";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
