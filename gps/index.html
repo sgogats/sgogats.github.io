@@ -47,13 +47,14 @@ body.editing button:not(#edit-words):not(#edit-sheet *), body.editing input:not(
 .es-sz { min-width: 52px; height: 44px; border-radius: 10px; border: 2px solid #cfd3d8; background: var(--panel); color: var(--ink); font: 700 16px/1 var(--display); padding: 0 10px; }
 .es-sw.on, .es-sz.on { outline: 3px solid #d6007a; outline-offset: 2px; }
 #edit-sheet > div { max-height: 92vh; overflow-y: auto; }
+.gear { flex: none; align-self: flex-start; width: 32px; height: 44px; margin-left: -6px; display: grid; place-items: center; border: 0; border-radius: 10px; background: transparent; color: var(--ink); padding: 0; }
 .ver-no { font: 700 22px/1 var(--display); letter-spacing: .02em; color: var(--ink); white-space: nowrap; }
 .page-no { font: 700 22px/1 var(--display); letter-spacing: .02em; text-transform: uppercase; color: var(--ink); margin-top: 4px; white-space: nowrap; }
 .ask-no-label { display: block; font: 700 22px/1 var(--display); letter-spacing: .02em; text-transform: uppercase; margin-bottom: 10px; }
 .bar select { flex: 1 1 100%; order: 3; min-width: 0; font-weight: 600; }
 nav.tabs { position: fixed; left: 0; right: 0; bottom: 0; z-index: 6; background: var(--panel); border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom, 0px); }
 .tabs-in { max-width: 720px; margin: 0 auto; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; }
-.top-setup { min-height: 36px; padding: 6px 12px; font: 600 15px/1 var(--display); letter-spacing: .06em; text-transform: uppercase; }
+.top-setup { min-height: 36px; padding: 6px 8px; font: 600 15px/1 var(--display); letter-spacing: .06em; text-transform: uppercase; }
 .top-setup[aria-selected="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
 .tabs button { background: none; border: 0; padding: 12px 4px 14px; font: 600 17px/1 var(--display); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
 .tabs button[aria-selected="true"] { color: var(--accent); box-shadow: inset 0 3px 0 var(--accent); }
@@ -181,7 +182,7 @@ summary { font-weight: 600; cursor: pointer; }
 <body>
 <header class="bar">
   <div class="bar-in">
-    <div class="row" style="gap:10px;flex-wrap:nowrap"><div><div class="brand">GPS<span>Shots</span></div><div class="row" style="gap:8px;flex-wrap:nowrap;align-items:center"><div class="page-no" id="page-no"></div><button class="btn edit-words" id="edit-words" hidden>Edit</button></div></div><button class="btn top-setup" id="top-setup" data-tab="setup" aria-selected="false">Settings</button><div class="ver-no" id="ver-no"></div></div>
+    <div class="row" style="gap:6px;flex-wrap:nowrap;flex:1"><button class="gear" id="gear" aria-label="Settings" title="Settings"><svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.830l-.06-.06a1.65 1.65 0 0 0-1.820-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.650 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button><div><div class="brand">GPS<span>Shots</span></div><div class="row" style="gap:8px;flex-wrap:nowrap;align-items:center"><div class="page-no" id="page-no"></div><button class="btn edit-words" id="edit-words" hidden>Edit</button></div></div><div style="margin-left:auto;display:grid;justify-items:end;gap:4px"><button class="btn top-setup" id="top-setup" data-tab="setup" aria-selected="false">Settings</button><div class="ver-no" id="ver-no"></div></div></div>
     <span id="sync" class="sync" title="GitHub sync">Phone only</span>
   </div>
 </header>
@@ -336,9 +337,15 @@ summary { font-weight: 600; cursor: pointer; }
 
 <!-- SETUP -->
 <section id="tab-setup" hidden>
+  <div id="settings-main" class="stack">
   <h2>Settings</h2>
-  <button class="btn big gray" id="edit-layout">Edit layout: OFF</button>
-  <p class="small muted" style="margin:0">Turn on to get an Edit button on every screen, so you can change the words on buttons and the examples in boxes.</p>
+  <button class="btn big gray" id="edit-layout">Edit page layout: OFF</button>
+  <p class="small muted" style="margin:0">Turn on to get an Edit button on every screen, so you can change the words, color and size of buttons and the examples in boxes.</p>
+  <button class="btn big gray" id="open-setup">Setup</button>
+  <button class="btn big cancel" data-home>Cancel</button>
+  </div>
+  <div id="setup-more" class="stack" hidden>
+  <h2>Setup</h2>
   <a class="btn" href="designer.html" style="display:grid;place-items:center;text-decoration:none;color:inherit">Design the app's screens</a>
   <p class="small muted mono" id="ver"></p>
   <p class="small muted">Shots are always kept on this phone. Add a GitHub key to also save them to your repo and to load jobs from the Town House Designer.</p>
@@ -367,6 +374,7 @@ summary { font-weight: 600; cursor: pointer; }
         <li>Wait for the accuracy number to settle before saving. Re-shoot anything marked red.</li>
       </ul>
     </details>
+  </div>
   </div>
 </section>
 </main>
@@ -398,7 +406,7 @@ summary { font-weight: 600; cursor: pointer; }
 </div></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-03.17";
+const APP_VERSION = "2026-10-03.18";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -1586,7 +1594,7 @@ function showTab(name) {
   for (const t of ["collect", "print", "setup"]) $("tab-" + t).hidden = t !== b.dataset.tab;
   try { sessionStorage.setItem("gps.tab", b.dataset.tab); } catch {}
   if (b.dataset.tab === "print") { $("print-proj").textContent = (allProjects().find(p => p.slug === current) || {}).name || ""; $("lock-scale").checked = data.lockScale !== false; view.fitted = false; drawPrint(); setTimeout(checkOffSpots, 400); }
-  if (b.dataset.tab === "setup") fillSetup();
+  if (b.dataset.tab === "setup") { fillSetup(); $("settings-main").hidden = false; $("setup-more").hidden = true; }
   tabBar();
   applyDesign();
   window.scrollTo(0, 0);
@@ -1618,7 +1626,7 @@ async function checkOffSpots() {
 
 /* ---------- page numbers, so a problem can be reported as "page 2-3" ---------- */
 // 1 = home and its pages, 2 = inside a project, 3 = the print, 4 = system points; a pop-up on a page adds a letter (2-3a)
-const PAGE_NO = { main: "1", newproject: "1-1", lists: "1-2", status: "1-3", setup: "1-4",
+const PAGE_NO = { main: "1", newproject: "1-1", lists: "1-2", status: "1-3", setup: "1-4", setupmore: "1-5",
   project: "2", vaultlist: "2-1", addtype: "2-2", capture: "2-3", clean: "2-4", addloc: "2-5",
   print: "3", placing: "3-1", random: "4" };
 function pageNo() { let sn = "main"; try { sn = screenNow(); } catch {} const n = PAGE_NO[sn] || "?"; return shot.running ? n + "a" : n; }
@@ -1637,7 +1645,7 @@ const SCREEN_BG = { main: "#e3f2ff", addtype: "#e2e4e7" };   // Steven's screen 
 function screenNow() {
   if (DESIGN_MODE && forcedScreen) return forcedScreen;
   if (!$("tab-print").hidden) { let pl = false; try { pl = !!placing; } catch {} return pl ? "placing" : "print"; }
-  if (!$("tab-setup").hidden) return "setup";
+  if (!$("tab-setup").hidden) return $("setup-more").hidden ? "setup" : "setupmore";
   if (!$("new-project-box").hidden) return "newproject";
   if (!$("pick-view").hidden && !$("lists-box").hidden) return "lists";
   if (!$("pick-view").hidden && !$("status-box").hidden) return "status";
@@ -1693,12 +1701,14 @@ async function pullDesign() {
 /* ---------- Edit button (Steven 2026-10-03): tap Edit, tap any button or box, type new words; saved to gps/design.json for every phone. Only words change, never what a button does. ---------- */
 let editing = false, editLayout = !!LS.get("editLayout", false);
 function showEditLayout() {
-  $("edit-words").hidden = !editLayout; $("edit-layout").textContent = "Edit layout: " + (editLayout ? "ON" : "OFF");
+  $("edit-words").hidden = !editLayout; $("edit-layout").textContent = "Edit page layout: " + (editLayout ? "ON" : "OFF");
   $("edit-layout").classList.toggle("primary", editLayout); $("edit-layout").classList.toggle("gray", !editLayout);
   if (!editLayout && editing) $("edit-words").click();
 }
 $("edit-layout").onclick = () => { editLayout = !editLayout; LS.set("editLayout", editLayout); showEditLayout(); toast(editLayout ? "Edit button is on every screen now" : "Edit button is hidden"); };
 showEditLayout();
+$("gear").onclick = () => { if (shot.running) { toast("Finish or cancel the current shot first"); return; } showTab("setup"); };
+$("open-setup").onclick = () => { $("settings-main").hidden = true; $("setup-more").hidden = false; applyDesign(); window.scrollTo(0, 0); };
 $("edit-words").onclick = () => {
   editing = !editing; document.body.classList.toggle("editing", editing);
   $("edit-words").classList.toggle("on", editing); $("edit-words").textContent = editing ? "Done" : "Edit";
