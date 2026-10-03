@@ -400,11 +400,19 @@ summary { font-weight: 600; cursor: pointer; }
   <button class="btn" id="type-check-new">Location type not in list</button>
   <button class="btn cancel" id="type-check-cancel">Cancel</button>
 </div></div>
+<div class="ask" id="type-lib" hidden><div>
+  <span class="ask-no-label">Location types</span>
+  <p class="small muted" style="margin:0" id="type-lib-count"></p>
+  <div class="list loc-list" id="type-lib-list" style="max-height:45vh"></div>
+  <div class="row" style="gap:8px;flex-wrap:nowrap"><input id="type-lib-new" type="text" placeholder="New location type" autocomplete="off" enterkeyhint="done" style="flex:1;min-width:0"><button class="btn primary" id="type-lib-add" style="width:auto;padding:0 18px">Add</button></div>
+  <button class="btn" id="type-lib-done">Done</button>
+</div></div>
 <div id="empty-flash" hidden onclick="this.hidden=true"><div id="empty-flash-msg"></div></div>
 <div class="ask" id="settings-sheet" hidden><div>
   <span class="ask-no-label">Settings</span>
   <button class="btn big gray" id="edit-layout">Edit page layout</button>
   <a class="btn big gray" id="open-designer" href="designer.html" style="display:grid;place-items:center;text-decoration:none">Design the app's screens</a>
+  <button class="btn big gray" id="open-types">Edit location type list</button>
   <button class="btn big gray" id="open-setup">Setup</button>
   <button class="btn cancel" id="settings-cancel">Cancel</button>
 </div></div>
@@ -422,7 +430,7 @@ summary { font-weight: 600; cursor: pointer; }
 </div></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-03.27";
+const APP_VERSION = "2026-10-03.28";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -1753,6 +1761,24 @@ function openSettings() { if (shot.running) { toast("Finish or cancel the curren
 $("gear").onclick = openSettings;
 $("settings-cancel").onclick = () => { $("settings-sheet").hidden = true; };
 $("edit-layout").onclick = () => { $("settings-sheet").hidden = true; setEditing(true); };
+// gear > Edit location type list: every type there is (all projects), scroll it or add one (Steven 2026-10-03)
+function showTypeLib(hi) {
+  const all = allTypeNames().slice().sort((a, b) => a.localeCompare(b));
+  $("type-lib-count").textContent = `${all.length} types. These are offered on every project.`;
+  $("type-lib-list").innerHTML = all.map(n => `<div class="item" style="cursor:default;grid-template-columns:1fr;display:block${norm(n) === norm(hi || "") ? ";background:#fff3b0" : ""}" data-tl="${esc(n)}"><span class="nm">${esc(n)}</span><span></span></div>`).join("");
+  const h = hi && $("type-lib-list").querySelector(`[data-tl="${CSS.escape(allTypeNames().find(n => norm(n) === norm(hi)) || "")}"]`);
+  if (h) h.scrollIntoView({ block: "center" });
+}
+$("open-types").onclick = () => { $("settings-sheet").hidden = true; $("type-lib-new").value = ""; showTypeLib(); $("type-lib").hidden = false; $("type-lib-list").scrollTop = 0; };
+function addLibType() {
+  const name = $("type-lib-new").value.trim(); if (!name) { $("type-lib-new").focus(); return; }
+  const have = allTypeNames().find(n => norm(n) === norm(name));
+  if (have) { toast(`${have} is already in the list`); showTypeLib(have); return; }
+  typeLib.push(name); pushTypes(); $("type-lib-new").value = ""; showTypeLib(name); toast(`Added ${name}`);
+}
+$("type-lib-add").onclick = addLibType;
+$("type-lib-new").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); addLibType(); } });
+$("type-lib-done").onclick = () => { $("type-lib").hidden = true; };
 $("open-setup").onclick = () => { $("settings-sheet").hidden = true; showTab("setup"); };
 let editSnap = null, editChanged = false;   // the look before this edit, so Cancel can put it all back
 function setEditing(on) {
