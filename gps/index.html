@@ -153,7 +153,7 @@ table { border-collapse: collapse; width: 100%; font-size: 14px; }
 th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--line); vertical-align: middle; }
 th { font: 600 13px/1 var(--display); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
 .tbl { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
-.ask { position: fixed; inset: 0; z-index: 20; background: rgba(0,0,0,.55); display: grid; place-items: center; padding: 16px; }
+.ask { position: fixed; inset: 0; z-index: 60; background: rgba(0,0,0,.55); display: grid; place-items: center; padding: 16px; }
 .ask > div { background: var(--panel); color: var(--ink); border-radius: 12px; padding: 18px; max-width: 420px; width: 100%; display: grid; gap: 14px; font-size: 18px; }
 .ask .btn { min-height: 56px; font-size: 18px; width: 100%; }
 .toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(76px + env(safe-area-inset-bottom, 0px)); background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 8px; font-weight: 600; z-index: 9; max-width: calc(100% - 32px); }
@@ -357,7 +357,7 @@ summary { font-weight: 600; cursor: pointer; }
 <div class="gmap" id="gmap" hidden><iframe id="gmap-frame" title="Google Maps" loading="lazy"></iframe><button class="btn big primary" id="gmap-back">Back</button></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-03.7";
+const APP_VERSION = "2026-10-03.8";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -1315,9 +1315,16 @@ function endPlacing() {
   $("cbox").classList.remove("full"); document.body.style.overflow = "";
   view.fitted = false; drawPrint();
 }
-$("place-save").onclick = () => {
+const SPOT_CHECK_FT = 15;
+$("place-save").onclick = async () => {
   if (!pending || !placing) return;
-  const n = placing;
+  const n = placing, d = designPos(n), ptft = job && job.pt_per_ft;
+  if (d && ptft) {   // page 3-1: a spot far from the proposed one is probably a mis-tap
+    const ft = Math.hypot(pending.x - d.x, pending.y - d.y) / ptft;
+    if (ft > SPOT_CHECK_FT && !await ask(`Verify position: this spot is ${Math.round(ft)} ft from ${n}'s proposed location, further than ${SPOT_CHECK_FT} ft. Is it right?`, "Yes, save this spot", "No, let me tap again")) {
+      $("placing-msg").textContent = `${n}: tap where it actually is, then Save spot.`; return;
+    }
+  }
   data.controls[n] = Object.assign({}, data.controls[n], { x: Math.round(pending.x * 10) / 10, y: Math.round(pending.y * 10) / 10, use: true });
   saveLocal(); push(`Spot for ${n}`); toast(`Saved ${n} on the print`);
   const back = placeReturn; endPlacing();
