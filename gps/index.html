@@ -40,7 +40,7 @@ header.bar { position: sticky; top: 0; z-index: 5; background: var(--bg); paddin
 .brand span { color: var(--accent); }
 .edit-words { min-height: 30px; padding: 3px 10px; font: 700 14px/1 var(--display); margin-top: 4px; background: #e6e8eb; color: #1d2329; border-color: #cfd3d8; }
 .edit-words.on { background: #d6007a !important; color: #fff !important; border-color: #d6007a !important; }
-body.editing button:not(#edit-words):not(#edit-sheet *), body.editing input:not(#edit-sheet *), body.editing textarea { outline: 2px dashed #d6007a !important; outline-offset: 2px; }
+body.editing button:not(#edit-words):not(#edit-sheet *):not(#edit-bar *):not(#ask *), body.editing input:not(#edit-sheet *), body.editing textarea { outline: 2px dashed #d6007a !important; outline-offset: 2px; }
 .es-row { display: flex; flex-wrap: wrap; gap: 8px; }
 .es-sw { width: 44px; height: 44px; border-radius: 10px; border: 2px solid #cfd3d8; font: 600 11px/1 var(--display); padding: 0; }
 .es-sw:first-child { width: auto; padding: 0 10px; }
@@ -48,6 +48,8 @@ body.editing button:not(#edit-words):not(#edit-sheet *), body.editing input:not(
 .es-sw.on, .es-sz.on { outline: 3px solid #d6007a; outline-offset: 2px; }
 #edit-sheet > div { max-height: 92vh; overflow-y: auto; }
 .gear { flex: none; align-self: flex-start; width: 32px; height: 44px; margin-left: -6px; display: grid; place-items: center; border: 0; border-radius: 10px; background: transparent; color: var(--ink); padding: 0; }
+#edit-bar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 55; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 10px 16px calc(10px + env(safe-area-inset-bottom, 0px)); background: #fff0f8; border-top: 3px solid #d6007a; }
+body.editing { padding-bottom: 110px; }
 .ver-no { font: 700 22px/1 var(--display); letter-spacing: .02em; color: var(--ink); white-space: nowrap; }
 .page-no { font: 700 22px/1 var(--display); letter-spacing: .02em; text-transform: uppercase; color: var(--ink); margin-top: 4px; white-space: nowrap; }
 .ask-no-label { display: block; font: 700 22px/1 var(--display); letter-spacing: .02em; text-transform: uppercase; margin-bottom: 10px; }
@@ -384,6 +386,7 @@ summary { font-weight: 600; cursor: pointer; }
   <button class="btn cancel" id="hold-cancel">Cancel</button>
 </div></div>
 <div class="gmap" id="gmap" hidden><iframe id="gmap-frame" title="Google Maps" loading="lazy"></iframe><button class="btn big primary" id="gmap-back">Back</button></div>
+<div id="edit-bar" hidden><button class="btn big primary" id="edit-done">Done and exit</button><button class="btn big cancel" id="edit-undo">Cancel</button></div>
 <div class="ask" id="settings-sheet" hidden><div>
   <span class="ask-no-label">Settings</span>
   <button class="btn big gray" id="edit-layout">Edit page layout</button>
@@ -405,7 +408,7 @@ summary { font-weight: 600; cursor: pointer; }
 </div></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-03.20";
+const APP_VERSION = "2026-10-03.21";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -1705,12 +1708,25 @@ $("gear").onclick = openSettings;
 $("settings-cancel").onclick = () => { $("settings-sheet").hidden = true; };
 $("edit-layout").onclick = () => { $("settings-sheet").hidden = true; setEditing(true); };
 $("open-setup").onclick = () => { $("settings-sheet").hidden = true; showTab("setup"); };
+let editSnap = null, editChanged = false;   // the look before this edit, so Cancel can put it all back
 function setEditing(on) {
   editing = on; document.body.classList.toggle("editing", on);
-  $("edit-words").hidden = !on; $("edit-words").classList.toggle("on", on); $("edit-words").textContent = "Done";
-  if (on) toast("Tap any button or box on this page to change it. Tap Done when finished.");
+  $("edit-bar").hidden = !on;
+  if (on) { editSnap = JSON.parse(JSON.stringify(((design || {}).els) || {})); editChanged = false; toast("Tap any button or box on this page to change it."); }
 }
-$("edit-words").onclick = () => setEditing(false);
+$("edit-done").onclick = () => { setEditing(false); if (editChanged) toast("Changes saved"); };
+$("edit-undo").onclick = async () => {
+  if (!editChanged) { setEditing(false); return; }
+  if (!await ask("Undo every change you made since you tapped Edit page layout?", "Yes, undo them all", "No, keep editing")) return;
+  if (!gh.on()) { toast("Needs the GitHub key (open from the Home Screen icon)"); return; }
+  try {
+    const m = await gh.meta("gps/design.json"), fresh = m ? JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(m.content.replace(/\s/g, "")), c => c.charCodeAt(0)))) : {};
+    fresh.els = editSnap || {}; fresh.updated = new Date().toISOString();
+    await gh.put("gps/design.json", fresh, m && m.sha, "GPS Shots edit: canceled, put back the look from before");
+    for (const el of document.querySelectorAll("[data-orig]")) { if (el.matches("input,textarea")) el.placeholder = el.dataset.orig; else el.textContent = el.dataset.orig; }
+    design = fresh; LS.set("design", fresh); setEditing(false); render(); applyDesign(); toast("All changes undone");
+  } catch (err) { toast("Couldn't undo: " + err.message); }
+};
 function editTarget(el) {
   const t = el.closest("button, a.btn, input, textarea"); if (!t || t.id === "edit-words") return null;
   if (t.closest("[data-n],[data-g],[data-i],[data-pool],[data-p],[data-lp],[data-ls],[data-t]") || t.matches("[data-cat],[data-addt],[data-setst],#ask-yes,#ask-no")) return { fixed: true };
@@ -1757,11 +1773,11 @@ async function saveEdit(reset) {
     fresh.updated = new Date().toISOString();
     await gh.put("gps/design.json", fresh, m && m.sha, `GPS Shots edit: ${tg.orig.slice(0, 40)}${reset ? " back to original" : ""}`);
     if (!o.text) { if (box) tg.el.placeholder = tg.orig; else tg.el.textContent = tg.orig; }
-    design = fresh; LS.set("design", fresh); $("edit-sheet").hidden = true; editTg = null; render(); applyDesign(); toast("Saved for every phone");
+    design = fresh; LS.set("design", fresh); editChanged = true; $("edit-sheet").hidden = true; editTg = null; render(); applyDesign(); toast("Saved for every phone");
   } catch (err) { toast("Couldn't save: " + err.message); }
 }
 document.addEventListener("click", e => {
-  if (!editing || e.target.closest("#edit-sheet")) return;
+  if (!editing || e.target.closest("#edit-sheet, #edit-bar, #ask, #settings-sheet")) return;
   const t = e.target.closest("button, a, input, textarea, select"); if (!t || t.id === "edit-words") return;
   e.preventDefault(); e.stopImmediatePropagation(); if (t.matches("input,textarea")) t.blur();
   const tg = editTarget(t);
