@@ -459,7 +459,7 @@ summary { font-weight: 600; cursor: pointer; }
 </div></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-03.40";
+const APP_VERSION = "2026-10-03.41";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -2024,9 +2024,26 @@ const RUN_JOIN_FT = 75;
 function runPoints(r) { return Object.keys(data.items).filter(n => data.items[n].run && data.items[n].group === r).sort((a, b) => (parseInt(a.split(" point ")[1]) || 0) - (parseInt(b.split(" point ")[1]) || 0)); }
 function runNames() { return [...new Set([...Object.keys(data.runs || {}), ...Object.values(data.items).filter(x => x.run).map(x => x.group)])]; }
 async function startRun() {
+  const open = Object.entries(data.runs || {}).filter(([, x]) => x.toOpen || x.fromOpen).map(([k]) => k);
+  if (open.length) {   // an unfinished run: its open end is the start of this one, and it all becomes one run (Steven 2026-10-03)
+    const k = await choose("Are you continuing one of these unfinished conduit runs?", open.map(k => `${k} (${runPoints(k).length} points)`), "No, start a new run");
+    if (k >= 0) { continueRun(open[k]); return; }
+  }
   const n = Math.max(0, ...runNames().map(k => parseInt(k.replace(/\D+/g, "")) || 0)) + 1;
   await ask("Proceed to the starting point of the conduit run and capture the GPS location.", "OK", "", true);
   runCapture(`Conduit run ${n}`);
+}
+async function continueRun(r) {
+  const run = data.runs[r], ps = runPoints(r);
+  if (!run.toOpen && run.fromOpen) {   // the open end was the start: turn the run around so the open end is last
+    const pts = ps.map(n => data.items[n]).reverse(), t = Date.now();
+    ps.forEach((n, i) => { data.items[`${r} point ${i + 1}`] = Object.assign({}, pts[i], { t }); });
+    for (const [a, b] of [["", ""], ["Wall", "Wall"], ["Open", "Open"], ["Future", "Future"]]) { const f = run["from" + a], to = run["to" + b]; if (to === undefined) delete run["from" + a]; else run["from" + a] = to; if (f === undefined) delete run["to" + b]; else run["to" + b] = f; }
+  }
+  run.splices = [...(run.splices || []), ps.length ? `${r} point ${ps.length}` : null].filter(Boolean);   // where the old and new conduit meet (GPS'd)
+  delete run.toOpen; run.cont = true; saveLocal();
+  await ask(`Continuing ${r}. Proceed to the next point along the conduit run.`, "OK", "", true);
+  runCapture(r);
 }
 function runCapture(r) {
   const have = runPoints(r).map(n => parseInt(n.split(" point ")[1]) || 0);
@@ -2040,24 +2057,86 @@ async function cancelRun() {   // Cancel on the capture screen: keep a run of 2+
   for (const n of ps) { delete data.items[n]; data.deleted = data.deleted || {}; data.deleted[n] = Date.now(); }
   if (ps.length) { saveLocal(); push(`Drop ${r}`); }
 }
-const isRunEnd = i => /^(vault|lockbox|riser)/i.test(typeOf(i)) || /^(vault|lockbox|riser)/i.test(i.kind || "");
-function nearestEnd(p) {
-  let best = null;
-  for (const i of itemsList()) { const g = data.items[i.name]; if (!g || g.lat == null || !isRunEnd(i)) continue; const d = feetApart(p, g); if (d <= RUN_JOIN_FT && (!best || d < best.d)) best = { name: i.name, d }; }
-  return best;
+// conduit ends connect to a Vault, Lockbox, Riser pole, Pedestal or a walked Building (Steven 2026-10-03)
+const isRunEnd = i => /^(vault|lockbox|riser|pedestal)/i.test(typeOf(i)) || /^(vault|lockbox|riser|pedestal)/i.test(i.kind || "");
+const hasWalls = i => !/riser/i.test(typeOf(i)) && !/riser/i.test(i.kind || "");   // a pole has no walls
+const RUN_NEAR_FT = 6, RUN_LIST_FT = 150;
+function segFeet(p, a, b) {   // feet from p to the line a-b
+  const k = 364000, c = Math.cos(p.lat * Math.PI / 180), P = { x: 0, y: 0 }, A = { x: (a.lon - p.lon) * k * c, y: (a.lat - p.lat) * k }, B = { x: (b.lon - p.lon) * k * c, y: (b.lat - p.lat) * k };
+  const dx = B.x - A.x, dy = B.y - A.y, L = dx * dx + dy * dy, t = L ? Math.max(0, Math.min(1, ((P.x - A.x) * dx + (P.y - A.y) * dy) / L)) : 0;
+  return Math.hypot(A.x + t * dx, A.y + t * dy);
+}
+function nearbyEnds(p, skip) {
+  const out = [];
+  for (const i of itemsList()) { const g = data.items[i.name]; if (!g || g.lat == null || !isRunEnd(i) || i.name === skip) continue; const d = feetApart(p, g); if (d <= RUN_LIST_FT) out.push({ name: i.name, d }); }
+  for (const g of [...new Set(Object.values(data.items).filter(x => x.corner).map(x => x.group))]) {
+    const cs = buildingCorners(g).map(n => data.items[n]); if (cs.length < 2 || g === skip) continue;
+    let d = Infinity; for (let i = 0; i < cs.length; i++) d = Math.min(d, segFeet(p, cs[i], cs[(i + 1) % cs.length]));
+    if (d <= RUN_LIST_FT) out.push({ name: g, d, bldg: true });
+  }
+  return out.sort((a, b) => a.d - b.d);
 }
 function wallOf(v, p) {   // which side of the vault the conduit leaves from, toward its next point
   const e = (p.lon - v.lon) * Math.cos(v.lat * Math.PI / 180), n = p.lat - v.lat;
   return Math.abs(n) >= Math.abs(e) ? (n > 0 ? "north" : "south") : (e > 0 ? "east" : "west");
 }
+function choose(msg, opts, none) {   // big list pop-up; resolves the picked index, or -1
+  return new Promise(res => {
+    $("choose-msg").textContent = msg; $("choose-none").textContent = none;
+    $("choose-list").innerHTML = opts.map((o, i) => `<button class="item" data-i="${i}"><span></span><span class="nm">${esc(o)}</span><span></span></button>`).join("");
+    $("choose-list").onclick = e => { const b = e.target.closest("[data-i]"); if (!b) return; $("choose").hidden = true; res(+b.dataset.i); };
+    $("choose-none").onclick = () => { $("choose").hidden = true; res(-1); };
+    $("choose").hidden = false;
+  });
+}
+function newEndLoc() {   // add a location that was never on the print (e.g. a riser pole), at the run's end; resolves its name or null
+  return new Promise(res => {
+    let t = null; const ts = [...new Set(["Vault", "Lockbox", "Riser pole", "Pedestal", ...types().filter(x => x !== "Building")])];
+    const draw = () => { $("newend-types").innerHTML = ts.map(x => `<button class="btn" data-t="${esc(x)}" aria-pressed="${x === t}">${esc(x)}</button>`).join(""); $("newend-name").placeholder = t ? `${t} - enter name` : "enter name"; };
+    $("newend-types").onclick = e => { const b = e.target.closest("[data-t]"); if (b) { t = b.dataset.t; draw(); $("newend-name").focus(); } };
+    $("newend-save").onclick = () => {
+      const n = $("newend-name").value.trim();
+      if (!t) { toast("Pick what it is first"); return; }
+      if (!n) { toast("Type a name first"); return; }
+      if (itemsList().some(i => norm(i.name) === norm(n))) { toast(`${n} is already in this project`); return; }
+      $("newend").hidden = true; res({ name: n, type: t });
+    };
+    $("newend-cancel").onclick = () => { $("newend").hidden = true; res(null); };
+    $("newend-name").value = ""; draw(); $("newend").hidden = false;
+  });
+}
+async function settleEnd(r, run, end, p, nb) {   // what this end of the run connects to
+  const word = end === "from" ? "start" : "end", near = nearbyEnds(p, run.from);
+  const join = v => { run[end] = v.name; const it = itemsList().find(i => i.name === v.name); if (!v.bldg && data.items[v.name] && it && hasWalls(it)) run[end + "Wall"] = wallOf(data.items[v.name], nb); };
+  if (near.length && near[0].d <= RUN_NEAR_FT && await ask(`The ${word} of ${r} is ${Math.round(near[0].d)} ft from ${near[0].name}. Join to ${near[0].name}?`, `Join to ${near[0].name}`, "No")) { join(near[0]); return; }
+  if (near.length) {
+    const k = await choose(`Would you like to connect the ${word} of ${r} to one of these?`, near.map(v => `${v.name} (${Math.round(v.d)} ft)`), "None of these");
+    if (k >= 0) { join(near[k]); return; }
+  }
+  if (await ask(`Would you like to add a new location at the ${word} of ${r}? (For example a riser pole that is not on the print.)`, "Yes, add new location", "No")) {
+    const nl = await newEndLoc();
+    if (nl) {
+      const kind = typeKind(nl.type) || nl.type;
+      if (!types().includes(nl.type) && !isRemovedType(nl.type)) setTypes([...types(), nl.type], `Add type ${nl.type}`);
+      data.extra = data.extra || []; data.extra.push({ name: nl.name, group: typeGroup(nl.type) || "Added in field", kind });
+      data.items[nl.name] = { lat: p.lat, lon: p.lon, acc_ft: p.acc_ft, alt: p.alt, n: p.n, t: Date.now(), group: typeGroup(nl.type) || "Added in field" };
+      if (data.deleted) delete data.deleted[nl.name];
+      run[end] = nl.name; if (!/riser/i.test(nl.type)) run[end + "Wall"] = wallOf(p, nb); return;
+    }
+  }
+  if (await ask(`Is the ${word} of ${r} a future splice point? Will you be extending it at a later date?`, "Yes", "No", true)) { run[end + "Open"] = true; return; }
+  if (await ask("Will a vault be going here?", "Yes", "No", true)) { run[end + "Future"] = "Vault"; await ask("OK. A future vault is marked here.", "OK", "", true); return; }
+  if (await ask(`Will the conduit be continuing at a later date?`, "Yes", "No", true)) run[end + "Open"] = true;
+}
 async function finishRun(r) {
   const ps = runPoints(r).map(n => data.items[n]); if (ps.length < 2) return;
-  const run = { t: Date.now() };
-  for (const [end, p, nb, word] of [["from", ps[0], ps[1], "start"], ["to", ps[ps.length - 1], ps[ps.length - 2], "end"]]) {
-    const v = nearestEnd(p); if (!v || (end === "to" && v.name === run.from)) continue;
-    if (await ask(`The ${word} of ${r} is ${Math.round(v.d)} ft from ${v.name}. Join to ${v.name}?`, `Join to ${v.name}`, "No")) { run[end] = v.name; run[end + "Wall"] = wallOf(data.items[v.name], nb); }
-  }
-  data.runs = data.runs || {}; data.runs[r] = run; saveLocal(); push(`Conduit ${r}`);
+  data.runs = data.runs || {};
+  const run = Object.assign({}, data.runs[r] || {}, { t: Date.now() });
+  if (!run.cont) await settleEnd(r, run, "from", ps[0], ps[1]);
+  for (const k of ["to", "toWall", "toOpen", "toFuture"]) delete run[k];
+  await settleEnd(r, run, "to", ps[ps.length - 1], ps[ps.length - 2]);
+  delete run.cont;
+  data.runs[r] = run; saveLocal(); push(`Conduit ${r}`);
   if (job && job.plan) { showTab("print"); toast(`${r} is drawn in orange on the print`); }
   else drawRun(r);
 }
@@ -2083,7 +2162,8 @@ function drawRun(r) {
     : `<circle cx="${p.x}" cy="${p.y}" r="${fs * 0.35}" fill="#e0201a"/><text x="${p.x}" y="${p.y - fs * 0.6}" font-size="${fs * 0.8}" font-weight="700" text-anchor="middle">${++k}</text>`).join("");
   svg.innerHTML = out;
   $("bdraw-title").textContent = r;
-  $("bdraw-sub").textContent = `${Math.round(runFeet(pts))} ft long. ` + (ru.from ? `Starts at ${ru.from} (${ru.fromWall} wall). ` : "") + (ru.to ? `Ends at ${ru.to} (${ru.toWall} wall). ` : "") + "North is up.";
+  $("bdraw-sub").textContent = `${Math.round(runFeet(pts))} ft long. ` + ["from", "to"].map(e => { const w = e === "from" ? "Starts" : "Ends"; return ru[e] ? `${w} at ${ru[e]}${ru[e + "Wall"] ? ` (${ru[e + "Wall"]} wall)` : ""}. ` : ru[e + "Open"] ? `${w} at a future splice point. ` : ru[e + "Future"] ? `${w} where a future ${ru[e + "Future"].toLowerCase()} goes. ` : ""; }).join("")
+    + ((ru.splices || []).length ? `Spliced at point ${ru.splices.map(n => n.split(" point ")[1]).join(", ")}. ` : "") + "North is up.";
   $("bdraw").hidden = false;
 }
 $("bdraw-close").onclick = () => { $("bdraw").hidden = true; };
@@ -2245,6 +2325,8 @@ else setSync("", "Phone only");
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") { pullDesign(); pullStatus(); } });
 render();
 </script>
+<div class="ask" id="choose" hidden><div><span class="ask-no-label">Page 2-7 · Connect</span><div id="choose-msg"></div><div class="list loc-list" id="choose-list" style="max-height:45vh;overflow:auto"></div><button class="btn" id="choose-none"></button></div></div>
+<div class="ask" id="newend" hidden><div><span class="ask-no-label">Page 2-8 · New location here</span><div>What is it?</div><div class="cats" id="newend-types"></div><label class="field"><span>Name</span><input id="newend-name" type="text" autocomplete="off" placeholder="enter name"></label><button class="btn primary" id="newend-save">Save</button><button class="btn" id="newend-cancel">Cancel</button></div></div>
 <div class="ask" id="ask" hidden><div><span class="ask-no-label" id="ask-page"></span><div id="ask-msg"></div><button class="btn primary" id="ask-yes"></button><button class="btn" id="ask-no"></button></div></div>
 </body>
 </html>
