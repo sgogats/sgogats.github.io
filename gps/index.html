@@ -459,7 +459,7 @@ summary { font-weight: 600; cursor: pointer; }
 </div></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-03.45";
+const APP_VERSION = "2026-10-03.46";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -2000,8 +2000,10 @@ $("bmap-next").onclick = () => {
   cornerFor = group; selected = `${group} corner ${(have.length ? Math.max(...have) : 0) + 1}`; finding = false; render();
   $("shot").scrollIntoView({ behavior: "smooth", block: "start" });
 };
-$("bmap-done").onclick = () => {
+$("bmap-done").onclick = async () => {
   const g = group, cs = buildingCorners(g || "");
+  // 4 to 9 corners: make sure (Steven 2026-10-03)
+  if (cs.length >= 4 && cs.length < 10 && !await ask("Are you sure you want to stop collecting data? The more you collect, the more accurate the drawing will be.", "Yes, stop", "Keep collecting", true)) return;
   group = null; render(); window.scrollTo(0, 0);
   // no print: show the building drawn from its corners on a white screen (Steven 2026-10-03)
   if (!(job && job.plan) && cs.length >= 4) drawBuilding(g, cs);   // a building needs 4 corners or more (Steven 2026-10-03)
