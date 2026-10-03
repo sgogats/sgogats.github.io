@@ -459,7 +459,7 @@ summary { font-weight: 600; cursor: pointer; }
 </div></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-03.41";
+const APP_VERSION = "2026-10-03.42";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -2074,7 +2074,7 @@ function nearbyEnds(p, skip) {
     let d = Infinity; for (let i = 0; i < cs.length; i++) d = Math.min(d, segFeet(p, cs[i], cs[(i + 1) % cs.length]));
     if (d <= RUN_LIST_FT) out.push({ name: g, d, bldg: true });
   }
-  return out.sort((a, b) => a.d - b.d);
+  return out.sort((a, b) => (!!a.bldg - !!b.bldg) || a.d - b.d);   // a nearby lockbox or vault comes before the building (Steven 2026-10-03)
 }
 function wallOf(v, p) {   // which side of the vault the conduit leaves from, toward its next point
   const e = (p.lon - v.lon) * Math.cos(v.lat * Math.PI / 180), n = p.lat - v.lat;
