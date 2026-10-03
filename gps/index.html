@@ -339,7 +339,6 @@ summary { font-weight: 600; cursor: pointer; }
 <section id="tab-setup" hidden>
   <div id="setup-more" class="stack">
   <h2>Setup</h2>
-  <a class="btn" href="designer.html" style="display:grid;place-items:center;text-decoration:none;color:inherit">Design the app's screens</a>
   <p class="small muted mono" id="ver"></p>
   <p class="small muted">Shots are always kept on this phone. Add a GitHub key to also save them to your repo and to load jobs from the Town House Designer.</p>
   <div class="stack">
@@ -388,6 +387,7 @@ summary { font-weight: 600; cursor: pointer; }
 <div class="ask" id="settings-sheet" hidden><div>
   <span class="ask-no-label">Settings</span>
   <button class="btn big gray" id="edit-layout">Edit page layout</button>
+  <a class="btn big gray" id="open-designer" href="designer.html" style="display:grid;place-items:center;text-decoration:none">Design the app's screens</a>
   <button class="btn big gray" id="open-setup">Setup</button>
   <button class="btn cancel" id="settings-cancel">Cancel</button>
 </div></div>
@@ -405,7 +405,7 @@ summary { font-weight: 600; cursor: pointer; }
 </div></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-03.19";
+const APP_VERSION = "2026-10-03.20";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -1700,7 +1700,7 @@ async function pullDesign() {
 /* ---------- Edit button (Steven 2026-10-03): tap Edit, tap any button or box, type new words; saved to gps/design.json for every phone. Only words change, never what a button does. ---------- */
 let editing = false;
 // gear (every page) and the home Settings button open this pop-up over the page you are on (Steven 2026-10-03)
-function openSettings() { if (shot.running) { toast("Finish or cancel the current shot first"); return; } if (editing) setEditing(false); $("settings-sheet").hidden = false; }
+function openSettings() { if (shot.running) { toast("Finish or cancel the current shot first"); return; } if (editing) setEditing(false); $("open-designer").href = "designer.html?screen=" + encodeURIComponent(screenNow()); $("settings-sheet").hidden = false; }
 $("gear").onclick = openSettings;
 $("settings-cancel").onclick = () => { $("settings-sheet").hidden = true; };
 $("edit-layout").onclick = () => { $("settings-sheet").hidden = true; setEditing(true); };
@@ -1786,6 +1786,7 @@ window.designScreen = name => {
   else if (name === "addtype") proj(first, () => { $("type-box").hidden = false; $("type-name").value = ""; renderTypeSugg(); });
   else if (name === "capture") proj(first, () => { finding = false; selected = item(); });
   else if (name === "clean") proj(first, () => { finding = false; selected = null; });
+  else if (name === "addloc") proj(first, () => { adding = { type: null }; });
   else if (name === "random") proj(RANDOM);
   else if (name === "print") { if (current !== first && first) openProject(first); showTab("print"); }
   else if (name === "placing") { showTab("print"); startPlacing(item(), false); }

@@ -117,12 +117,13 @@ const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;",
 const SCREENS = [
   ["main", "Main screen"], ["lists", "Project lists"], ["status", "Change status of job"], ["newproject", "New project"], ["project", "Project page"], ["vaultlist", "Vault list"],
   ["addtype", "Add type"], ["capture", "Capture (Store GPS)"], ["hold", "Hold still pop-up"], ["gmap", "Map from coordinates"], ["ask", "Already-in pop-up"], ["clean", "After save"],
-  ["random", "System point"], ["print", "Print"], ["placing", "Set spot on print"], ["setup", "Setup"],
+  ["addloc", "Add new location"], ["random", "System point"], ["print", "Print"], ["placing", "Set spot on print"], ["setup", "Setup"],
 ];
 const THEME = [["accent", "Main colour"], ["bg", "Background"], ["panel", "Cards"], ["ink", "Text"], ["vault", "Vault"], ["lb", "Lockbox"]];
 let cfg = {}; try { cfg = JSON.parse(localStorage.getItem("gps.cfg") || "{}") || {}; } catch {}
 cfg = Object.assign({ repo: "sgogats/ASBUILT_MAKER", branch: "main" }, cfg);
-let design = { theme: {}, els: {}, screens: {} }, screen = "main", sel = null, selEl = null, sha = null, dirty = false;
+let design = { theme: {}, els: {}, screens: {} }, screen = (new URLSearchParams(location.search).get("screen") || "main"), sel = null, selEl = null, sha = null, dirty = false;
+if (!SCREENS.some(x => x[0] === screen)) screen = "main";
 const status = t => { $("status").textContent = t; };
 
 /* ---------- GitHub ---------- */
