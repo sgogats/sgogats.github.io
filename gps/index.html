@@ -415,7 +415,7 @@ summary { font-weight: 600; cursor: pointer; }
 </div></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-03.24";
+const APP_VERSION = "2026-10-03.25";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -741,7 +741,9 @@ function render() {
   $("loc").placeholder = current === RANDOM ? "Type a name, e.g. CANSP-57-01" : groups.length ? "Pick or type a location or box" : "No locations yet. Add an item below.";
   renderGroups(groups, items);
   if (cat && !types().includes(cat)) cat = null;
-  const shownTypes = isR ? types() : types().filter(t => t === cat || items.some(i => inCat(i, t)) || (t === "Building" && groups.some(g => /^Building /.test(g))));   // a type with no points has no button
+  // a type with no points has no button (projects, and page 4 system points too: Steven 2026-10-03)
+  const shownTypes = types().filter(t => t === cat || items.some(i => inCat(i, t)) || (!isR && t === "Building" && groups.some(g => /^Building /.test(g))));
+  shownTypesNow = shownTypes;
   $("cats").innerHTML = shownTypes.map(t => `<button class="btn" data-cat="${esc(t)}" aria-pressed="${t === cat}">${esc(t)}</button>`).join("")
     + (current === RANDOM ? `<button class="btn" data-act="add-loctype" style="grid-column:1/-1">Add Location Type</button>` : `<button class="btn" data-act="add-loc" style="grid-column:1/-1">+ Add new location</button>`);   // + Add type lives on page 2-5 now
   const bGroups = groups.filter(g => /^Building /.test(g));
@@ -866,8 +868,10 @@ async function pushTypes() {
   }
 }
 function setTypes(list, msg) { data.types = list; data.typesOwn = true; data.typesT = Date.now(); typesCache = null; saveLocal(); push(msg); render(); }
+var shownTypesNow = [];
 function renderTypeSugg() {
-  const q = norm($("type-name").value.trim()), have = types().map(norm);
+  // page 4 hides empty types, so offer those again here
+  const q = norm($("type-name").value.trim()), have = (current === RANDOM ? shownTypesNow : types()).map(norm);
   const opts = allTypeNames().filter(n => !have.includes(norm(n)) && (!q || norm(n).includes(q)));
   const typed = $("type-name").value.trim(), exact = typed && allTypeNames().some(n => norm(n) === norm(typed));
   $("type-sugg").innerHTML = opts.map(n => `<button class="item loc-opt" data-t="${esc(n)}"><span class="nm">${esc(n)}</span><span class="sub">Used before</span></button>`).join("")
