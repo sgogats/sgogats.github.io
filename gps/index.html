@@ -84,6 +84,7 @@ label.field span { font: 600 14px/1 var(--display); letter-spacing: .08em; text-
 .linkish { background: none; border: 0; padding: 6px 0; color: var(--accent); font: 600 15px var(--body); cursor: pointer; text-align: left; }
 .maplink { display: grid; place-items: center; text-decoration: none; }
 .btn.cancel { background: #ff3a2f; color: #fff; border-color: #ff3a2f; }
+.btn.gray { background: #e6e8eb !important; color: #1d2329 !important; border-color: #cfd3d8 !important; }
 /* every box has black text unless the designer sets a colour (green and red boxes keep white so they stay readable) */
 .btn:not(.primary):not(.cancel), .item, .item .nm, .item .sub, input, select, textarea, .tabs button { color: #000; }
 .pick-title { font: 700 38px/1.1 var(--display); text-transform: uppercase; letter-spacing: .03em; color: var(--ink); margin: 16px 0 8px; width: 100%; text-align: center; }
@@ -239,7 +240,9 @@ summary { font-weight: 600; cursor: pointer; }
       <div id="addloc-step2" class="stack" hidden>
         <p style="margin:0">Type: <b id="addloc-type"></b> <button class="btn" id="addloc-retype" style="min-height:36px;padding:4px 10px;margin-left:6px">Change</button></p>
         <label class="field"><span>Name</span><input id="addloc-name" type="text" placeholder="e.g. OLT-1" autocomplete="off" enterkeyhint="done"></label>
-        <button class="btn big primary" id="addloc-make">Add location</button>
+        <button class="btn big gray" id="addloc-make">Add and capture GPS location</button>
+        <button class="btn big gray" id="addloc-more">Add another location of the same type</button>
+        <button class="btn big gray" id="addloc-finish">Finish adding locations</button>
       </div>
       <button class="btn big cancel" id="addloc-cancel">Cancel</button>
     </div>
@@ -372,7 +375,7 @@ summary { font-weight: 600; cursor: pointer; }
 <div class="gmap" id="gmap" hidden><iframe id="gmap-frame" title="Google Maps" loading="lazy"></iframe><button class="btn big primary" id="gmap-back">Back</button></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-03.13";
+const APP_VERSION = "2026-10-03.14";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -856,6 +859,7 @@ function renderAddLoc() {
   $("addloc-types").innerHTML = types().map(t => `<button class="btn" data-addt="${esc(t)}">${esc(t)}</button>`).join("")
     + `<button class="btn" data-addt-new="1" style="grid-column:1/-1">Add new type</button>`;
   $("addloc-type").textContent = adding.type || "";
+  $("addloc-name").placeholder = adding.type ? `${adding.type} - enter name` : "";
 }
 function typeBoxMode() {   // page 2-5 Add new type: no small Cancel, list of types 5 lines tall, scrolls
   const a = !!adding && current !== RANDOM;
@@ -872,14 +876,22 @@ $("addloc-types").addEventListener("click", e => {
 });
 $("addloc-retype").onclick = () => { if (adding) { adding.type = null; render(); } };
 $("addloc-cancel").onclick = endAdding;
-function makeAddLoc() {
+// mode: "gps" = add it and go to GPS capture; "more" = add it, stay for the next one of this type; "finish" = add it (if named) and go back to page 2
+function makeAddLoc(mode = "gps") {
   const name = $("addloc-name").value.trim(); if (!adding || !adding.type) return;
+  if (!name && mode === "finish") { endAdding(); return; }
   if (!name) { toast("Type a name first"); return; }
   if (itemsList().some(i => norm(i.name) === norm(name))) { toast(`${name} is already in this project`); return; }
-  cat = adding.type; adding = null; $("addloc-name").value = ""; $("cats").hidden = false;
-  createItem(name);
+  if (mode === "gps") { cat = adding.type; adding = null; $("addloc-name").value = ""; $("cats").hidden = false; createItem(name); return; }
+  const t = adding.type, g = typeGroup(t) || "Added in field", kind = typeKind(t);
+  data.extra = data.extra || []; data.extra.push(kind ? { name, group: g, kind } : { name, group: g }); saveLocal(); push(`Add ${name}`);
+  toast(`Added ${name}`); $("addloc-name").value = "";
+  if (mode === "more") { $("addloc-name").focus(); return; }
+  endAdding(); cat = null; group = null; render(); window.scrollTo(0, 0);
 }
-$("addloc-make").onclick = makeAddLoc;
+$("addloc-make").onclick = () => makeAddLoc("gps");
+$("addloc-more").onclick = () => makeAddLoc("more");
+$("addloc-finish").onclick = () => makeAddLoc("finish");
 $("addloc-name").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); makeAddLoc(); } });
 let locOpen = false, locGroups = [], locItems = [];
 function norm(t) { return String(t).toLowerCase(); }
@@ -1625,7 +1637,7 @@ function applyDesign() {
   let css = "";
   const sn = screenNow();
   $("proj-status-btn").hidden = $("proj-map").hidden = sn !== "project";
-  $("change-proj").hidden = sn === "addloc";   // a page with a big bottom Cancel gets no small top Cancel (Steven)
+  $("change-proj").hidden = sn === "addloc" || sn === "capture";   // a page with a big bottom Cancel gets no small top Cancel (Steven)
   $("proj-map").href = "map.html?p=" + encodeURIComponent(current || "");
   const sr = selected && data.items && data.items[selected];
   $("shot-map").hidden = !(sn === "capture" && sr && sr.lat != null && !shot.running);
