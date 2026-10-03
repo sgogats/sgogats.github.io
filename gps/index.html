@@ -459,7 +459,7 @@ summary { font-weight: 600; cursor: pointer; }
 </div></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-03.39";
+const APP_VERSION = "2026-10-03.40";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -552,7 +552,7 @@ function homePanel(name) { for (const [k, id] of [["pick", "project-box"], ["new
 function showNewProject(on) { homePanel(on ? "new" : "pick"); if (on) { home = true; $("pick-view").hidden = false; $("collect-main").hidden = true; $("np-name").focus(); } }
 $("change-proj").onclick = goHome;
 // Cancel beside Clear this shot: back to the screen you picked the location from (type list or project page)
-$("shot-back").onclick = () => { if (shot.running) return; if (cornerFor) { const g = cornerFor; cornerFor = null; selected = null; group = g; finding = true; render(); window.scrollTo(0, 0); return; } selected = null; group = null; finding = true; locOpen = false; $("loc").value = ""; render(); window.scrollTo(0, 0); };
+$("shot-back").onclick = () => { if (shot.running) return; if (runFor) { cancelRun(); return; } if (cornerFor) { const g = cornerFor; cornerFor = null; selected = null; group = g; finding = true; render(); window.scrollTo(0, 0); return; } selected = null; group = null; finding = true; locOpen = false; $("loc").value = ""; render(); window.scrollTo(0, 0); };
 // only on the plain project page (not while capturing, adding a type or in a type list)
 $("proj-status-btn").onclick = () => { if (shot.running) return; home = true; selected = null; finding = false; render(); showStatus(current); };
 
@@ -740,7 +740,7 @@ function itemsList() {
   const out = [];
   if (job) for (const it of job.items) out.push(Object.assign({}, it));
   for (const e of data.extra || []) if (!out.some(o => o.name === e.name)) out.push(Object.assign({ kind: "Other" }, e));
-  for (const n of Object.keys(data.items)) if (!data.items[n].corner && !out.some(o => o.name === n)) out.push({ name: n, group: data.items[n].group || "Other", kind: "Other" });
+  for (const n of Object.keys(data.items)) if (!data.items[n].corner && !data.items[n].run && !out.some(o => o.name === n)) out.push({ name: n, group: data.items[n].group || "Other", kind: "Other" });
   return out;
 }
 
@@ -789,7 +789,7 @@ function render() {
   const shownTypes = types().filter(t => t === cat || items.some(i => inCat(i, t)) || (!isR && t === "Building" && groups.some(isBldg)));
   shownTypesNow = shownTypes;
   $("cats").innerHTML = shownTypes.map(t => `<button class="btn" data-cat="${esc(t)}" aria-pressed="${t === cat}">${esc(t)}</button>`).join("")
-    + (current === RANDOM ? `<button class="btn" data-act="add-loctype" style="grid-column:1/-1">Add Location Type</button>` : (cat ? `<button class="btn" data-act="add-loc" style="grid-column:1/-1">+ Add new location</button>` : `<button class="btn" data-act="add-ltype" style="grid-column:1/-1">Add new location</button>`));   // page 2: opens the add new type page (Steven 2026-10-03)   // + Add type lives on page 2-5 now
+    + (current === RANDOM ? `<button class="btn" data-act="add-loctype" style="grid-column:1/-1">Add Location Type</button>` : (cat ? `<button class="btn" data-act="add-loc" style="grid-column:1/-1">+ Add new location</button>` : `<button class="btn" data-act="add-ltype" style="grid-column:1/-1">Add new location</button><button class="btn" data-act="map-conduit" style="grid-column:1/-1">Map conduit and Trench</button>`));   // page 2: opens the add new type page (Steven 2026-10-03)   // + Add type lives on page 2-5 now
   const bGroups = groups.filter(isBldg);
   const list = group ? items.filter(i => i.group === group) : cat ? items.filter(i => inCat(i, cat)).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true })) : [];
   const showGroups = !group && cat === "Building" && bGroups.length;
@@ -986,6 +986,7 @@ $("type-cancel").onclick = () => { $("type-box").hidden = true; if (current === 
 $("cats").addEventListener("click", e => {
   const b = e.target.closest("button"); if (!b) return;
   if (shot.running) { toast("Finish or cancel the current shot first"); return; }
+  if (b.dataset.act === "map-conduit") { startRun(); return; }
   if (b.dataset.act === "add-loc") { adding = { type: null }; group = null; selected = null; render(); window.scrollTo(0, 0); return; }
   typeCheck = b.dataset.act === "add-ltype";
   if (b.dataset.act === "add-type" || b.dataset.act === "add-loctype" || b.dataset.act === "add-ltype") { if (current === RANDOM) { $("type-box").hidden = false; render(); }  $("type-box").hidden = false; $("type-name").value = ""; renderTypeSugg(); applyDesign(); $("type-name").focus(); return; }
@@ -1169,7 +1170,7 @@ function renderShot() {
   $("shot-name").textContent = it.name;
   $("shot-name2").textContent = name2(it.name); $("shot-name2").hidden = !name2(it.name);
   $("name2-btn").textContent = name2(it.name) ? "Change second name" : "+ Add second name (job name or address)"; $("name2-btn").hidden = shot.running;
-  $("editloc-btn").hidden = shot.running || !!cornerFor;
+  $("editloc-btn").hidden = shot.running || !!cornerFor || !!runFor;
   const r = data.items[selected];
   const pill = $("shot-pill");
   pill.className = "pill " + accClass(r && r.acc_ft);
@@ -1268,7 +1269,7 @@ async function finishShot() {
   const samples = shot.samples.slice(); stopShot(true);
   if (!samples.length) { $("shot-msg").textContent = "No GPS readings came in. Try again in the open."; renderShot(); return; }
   const a = average(samples), it = itemsList().find(i => i.name === selected) || {};
-  const old = data.items[selected], again = reverify === selected || !!cornerFor; reverify = null;
+  const old = data.items[selected], again = reverify === selected || !!cornerFor || !!runFor; reverify = null;
   if (old && old.lat != null && !again) {   // a re-shoot asked for by the off-spot check skips the "changing position?" question
     const d = feetApart(old, a);
     if (d > MOVE_CHECK_FT && !await ask(`${selected} is already in, ${Math.round(d)} ft from where you are now. Are you changing its position, or did you pick the wrong location?`,
@@ -1277,6 +1278,16 @@ async function finishShot() {
       selected = null; group = null; finding = true; render(); $("loc").value = ""; $("loc").focus();
       return;
     }
+  }
+  if (runFor) {   // conduit mapping: a point along the run, kept out of the location lists
+    const r = runFor; runFor = null;
+    data.items[selected] = Object.assign(a, { t: Date.now(), group: r, run: true });
+    if (data.deleted) delete data.deleted[selected];
+    saveLocal(); push(`GPS ${selected} ±${Math.round(a.acc_ft)} ft`); toast(`Saved ${selected}`);
+    selected = null; group = null; finding = true; render(); window.scrollTo(0, 0);
+    const k = runPoints(r).length;
+    if (await ask("Proceed to the next point along the conduit run.", "OK", k >= 2 ? "Finish mapping conduit run" : "", true)) runCapture(r); else finishRun(r);
+    return;
   }
   if (cornerFor) {   // building mapping: a corner, kept out of the location lists
     const g = cornerFor; cornerFor = null;
@@ -1309,6 +1320,7 @@ function merge(a, b) {
   out.assigned = Object.assign({}, b.assigned || {}, a.assigned || {});
   for (const [k, t] of Object.entries(out.gone)) { if (out.items[k] && out.items[k].t <= t) delete out.items[k]; out.extra = out.extra.filter(e => e.name !== k || (out.items[k] && out.items[k].t > t)); }
   out.labels = Object.assign({}, b.labels || {}, a.labels || {});
+  out.runs = Object.assign({}, b.runs || {}, a.runs || {});   // conduit runs: which vault each end joins
   out.bldgs = [...new Set([...(a.bldgs || []), ...(b.bldgs || [])])];   // buildings added on page 2-5
   const ta = a.types ? a.typesT || 0 : -1, tb = b.types ? b.typesT || 0 : -1;    // newest button list wins
   if (tb > ta) { out.types = b.types; out.typesT = b.typesT; out.typesOwn = b.typesOwn; }
@@ -1509,11 +1521,20 @@ function drawPrint() {
         ctx.font = "700 12px " + css("--body"); ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(g + " (walked)", cx, cy + 16); }
     }
   }
+  // conduit runs: orange line, joined to the vault's spot on the print
+  if (sol && sol.ok) for (const r of runNames()) {
+    const qs = runPath(r).map(p => { const d = p.end && controlPos(p.end); return toScreen(d || sol.map(sol.local(p))); });
+    if (qs.length < 2) continue;
+    ctx.strokeStyle = "#e07000"; ctx.lineWidth = 3; ctx.beginPath(); qs.forEach((q, i) => i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y)); ctx.stroke();
+    ctx.fillStyle = "#e07000"; for (const q of qs) { ctx.beginPath(); ctx.arc(q.x, q.y, 3.5, 0, 7); ctx.fill(); }
+    const m = qs[Math.floor((qs.length - 1) / 2)], m2 = qs[Math.floor((qs.length - 1) / 2) + 1];
+    ctx.font = "700 12px " + css("--body"); ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(r, (m.x + m2.x) / 2, (m.y + m2.y) / 2 - 10);
+  }
   // shots mapped through the fit
   if (sol && sol.ok) {
     ctx.font = "600 12px " + css("--body"); ctx.textAlign = "left"; ctx.textBaseline = "middle";
     for (const [n, rd] of Object.entries(data.items)) {
-      if (rd.corner) continue;
+      if (rd.corner || rd.run) continue;
       if (data.controls[n] && data.controls[n].x != null) continue;  // verified: its GPS sits on the item's spot, no line
       const q = toScreen(sol.map(sol.local(rd))), d = controlPos(n);
       if (d) { const dp = toScreen(d); ctx.strokeStyle = css("--shot"); ctx.lineWidth = 1.5; ctx.setLineDash([4, 3]); ctx.beginPath(); ctx.moveTo(dp.x, dp.y); ctx.lineTo(q.x, q.y); ctx.stroke(); ctx.setLineDash([]); }
@@ -1542,7 +1563,7 @@ function renderFitNote() {
   box.textContent = txt;
 }
 function renderCtrlRows() {
-  const rows = Object.entries(data.items).filter(([, x]) => !x.corner).sort((a, b) => a[0].localeCompare(b[0], undefined, { numeric: true }));
+  const rows = Object.entries(data.items).filter(([, x]) => !x.corner && !x.run).sort((a, b) => a[0].localeCompare(b[0], undefined, { numeric: true }));
   const byN = {}; if (sol) for (const c of sol.ctrl) byN[c.n] = c;
   $("ctrl-rows").innerHTML = rows.length ? rows.map(([n, r]) => {
     const has = !!controlPos(n), used = isUsed(n), c = byN[n];
@@ -1994,6 +2015,75 @@ function drawBuilding(g, cs) {
     + xy.map((p, i) => `<circle cx="${p.x}" cy="${p.y}" r="${fs * 0.35}" fill="#e0201a"/><text x="${p.x}" y="${p.y - fs * 0.6}" font-size="${fs}" font-weight="700" text-anchor="middle">${i + 1}</text>`).join("");
   $("bdraw-title").textContent = both(g);
   $("bdraw-sub").textContent = `${cs.length} corners, joined in the order you walked. North is up.`;
+  $("bdraw").hidden = false;
+}
+/* ---------- conduit mapping (Steven 2026-10-03): walk the run, capture the start, every bend, the end.
+   Points save as "Conduit run 1 point 1", "... point 2"; each end can join a Vault, Lockbox or Riser pole, and the wall it enters is kept for the vault conduit sheet. ---------- */
+var runFor = null;
+const RUN_JOIN_FT = 75;
+function runPoints(r) { return Object.keys(data.items).filter(n => data.items[n].run && data.items[n].group === r).sort((a, b) => (parseInt(a.split(" point ")[1]) || 0) - (parseInt(b.split(" point ")[1]) || 0)); }
+function runNames() { return [...new Set([...Object.keys(data.runs || {}), ...Object.values(data.items).filter(x => x.run).map(x => x.group)])]; }
+async function startRun() {
+  const n = Math.max(0, ...runNames().map(k => parseInt(k.replace(/\D+/g, "")) || 0)) + 1;
+  await ask("Proceed to the starting point of the conduit run and capture the GPS location.", "OK", "", true);
+  runCapture(`Conduit run ${n}`);
+}
+function runCapture(r) {
+  const have = runPoints(r).map(n => parseInt(n.split(" point ")[1]) || 0);
+  runFor = r; group = null; cat = null; selected = `${r} point ${(have.length ? Math.max(...have) : 0) + 1}`; finding = false; render();
+  $("shot").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+async function cancelRun() {   // Cancel on the capture screen: keep a run of 2+ points, drop a lone start point
+  const r = runFor; runFor = null; selected = null; group = null; finding = true; render(); window.scrollTo(0, 0);
+  const ps = runPoints(r);
+  if (ps.length >= 2) { if (await ask(`Finish mapping ${r} with the ${ps.length} points captured?`, "Finish mapping conduit run", "Keep going")) finishRun(r); else runCapture(r); return; }
+  for (const n of ps) { delete data.items[n]; data.deleted = data.deleted || {}; data.deleted[n] = Date.now(); }
+  if (ps.length) { saveLocal(); push(`Drop ${r}`); }
+}
+const isRunEnd = i => /^(vault|lockbox|riser)/i.test(typeOf(i)) || /^(vault|lockbox|riser)/i.test(i.kind || "");
+function nearestEnd(p) {
+  let best = null;
+  for (const i of itemsList()) { const g = data.items[i.name]; if (!g || g.lat == null || !isRunEnd(i)) continue; const d = feetApart(p, g); if (d <= RUN_JOIN_FT && (!best || d < best.d)) best = { name: i.name, d }; }
+  return best;
+}
+function wallOf(v, p) {   // which side of the vault the conduit leaves from, toward its next point
+  const e = (p.lon - v.lon) * Math.cos(v.lat * Math.PI / 180), n = p.lat - v.lat;
+  return Math.abs(n) >= Math.abs(e) ? (n > 0 ? "north" : "south") : (e > 0 ? "east" : "west");
+}
+async function finishRun(r) {
+  const ps = runPoints(r).map(n => data.items[n]); if (ps.length < 2) return;
+  const run = { t: Date.now() };
+  for (const [end, p, nb, word] of [["from", ps[0], ps[1], "start"], ["to", ps[ps.length - 1], ps[ps.length - 2], "end"]]) {
+    const v = nearestEnd(p); if (!v || (end === "to" && v.name === run.from)) continue;
+    if (await ask(`The ${word} of ${r} is ${Math.round(v.d)} ft from ${v.name}. Join to ${v.name}?`, `Join to ${v.name}`, "No")) { run[end] = v.name; run[end + "Wall"] = wallOf(data.items[v.name], nb); }
+  }
+  data.runs = data.runs || {}; data.runs[r] = run; saveLocal(); push(`Conduit ${r}`);
+  if (job && job.plan) { showTab("print"); toast(`${r} is drawn in orange on the print`); }
+  else drawRun(r);
+}
+function runPath(r) {   // GPS points of the run with the joined vaults at the ends
+  const ru = (data.runs || {})[r] || {}, pts = runPoints(r).map(n => data.items[n]);
+  if (ru.from && data.items[ru.from]) pts.unshift(Object.assign({ end: ru.from }, data.items[ru.from]));
+  if (ru.to && data.items[ru.to]) pts.push(Object.assign({ end: ru.to }, data.items[ru.to]));
+  return pts;
+}
+function runFeet(pts) { let t = 0; for (let i = 1; i < pts.length; i++) t += feetApart(pts[i - 1], pts[i]); return t; }
+function drawRun(r) {
+  const pts = runPath(r), ru = (data.runs || {})[r] || {}; if (pts.length < 2) return;
+  const lat0 = pts.reduce((s, p) => s + p.lat, 0) / pts.length, lon0 = pts.reduce((s, p) => s + p.lon, 0) / pts.length;
+  const xy = pts.map(p => ({ x: (p.lon - lon0) * 364000 * Math.cos(lat0 * Math.PI / 180), y: -(p.lat - lat0) * 364000 }));
+  const xs = xy.map(p => p.x), ys = xy.map(p => p.y), w = Math.max(...xs) - Math.min(...xs) || 1, h = Math.max(...ys) - Math.min(...ys) || 1, pad = Math.max(w, h) * 0.15 + 5;
+  const svg = $("bdraw-svg"); svg.setAttribute("viewBox", `${Math.min(...xs) - pad} ${Math.min(...ys) - pad} ${w + 2 * pad} ${h + 2 * pad}`);
+  const fs = Math.max(w, h) / 18;
+  let out = `<polyline points="${xy.map(p => `${p.x},${p.y}`).join(" ")}" fill="none" stroke="#e07000" stroke-width="${fs * 0.22}" stroke-linejoin="round" stroke-linecap="round"/>`;
+  for (let i = 1; i < xy.length; i++) { const a = xy[i - 1], b = xy[i]; out += `<text x="${(a.x + b.x) / 2}" y="${(a.y + b.y) / 2}" font-size="${fs * 0.8}" fill="#1f6fd1" text-anchor="middle" dominant-baseline="middle" paint-order="stroke" stroke="#fff" stroke-width="${fs * 0.25}">${Math.round(feetApart(pts[i - 1], pts[i]))} ft</text>`; }
+  let k = 0;
+  out += xy.map((p, i) => pts[i].end
+    ? `<rect x="${p.x - fs * 0.5}" y="${p.y - fs * 0.5}" width="${fs}" height="${fs}" fill="#111"/><text x="${p.x}" y="${p.y - fs * 0.8}" font-size="${fs}" font-weight="700" text-anchor="middle">${esc(pts[i].end)}</text>`
+    : `<circle cx="${p.x}" cy="${p.y}" r="${fs * 0.35}" fill="#e0201a"/><text x="${p.x}" y="${p.y - fs * 0.6}" font-size="${fs * 0.8}" font-weight="700" text-anchor="middle">${++k}</text>`).join("");
+  svg.innerHTML = out;
+  $("bdraw-title").textContent = r;
+  $("bdraw-sub").textContent = `${Math.round(runFeet(pts))} ft long. ` + (ru.from ? `Starts at ${ru.from} (${ru.fromWall} wall). ` : "") + (ru.to ? `Ends at ${ru.to} (${ru.toWall} wall). ` : "") + "North is up.";
   $("bdraw").hidden = false;
 }
 $("bdraw-close").onclick = () => { $("bdraw").hidden = true; };
