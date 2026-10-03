@@ -299,6 +299,11 @@ summary { font-weight: 600; cursor: pointer; }
 
     <h3 id="items-h">Items</h3>
     <button class="linkish" id="group-name2" hidden></button>
+    <div class="stack" id="bmap" hidden>
+      <p style="margin:0" id="bmap-count"></p>
+      <button class="btn big primary" id="bmap-next">Capture next corner</button>
+      <button class="btn big gray" id="bmap-done">Done</button>
+    </div>
     <div class="list" id="items"></div>
     <details style="margin-top:12px" hidden>
       <summary>Add an item that is not on the list</summary>
@@ -422,6 +427,11 @@ summary { font-weight: 600; cursor: pointer; }
   <button class="btn primary" id="editloc-save">Save</button>
   <button class="btn cancel" id="editloc-cancel">Cancel</button>
 </div></div>
+<div id="bdraw" hidden style="position:fixed;inset:0;z-index:58;background:#fff;color:#111;display:grid;grid-template-rows:auto 1fr auto;padding:16px;gap:10px">
+  <div><span class="ask-no-label" id="bdraw-title" style="color:#111"></span><div class="small" id="bdraw-sub" style="color:#555"></div></div>
+  <svg id="bdraw-svg" style="width:100%;height:100%"></svg>
+  <button class="btn big primary" id="bdraw-close">Close</button>
+</div>
 <div id="empty-flash" hidden onclick="this.hidden=true"><div id="empty-flash-msg"></div></div>
 <div class="ask" id="settings-sheet" hidden><div>
   <span class="ask-no-label">Settings</span>
@@ -446,7 +456,7 @@ summary { font-weight: 600; cursor: pointer; }
 </div></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-03.35";
+const APP_VERSION = "2026-10-03.36";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -539,7 +549,7 @@ function homePanel(name) { for (const [k, id] of [["pick", "project-box"], ["new
 function showNewProject(on) { homePanel(on ? "new" : "pick"); if (on) { home = true; $("pick-view").hidden = false; $("collect-main").hidden = true; $("np-name").focus(); } }
 $("change-proj").onclick = goHome;
 // Cancel beside Clear this shot: back to the screen you picked the location from (type list or project page)
-$("shot-back").onclick = () => { if (shot.running) return; selected = null; group = null; finding = true; locOpen = false; $("loc").value = ""; render(); window.scrollTo(0, 0); };
+$("shot-back").onclick = () => { if (shot.running) return; if (cornerFor) { const g = cornerFor; cornerFor = null; selected = null; group = g; finding = true; render(); window.scrollTo(0, 0); return; } selected = null; group = null; finding = true; locOpen = false; $("loc").value = ""; render(); window.scrollTo(0, 0); };
 // only on the plain project page (not while capturing, adding a type or in a type list)
 $("proj-status-btn").onclick = () => { if (shot.running) return; home = true; selected = null; finding = false; render(); showStatus(current); };
 
@@ -727,7 +737,7 @@ function itemsList() {
   const out = [];
   if (job) for (const it of job.items) out.push(Object.assign({}, it));
   for (const e of data.extra || []) if (!out.some(o => o.name === e.name)) out.push(Object.assign({ kind: "Other" }, e));
-  for (const n of Object.keys(data.items)) if (!out.some(o => o.name === n)) out.push({ name: n, group: data.items[n].group || "Other", kind: "Other" });
+  for (const n of Object.keys(data.items)) if (!data.items[n].corner && !out.some(o => o.name === n)) out.push({ name: n, group: data.items[n].group || "Other", kind: "Other" });
   return out;
 }
 
@@ -793,6 +803,9 @@ function render() {
     const sub = r ? `Shot ${new Date(r.t).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}` : i.kind;
     return `<button class="item" data-n="${esc(i.name)}" aria-current="${selected === i.name}">${symbol(i.kind)}<span><span class="nm">${esc(i.name)}</span><br><span class="sub">${esc(sub)}</span></span>${pill}</button>`;
   }).join("") || (cat && !group ? `<div class="item" style="cursor:default"><span></span><span class="sub">${current === RANDOM ? `No ${esc(cat)} points yet. Type a name above.` : `No ${esc(cat)} locations yet. Tap + Add new location.`}</span><span></span></div><button class="item" data-rm="${esc(cat)}"><span></span><span class="sub">Remove the ${esc(cat)} button${current === RANDOM ? "" : " from this project"}</span><span></span></button>` : "");
+  const bm = finding && !selected && group && /^Building /.test(group) && current !== RANDOM;
+  $("bmap").hidden = !bm;
+  if (bm) { const n = buildingCorners(group).length; $("bmap-count").textContent = n ? `${n} corner${n === 1 ? "" : "s"} captured for ${group}.` : `No corners captured for ${group} yet.`; $("bmap-next").textContent = n ? "Capture next corner" : "Capture first corner"; }
   renderAddLoc();
   renderShot();
   if (!$("tab-print").hidden) drawPrint();
@@ -1112,7 +1125,11 @@ $("items").addEventListener("click", e => {
   const b = e.target.closest(".item"); if (!b || (!b.dataset.n && !b.dataset.g && !b.dataset.rm)) return;
   if (shot.running) { toast("Finish or cancel the current shot first"); return; }
   if (b.dataset.rm) { const t = b.dataset.rm; cat = null; setTypes(types().filter(x => x !== t), `Remove type ${t}`); toast(`Removed ${t}`); return; }
-  if (b.dataset.g) { group = b.dataset.g; render(); return; }
+  if (b.dataset.g) {
+    group = b.dataset.g; render();
+    if (/^Building /.test(group) && current !== RANDOM) ask("You are now entering the building mapping section. Walk around the building, stop at every corner and capture the GPS data.", "OK", "");
+    return;
+  }
   selected = b.dataset.n; finding = false; render();
   $("shot").scrollIntoView({ behavior: "smooth", block: "start" });
 });
@@ -1135,7 +1152,7 @@ function renderShot() {
   $("shot-name").textContent = it.name;
   $("shot-name2").textContent = name2(it.name); $("shot-name2").hidden = !name2(it.name);
   $("name2-btn").textContent = name2(it.name) ? "Change second name" : "+ Add second name (job name or address)"; $("name2-btn").hidden = shot.running;
-  $("editloc-btn").hidden = shot.running;
+  $("editloc-btn").hidden = shot.running || !!cornerFor;
   const r = data.items[selected];
   const pill = $("shot-pill");
   pill.className = "pill " + accClass(r && r.acc_ft);
@@ -1218,7 +1235,7 @@ function average(samples) {
 }
 function ask(msg, yes, no) {
   return new Promise(res => {
-    $("ask-msg").textContent = msg; $("ask-yes").textContent = yes; $("ask-no").textContent = no; $("ask").hidden = false;
+    $("ask-msg").textContent = msg; $("ask-yes").textContent = yes; $("ask-no").textContent = no; $("ask-no").hidden = !no; $("ask").hidden = false;
     $("ask-yes").onclick = () => { $("ask").hidden = true; res(true); };
     $("ask-no").onclick = () => { $("ask").hidden = true; res(false); };
   });
@@ -1233,7 +1250,7 @@ async function finishShot() {
   const samples = shot.samples.slice(); stopShot(true);
   if (!samples.length) { $("shot-msg").textContent = "No GPS readings came in. Try again in the open."; renderShot(); return; }
   const a = average(samples), it = itemsList().find(i => i.name === selected) || {};
-  const old = data.items[selected], again = reverify === selected; reverify = null;
+  const old = data.items[selected], again = reverify === selected || !!cornerFor; reverify = null;
   if (old && old.lat != null && !again) {   // a re-shoot asked for by the off-spot check skips the "changing position?" question
     const d = feetApart(old, a);
     if (d > MOVE_CHECK_FT && !await ask(`${selected} is already in, ${Math.round(d)} ft from where you are now. Are you changing its position, or did you pick the wrong location?`,
@@ -1242,6 +1259,14 @@ async function finishShot() {
       selected = null; group = null; finding = true; render(); $("loc").value = ""; $("loc").focus();
       return;
     }
+  }
+  if (cornerFor) {   // building mapping: a corner, kept out of the location lists
+    const g = cornerFor; cornerFor = null;
+    data.items[selected] = Object.assign(a, { t: Date.now(), group: g, corner: true });
+    if (data.deleted) delete data.deleted[selected];
+    saveLocal(); push(`GPS ${selected} ±${Math.round(a.acc_ft)} ft`); toast(`Saved ${selected}`);
+    selected = null; group = g; finding = true; render(); window.scrollTo(0, 0);
+    return;
   }
   data.items[selected] = Object.assign(a, { t: Date.now(), group: it.group || "Other" });
   if (data.deleted) delete data.deleted[selected];
@@ -1906,6 +1931,38 @@ $("td-list").addEventListener("click", async e => {
   }
   showTestData();
 });
+/* ---------- building mapping (Steven 2026-10-03): walk around a building, stop at every corner, capture GPS.
+   Corners are saved in walking order as "Building 1 corner 1", "... corner 2" and so on, so the outline can be drawn without a print. ---------- */
+var cornerFor = null;
+function buildingCorners(g) { return Object.keys(data.items).filter(n => data.items[n].corner && data.items[n].group === g).sort((a, b) => (parseInt(a.split(" corner ")[1]) || 0) - (parseInt(b.split(" corner ")[1]) || 0)); }
+$("bmap-next").onclick = () => {
+  if (shot.running || !group) return;
+  const have = buildingCorners(group).map(n => parseInt(n.split(" corner ")[1]) || 0);
+  cornerFor = group; selected = `${group} corner ${(have.length ? Math.max(...have) : 0) + 1}`; finding = false; render();
+  $("shot").scrollIntoView({ behavior: "smooth", block: "start" });
+};
+$("bmap-done").onclick = () => {
+  const g = group, cs = buildingCorners(g || "");
+  group = null; render(); window.scrollTo(0, 0);
+  // no print: show the building drawn from its corners on a white screen (Steven 2026-10-03)
+  if (!(job && job.plan) && cs.length >= 3) drawBuilding(g, cs);
+};
+function drawBuilding(g, cs) {
+  const pts = cs.map(n => data.items[n]), lat0 = pts.reduce((s, p) => s + p.lat, 0) / pts.length, lon0 = pts.reduce((s, p) => s + p.lon, 0) / pts.length;
+  const ft = p => ({ x: (p.lon - lon0) * 364000 * Math.cos(lat0 * Math.PI / 180), y: -(p.lat - lat0) * 364000 });   // feet east / north
+  const xy = pts.map(ft), xs = xy.map(p => p.x), ys = xy.map(p => p.y);
+  const w = Math.max(...xs) - Math.min(...xs) || 1, h = Math.max(...ys) - Math.min(...ys) || 1, pad = Math.max(w, h) * 0.15 + 5;
+  const svg = $("bdraw-svg"); svg.setAttribute("viewBox", `${Math.min(...xs) - pad} ${Math.min(...ys) - pad} ${w + 2 * pad} ${h + 2 * pad}`);
+  const fs = Math.max(w, h) / 18, poly = xy.map(p => `${p.x},${p.y}`).join(" ");
+  let side = "";
+  for (let i = 0; i < xy.length; i++) { const a = xy[i], b = xy[(i + 1) % xy.length], d = Math.hypot(b.x - a.x, b.y - a.y); side += `<text x="${(a.x + b.x) / 2}" y="${(a.y + b.y) / 2}" font-size="${fs * 0.8}" fill="#1f6fd1" text-anchor="middle" dominant-baseline="middle" paint-order="stroke" stroke="#fff" stroke-width="${fs * 0.25}">${Math.round(d)} ft</text>`; }
+  svg.innerHTML = `<polygon points="${poly}" fill="#e6e8eb" stroke="#111" stroke-width="${fs * 0.18}" stroke-linejoin="round"/>` + side
+    + xy.map((p, i) => `<circle cx="${p.x}" cy="${p.y}" r="${fs * 0.35}" fill="#e0201a"/><text x="${p.x}" y="${p.y - fs * 0.6}" font-size="${fs}" font-weight="700" text-anchor="middle">${i + 1}</text>`).join("");
+  $("bdraw-title").textContent = both(g);
+  $("bdraw-sub").textContent = `${cs.length} corners, joined in the order you walked. North is up.`;
+  $("bdraw").hidden = false;
+}
+$("bdraw-close").onclick = () => { $("bdraw").hidden = true; };
 /* ---------- page 2-3: Edit name and/or location type (Steven 2026-10-03: fix a mistake, e.g. "OLT" saved as a Pedestal) ---------- */
 let editLoc = null;
 $("editloc-btn").onclick = () => {
