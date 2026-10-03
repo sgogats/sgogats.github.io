@@ -397,7 +397,6 @@ summary { font-weight: 600; cursor: pointer; }
 <div class="ask" id="type-check" hidden><div>
   <span class="ask-no-label">Existing location types</span>
   <div class="list loc-list" id="type-check-list" style="max-height:55vh"></div>
-  <button class="btn" id="type-check-new">Location type not in list</button>
   <button class="btn cancel" id="type-check-cancel">Cancel</button>
 </div></div>
 <div class="ask" id="type-lib" hidden><div>
@@ -430,7 +429,7 @@ summary { font-weight: 600; cursor: pointer; }
 </div></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-03.28";
+const APP_VERSION = "2026-10-03.29";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -887,11 +886,11 @@ var shownTypesNow = [], typeCheck = false;   // typeCheck: type box opened from 
 function checkingTypes() { return current === RANDOM || (typeCheck && !adding); }
 function renderTypeSugg() {
   // page 4 hides empty types, so offer those again here
-  const q = norm($("type-name").value.trim()), have = (checkingTypes() ? shownTypesNow : types()).map(norm);
+  const q = norm($("type-name").value.trim()), have = (adding ? [] : current === RANDOM || typeCheck ? shownTypesNow : types()).map(norm);
   const opts = allTypeNames().filter(n => !have.includes(norm(n)) && (!q || norm(n).includes(q)));
   const typed = $("type-name").value.trim(), exact = typed && allTypeNames().some(n => norm(n) === norm(typed));
   $("type-sugg").innerHTML = opts.map(n => `<button class="item loc-opt" data-t="${esc(n)}"><span class="nm">${esc(n)}</span><span class="sub">Used before</span></button>`).join("")
-    + (typed && !exact && !checkingTypes() ? `<button class="item loc-opt" data-t="${esc(typed)}"><span class="nm" style="color:var(--accent)">+ New type “${esc(typed)}”</span><span></span></button>` : "");
+    ;
   $("type-sugg").hidden = !$("type-sugg").innerHTML;
   typeBoxMode();
 }
@@ -908,19 +907,26 @@ $("type-name").addEventListener("input", renderTypeSugg);
 $("type-name").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); typeEntered(); } });
 // page 4 (Steven 2026-10-03): a typed type must already exist; if not, flash a warning, then show every type to pick from,
 // with "Location type not in list" at the bottom to confirm a brand-new one
-function typeEntered() {
-  const typed = $("type-name").value.trim(); if (!typed) return;
-  if (!checkingTypes() || allTypeNames().some(n => norm(n) === norm(typed))) { addType(typed); return; }
-  $("type-name").blur();
-  $("type-check-list").innerHTML = allTypeNames().slice().sort((a, b) => a.localeCompare(b)).map(n => `<button class="item loc-opt" data-tc="${esc(n)}"><span class="nm">${esc(n)}</span><span></span></button>`).join("");
-  $("type-check-new").textContent = `Location type not in list: add “${typed}”`;
+// any time a new location type is added (Steven 2026-10-03): if it isn't in the list, flash the screen red,
+// then show every type; pick one to use it, or Continue (end of the list) to add the new one
+let typeCheckLib = false, typeCheckPick = null, typeCheckNew = null, typeCheckName = "";
+function checkNewType(typed, onPick, onNew) {
+  typed = typed.trim(); if (!typed) return;
+  const have = allTypeNames().find(n => norm(n) === norm(typed)); if (have) { onPick(have); return; }
+  typeCheckPick = onPick; typeCheckNew = onNew; typeCheckName = typed;
+  if (document.activeElement) document.activeElement.blur();
+  $("type-check-list").innerHTML = allTypeNames().slice().sort((a, b) => a.localeCompare(b)).map(n => `<button class="item loc-opt" data-tc="${esc(n)}"><span class="nm">${esc(n)}</span><span></span></button>`).join("")
+    + `<button class="btn primary" id="type-check-new" style="width:100%;margin-top:10px">Continue: add “${esc(typed)}”</button>`;
   $("type-check").hidden = false; $("type-check-list").scrollTop = 0;
-  flashEmpty("Location type does not exist. Check existing location types before proceeding");
+  flashEmpty("Location type does not exist. Verify you want to add it");
 }
+function typeEntered() { typeCheckLib = false; checkNewType($("type-name").value, addType, addType); }
 $("type-next").onclick = typeEntered;
-$("type-check-list").addEventListener("click", e => { const b = e.target.closest("[data-tc]"); if (b) { $("type-check").hidden = true; addType(b.dataset.tc); } });
-$("type-check-new").onclick = () => { $("type-check").hidden = true; addType($("type-name").value); };
-$("type-check-cancel").onclick = () => { $("type-check").hidden = true; $("type-name").focus(); };
+$("type-check-list").addEventListener("click", e => {
+  const b = e.target.closest("[data-tc]"); if (b) { $("type-check").hidden = true; typeCheckPick && typeCheckPick(b.dataset.tc); return; }
+  if (e.target.closest("#type-check-new")) { $("type-check").hidden = true; typeCheckNew && typeCheckNew(typeCheckName); }
+});
+$("type-check-cancel").onclick = () => { $("type-check").hidden = true; if (typeCheckLib) $("type-lib").hidden = false; };
 $("type-sugg").addEventListener("click", e => { const b = e.target.closest("[data-t]"); if (b) addType(b.dataset.t); });
 $("type-cancel").onclick = () => { $("type-box").hidden = true; if (current === RANDOM) render(); applyDesign(); };
 $("cats").addEventListener("click", e => {
@@ -949,7 +955,7 @@ function renderAddLoc() {
 }
 function typeBoxMode() {   // page 2-5 Add new type: no small Cancel, list of types 5 lines tall, scrolls
   const a = !!adding && current !== RANDOM;
-  $("type-cancel").hidden = a; $("type-next").hidden = !checkingTypes();
+  $("type-cancel").hidden = a; $("type-next").hidden = false;
   $("type-name").placeholder = a ? "Enter type or select below" : "Type name, e.g. Manhole, Cleanout, Panel";
   const row = $("type-sugg").firstElementChild;
   $("type-sugg").style.maxHeight = a && row ? (row.offsetHeight * 5 + 2) + "px" : "";
@@ -1772,9 +1778,9 @@ function showTypeLib(hi) {
 $("open-types").onclick = () => { $("settings-sheet").hidden = true; $("type-lib-new").value = ""; showTypeLib(); $("type-lib").hidden = false; $("type-lib-list").scrollTop = 0; };
 function addLibType() {
   const name = $("type-lib-new").value.trim(); if (!name) { $("type-lib-new").focus(); return; }
-  const have = allTypeNames().find(n => norm(n) === norm(name));
-  if (have) { toast(`${have} is already in the list`); showTypeLib(have); return; }
-  typeLib.push(name); pushTypes(); $("type-lib-new").value = ""; showTypeLib(name); toast(`Added ${name}`);
+  $("type-lib").hidden = true; typeCheckLib = true;
+  checkNewType(name, have => { $("type-lib").hidden = false; toast(`${have} is already in the list`); showTypeLib(have); },
+    n => { typeLib.push(n); pushTypes(); $("type-lib-new").value = ""; $("type-lib").hidden = false; showTypeLib(n); toast(`Added ${n}`); });
 }
 $("type-lib-add").onclick = addLibType;
 $("type-lib-new").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); addLibType(); } });
