@@ -406,12 +406,21 @@ summary { font-weight: 600; cursor: pointer; }
   <div class="row" style="gap:8px;flex-wrap:nowrap"><input id="type-lib-new" type="text" placeholder="New location type" autocomplete="off" enterkeyhint="done" style="flex:1;min-width:0"><button class="btn primary" id="type-lib-add" style="width:auto;padding:0 18px">Add</button></div>
   <button class="btn" id="type-lib-done">Done</button>
 </div></div>
+<div class="ask" id="testdata" hidden><div>
+  <span class="ask-no-label">Delete test data</span>
+  <div class="es-row" id="td-tabs"><button class="es-sz" data-td="types">Location types</button><button class="es-sz" data-td="locs">Locations</button><button class="es-sz" data-td="projects">Projects</button></div>
+  <select id="td-proj" hidden></select>
+  <p class="small muted" style="margin:0" id="td-note"></p>
+  <div class="list loc-list" id="td-list" style="max-height:48vh"></div>
+  <button class="btn" id="td-done">Done</button>
+</div></div>
 <div id="empty-flash" hidden onclick="this.hidden=true"><div id="empty-flash-msg"></div></div>
 <div class="ask" id="settings-sheet" hidden><div>
   <span class="ask-no-label">Settings</span>
   <button class="btn big gray" id="edit-layout">Edit page layout</button>
   <a class="btn big gray" id="open-designer" href="designer.html" style="display:grid;place-items:center;text-decoration:none">Design the app's screens</a>
   <button class="btn big gray" id="open-types">Edit location type list</button>
+  <button class="btn big gray" id="open-testdata">Delete test data</button>
   <button class="btn big gray" id="open-setup">Setup</button>
   <button class="btn cancel" id="settings-cancel">Cancel</button>
 </div></div>
@@ -429,7 +438,7 @@ summary { font-weight: 600; cursor: pointer; }
 </div></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-03.31";
+const APP_VERSION = "2026-10-03.32";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -810,7 +819,7 @@ function bringIn(n) {
   const g = group || (cat && typeGroup(cat)) || "Added in field", kind = cat ? typeKind(cat) : /^Building /.test(g) ? "Lockbox" : null;
   data.extra = (data.extra || []).filter(e => e.name !== n); data.extra.push(kind ? { name: n, group: g, kind } : { name: n, group: g });
   data.items[n] = Object.assign({}, r, { group: g, from: "System locations" });
-  if (data.deleted) delete data.deleted[n];
+  if (data.deleted) delete data.deleted[n]; if (data.gone && current !== RANDOM) delete data.gone[n];
   const b2 = (pd.labels || {})[n]; if (b2) data.labels = Object.assign({}, data.labels, { [n]: b2 });
   saveLocal(); push(`${n} brought in from System locations`);
   const proj = data.project || current; poolRemove(n, proj);
@@ -834,6 +843,8 @@ const DEFAULT_TYPES = ["Lockbox", "Vault", "Building", "Pedestal"];
 const MASTER_TYPES = ["Node", "Amplifier", "Power supply", "Lockbox", "Vault", "MDU building", "Town home", "Light pole", "Sewer", "Manhole", "Handhole",
   "Pedestal", "Doghouse", "OLT", "Splice can", "Slack loop", "Utility pole", "Riser pole", "OTN cabinet", "Fiber splitter"];
 let typeLib = LS.get("types", []) || [];
+let typesRemoved = LS.get("typesRemoved", {}) || {}, typesRestored = LS.get("typesRestored", {}) || {};   // deleted test types (gps/types.json "removed")
+const isRemovedType = n => { const k = Object.keys(typesRemoved).find(x => norm(x) === norm(n)); return !!k && !(typesRestored[k] > typesRemoved[k]); };
 /* A project shows buttons only for its own types: ones added on it, plus the types of items it already has.
    Older lists copied the four starter types in by default; those count only once the project has items of that type. */
 function ownTypes() { return data.types ? (data.typesOwn ? data.types : data.types.filter(t => !DEFAULT_TYPES.includes(t))) : []; }
@@ -860,12 +871,14 @@ function typeGroup(t) { return t === "Lockbox" ? "Added in field" : t === "Vault
 function typeKind(t) { return t === "Vault" ? "Lockbox vault" : t; }
 function allTypeNames() {
   const out = [];
-  for (const n of [...DEFAULT_TYPES, ...MASTER_TYPES, ...typeLib, ...types()]) if (n && !out.some(x => norm(x) === norm(n))) out.push(n);
+  const mine = types();
+  for (const n of [...DEFAULT_TYPES, ...MASTER_TYPES, ...typeLib, ...mine]) if (n && !out.some(x => norm(x) === norm(n)) && (!isRemovedType(n) || mine.includes(n))) out.push(n);
   return out;
 }
 async function pullTypes() {
   if (!gh.on()) return;
-  try { const t = await gh.raw("gps/types.json"); if (t && t.types) { typeLib = allTypeNames().concat(t.types).filter((n, i, a) => a.findIndex(x => norm(x) === norm(n)) === i); LS.set("types", typeLib); } } catch {}
+  try { const t = await gh.raw("gps/types.json"); if (t && t.removed) { for (const [k, v] of Object.entries(t.removed)) typesRemoved[k] = Math.max(typesRemoved[k] || 0, v); LS.set("typesRemoved", typesRemoved); }
+    if (t && t.types) { typeLib = allTypeNames().concat(t.types).filter((n, i, a) => a.findIndex(x => norm(x) === norm(n)) === i); LS.set("types", typeLib); } } catch {}
 }
 async function pushTypes() {
   LS.set("types", typeLib);
@@ -873,10 +886,15 @@ async function pushTypes() {
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
       const m = await gh.meta("gps/types.json");
-      const remote = m ? (JSON.parse(decodeB64(m.content)).types || []) : [];
-      const all = remote.concat(typeLib).filter((n, i, a) => a.findIndex(x => norm(x) === norm(n)) === i);
-      if (m && all.length === remote.length) return;
-      await gh.put("gps/types.json", { types: all }, m && m.sha, "GPS Shots: location types");
+      const rd = m ? JSON.parse(decodeB64(m.content)) : {}, remote = rd.types || [];
+      const rem = Object.assign({}, rd.removed || {});
+      for (const [k, v] of Object.entries(typesRemoved)) rem[k] = Math.max(rem[k] || 0, v);
+      for (const [k, v] of Object.entries(typesRestored)) for (const x of Object.keys(rem)) if (norm(x) === norm(k) && v > rem[x]) delete rem[x];
+      const dead = n => Object.keys(rem).some(x => norm(x) === norm(n));
+      const all = remote.concat(typeLib).filter((n, i, a) => a.findIndex(x => norm(x) === norm(n)) === i && !dead(n));
+      if (m && all.length === remote.length && JSON.stringify(rem) === JSON.stringify(rd.removed || {})) return;
+      await gh.put("gps/types.json", { types: all, removed: rem }, m && m.sha, "GPS Shots: location types");
+      typesRemoved = rem; LS.set("typesRemoved", typesRemoved);
       typeLib = all; LS.set("types", typeLib); return;
     } catch (e) { if (e.status !== 409 && e.status !== 422) return; }
   }
@@ -898,7 +916,8 @@ function addType(name) {
   name = name.trim(); if (!name) return;
   const lib = allTypeNames().find(n => norm(n) === norm(name)); if (lib) name = lib;   // keep one spelling everywhere
   if (!types().some(n => norm(n) === norm(name))) setTypes([...types(), name], `Add type ${name}`);
-  if (!typeLib.some(n => norm(n) === norm(name))) { typeLib.push(name); pushTypes(); }
+  if (isRemovedType(name)) { typesRestored[name] = Date.now(); LS.set("typesRestored", typesRestored); }
+  if (!typeLib.some(n => norm(n) === norm(name)) || typesRestored[name]) { if (!typeLib.some(n => norm(n) === norm(name))) typeLib.push(name); pushTypes(); }
   $("type-box").hidden = true; $("type-name").value = ""; renderTypeSugg();
   if (adding) { adding.type = name; render(); $("addloc-name").focus(); return; }
   cat = name; group = null; render();
@@ -1790,11 +1809,65 @@ function addLibType() {
   const name = $("type-lib-new").value.trim(); if (!name) { $("type-lib-new").focus(); return; }
   $("type-lib").hidden = true; typeCheckLib = true;
   checkNewType(name, have => { $("type-lib").hidden = false; toast(`${have} is already in the list`); showTypeLib(have); },
-    n => { typeLib.push(n); pushTypes(); $("type-lib-new").value = ""; $("type-lib").hidden = false; showTypeLib(n); toast(`Added ${n}`); });
+    n => { if (isRemovedType(n)) { typesRestored[n] = Date.now(); LS.set("typesRestored", typesRestored); } typeLib.push(n); pushTypes(); $("type-lib-new").value = ""; $("type-lib").hidden = false; showTypeLib(n); toast(`Added ${n}`); });
 }
 $("type-lib-add").onclick = addLibType;
 $("type-lib-new").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); addLibType(); } });
 $("type-lib-done").onclick = () => { $("type-lib").hidden = true; };
+/* ---------- gear > Delete test data (Steven 2026-10-03, while he is the only tester). Garden Homes and all its data are protected. ---------- */
+const PROTECTED = "garden-homes-unilever-englewood-cliffs";
+let tdTab = "types", tdProj = null;
+function tdRow(name, sub, key, can) { return `<div class="item" style="cursor:default;grid-template-columns:1fr auto"><span><span class="nm">${esc(name)}</span>${sub ? `<br><span class="sub">${esc(sub)}</span>` : ""}</span>${can ? `<button class="btn cancel" style="min-height:36px;padding:4px 12px;width:auto" data-tddel="${esc(key)}">Delete</button>` : `<span class="sub">Kept</span>`}</div>`; }
+function showTestData() {
+  for (const b of $("td-tabs").children) b.classList.toggle("on", b.dataset.td === tdTab);
+  $("td-proj").hidden = tdTab !== "locs";
+  if (tdTab === "types") {
+    $("td-note").textContent = "Deleting a type takes it off the list offered on every project. Lockbox, Vault, Building and Pedestal stay.";
+    $("td-list").innerHTML = allTypeNames().slice().sort((a, b) => a.localeCompare(b)).map(n => tdRow(n, "", n, !DEFAULT_TYPES.includes(n))).join("");
+  } else if (tdTab === "projects") {
+    $("td-note").textContent = "Deleting a project removes it and its locations from every phone. Garden Homes is real and is kept.";
+    $("td-list").innerHTML = allProjects().filter(p => p.slug !== RANDOM).map(p => tdRow(p.name, ST_NAME[statusOf(p.slug)] || "", p.slug, p.slug !== PROTECTED && !p.job)).join("") || `<div class="item" style="display:block"><span class="sub">No projects</span></div>`;
+  } else {
+    const ps = allProjects().filter(p => p.slug !== PROTECTED);
+    $("td-proj").innerHTML = `<option value="${RANDOM}">System points</option>` + ps.filter(p => p.slug !== RANDOM).map(p => `<option value="${esc(p.slug)}">${esc(p.name)}</option>`).join("");
+    const ok = v => v && [...$("td-proj").options].some(o => o.value === v);
+    tdProj = ok(tdProj) ? tdProj : ok(current) ? current : $("td-proj").options[0].value;
+    $("td-proj").value = tdProj; const s = tdProj;
+    if (s !== current) { $("td-list").innerHTML = `<div class="item"><span class="sub">Loading…</span></div>`; Promise.resolve(openProject(s)).then(() => { home = true; selected = null; showTestData(); }); return; }
+    $("td-note").textContent = "Garden Homes is real, so it isn't in this list. Locations from a job's print can't be deleted here.";
+    const fromPrint = new Set(job ? job.items.map(i => i.name) : []);
+    $("td-list").innerHTML = itemsList().sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true })).map(i => tdRow(i.name, typeOf(i) + (data.items[i.name] ? " · has GPS" : ""), i.name, !fromPrint.has(i.name))).join("") || `<div class="item" style="display:block"><span class="sub">No locations in this project</span></div>`;
+  }
+}
+$("open-testdata").onclick = () => { $("settings-sheet").hidden = true; tdTab = "types"; showTestData(); $("testdata").hidden = false; };
+$("td-tabs").onclick = e => { const b = e.target.closest("[data-td]"); if (b) { tdTab = b.dataset.td; showTestData(); $("td-list").scrollTop = 0; } };
+$("td-proj").onchange = () => { tdProj = $("td-proj").value; showTestData(); };
+$("td-done").onclick = () => { $("testdata").hidden = true; goHome(); };
+$("td-list").addEventListener("click", async e => {
+  const b = e.target.closest("[data-tddel]"); if (!b) return;
+  const key = b.dataset.tddel;
+  if (tdTab === "types") {
+    if (!await ask(`Delete the location type "${key}" from the list?`, "Yes, delete it", "No, keep it")) return;
+    typesRemoved[key] = Date.now(); delete typesRestored[key]; LS.set("typesRemoved", typesRemoved); LS.set("typesRestored", typesRestored);
+    typeLib = typeLib.filter(n => norm(n) !== norm(key)); LS.set("types", typeLib); pushTypes(); toast(`Deleted ${key}`);
+  } else if (tdTab === "projects") {
+    if (key === PROTECTED) return;
+    const name = (allProjects().find(p => p.slug === key) || {}).name || key;
+    if (!await ask(`Delete the project "${name}" and all its locations from every phone? This can't be undone.`, "Yes, delete it", "No, keep it")) return;
+    if (gh.on() && !(await editProjects(d => { d.removed = Object.assign({}, d.removed, { [key]: Date.now() }); d.projects = d.projects.filter(p => p.slug !== key); delete d.status[key]; }, `GPS Shots: delete test project ${name}`))) { toast("Couldn't delete it. Check the GitHub key."); return; }
+    custom = custom.filter(c => c.slug !== key); LS.set("custom", custom); try { localStorage.removeItem("gps.data." + key); } catch {}
+    if (current === key) current = null;
+    renderProjects(); toast(`Deleted ${name}`);
+  } else {
+    if (current === PROTECTED) return;
+    if (!await ask(`Delete the location "${key}"${data.items[key] ? " and its GPS" : ""}?`, "Yes, delete it", "No, keep it")) return;
+    const t = Date.now();
+    data.gone = Object.assign({}, data.gone, { [key]: t }); data.deleted = Object.assign({}, data.deleted, { [key]: t });
+    delete data.items[key]; data.extra = (data.extra || []).filter(x => x.name !== key);
+    typesCache = null; saveLocal(); push(`Delete test location ${key}`); toast(`Deleted ${key}`);
+  }
+  showTestData();
+});
 $("open-setup").onclick = () => { $("settings-sheet").hidden = true; showTab("setup"); };
 let editSnap = null, editChanged = false;   // the look before this edit, so Cancel can put it all back
 function setEditing(on) {
