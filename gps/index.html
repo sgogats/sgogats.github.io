@@ -268,6 +268,7 @@ summary { font-weight: 600; cursor: pointer; }
     <div class="stack" id="type-box" style="margin-top:10px" hidden>
       <input id="type-name" type="text" placeholder="Type name, e.g. Manhole, Cleanout, Panel" autocomplete="off" enterkeyhint="done">
       <div class="list loc-list" id="type-sugg" hidden></div>
+      <button class="btn big gray" id="type-next" hidden>Next</button>
       <button class="btn" id="type-cancel">Cancel</button>
     </div>
     </div>
@@ -393,6 +394,12 @@ summary { font-weight: 600; cursor: pointer; }
 </div></div>
 <div class="gmap" id="gmap" hidden><iframe id="gmap-frame" title="Google Maps" loading="lazy"></iframe><button class="btn big primary" id="gmap-back">Back</button></div>
 <div id="edit-bar" hidden><button class="btn big primary" id="edit-done">Done and exit</button><button class="btn big cancel" id="edit-undo">Cancel</button></div>
+<div class="ask" id="type-check" hidden><div>
+  <span class="ask-no-label">Existing location types</span>
+  <div class="list loc-list" id="type-check-list" style="max-height:55vh"></div>
+  <button class="btn" id="type-check-new">Location type not in list</button>
+  <button class="btn cancel" id="type-check-cancel">Cancel</button>
+</div></div>
 <div id="empty-flash" hidden onclick="this.hidden=true"><div id="empty-flash-msg"></div></div>
 <div class="ask" id="settings-sheet" hidden><div>
   <span class="ask-no-label">Settings</span>
@@ -415,7 +422,7 @@ summary { font-weight: 600; cursor: pointer; }
 </div></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-03.25";
+const APP_VERSION = "2026-10-03.26";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -618,7 +625,7 @@ function showLists(which) {
 }
 let statusPick = null;
 function flashEmpty(msg) {
-  const f = $("empty-flash"); $("empty-flash-msg").textContent = msg;
+  const f = $("empty-flash"); $("empty-flash-msg").textContent = msg; $("empty-flash-msg").style.fontSize = msg.length > 32 ? "30px" : "";
   f.hidden = false; f.style.animation = "none"; void f.offsetWidth; f.style.animation = "";
   clearTimeout(flashEmpty.t); flashEmpty.t = setTimeout(() => { f.hidden = true; }, 2400);
 }
@@ -875,7 +882,7 @@ function renderTypeSugg() {
   const opts = allTypeNames().filter(n => !have.includes(norm(n)) && (!q || norm(n).includes(q)));
   const typed = $("type-name").value.trim(), exact = typed && allTypeNames().some(n => norm(n) === norm(typed));
   $("type-sugg").innerHTML = opts.map(n => `<button class="item loc-opt" data-t="${esc(n)}"><span class="nm">${esc(n)}</span><span class="sub">Used before</span></button>`).join("")
-    + (typed && !exact ? `<button class="item loc-opt" data-t="${esc(typed)}"><span class="nm" style="color:var(--accent)">+ New type “${esc(typed)}”</span><span></span></button>` : "");
+    + (typed && !exact && current !== RANDOM ? `<button class="item loc-opt" data-t="${esc(typed)}"><span class="nm" style="color:var(--accent)">+ New type “${esc(typed)}”</span><span></span></button>` : "");
   $("type-sugg").hidden = !$("type-sugg").innerHTML;
   typeBoxMode();
 }
@@ -889,7 +896,22 @@ function addType(name) {
   cat = name; group = null; render();
 }
 $("type-name").addEventListener("input", renderTypeSugg);
-$("type-name").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); addType($("type-name").value); } });
+$("type-name").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); typeEntered(); } });
+// page 4 (Steven 2026-10-03): a typed type must already exist; if not, flash a warning, then show every type to pick from,
+// with "Location type not in list" at the bottom to confirm a brand-new one
+function typeEntered() {
+  const typed = $("type-name").value.trim(); if (!typed) return;
+  if (current !== RANDOM || allTypeNames().some(n => norm(n) === norm(typed))) { addType(typed); return; }
+  $("type-name").blur();
+  $("type-check-list").innerHTML = allTypeNames().slice().sort((a, b) => a.localeCompare(b)).map(n => `<button class="item loc-opt" data-tc="${esc(n)}"><span class="nm">${esc(n)}</span><span></span></button>`).join("");
+  $("type-check-new").textContent = `Location type not in list: add “${typed}”`;
+  $("type-check").hidden = false; $("type-check-list").scrollTop = 0;
+  flashEmpty("Location type does not exist. Check existing location types before proceeding");
+}
+$("type-next").onclick = typeEntered;
+$("type-check-list").addEventListener("click", e => { const b = e.target.closest("[data-tc]"); if (b) { $("type-check").hidden = true; addType(b.dataset.tc); } });
+$("type-check-new").onclick = () => { $("type-check").hidden = true; addType($("type-name").value); };
+$("type-check-cancel").onclick = () => { $("type-check").hidden = true; $("type-name").focus(); };
 $("type-sugg").addEventListener("click", e => { const b = e.target.closest("[data-t]"); if (b) addType(b.dataset.t); });
 $("type-cancel").onclick = () => { $("type-box").hidden = true; if (current === RANDOM) render(); applyDesign(); };
 $("cats").addEventListener("click", e => {
@@ -917,7 +939,7 @@ function renderAddLoc() {
 }
 function typeBoxMode() {   // page 2-5 Add new type: no small Cancel, list of types 5 lines tall, scrolls
   const a = !!adding && current !== RANDOM;
-  $("type-cancel").hidden = a;
+  $("type-cancel").hidden = a; $("type-next").hidden = current !== RANDOM;
   $("type-name").placeholder = a ? "Enter type or select below" : "Type name, e.g. Manhole, Cleanout, Panel";
   const row = $("type-sugg").firstElementChild;
   $("type-sugg").style.maxHeight = a && row ? (row.offsetHeight * 5 + 2) + "px" : "";
