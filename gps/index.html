@@ -355,7 +355,7 @@ summary { font-weight: 600; cursor: pointer; }
 <div class="gmap" id="gmap" hidden><iframe id="gmap-frame" title="Google Maps" loading="lazy"></iframe><button class="btn big primary" id="gmap-back">Back</button></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-02.17";
+const APP_VERSION = "2026-10-03.1";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -1182,8 +1182,9 @@ function drawPrint() {
   const z = Math.max(5, Math.min(10, view.s * 6));
   for (const it of job.items) {
     if (it.x == null) continue;
-    const p = toScreen(it);
-    ctx.globalAlpha = data.items[it.name] ? 0.9 : 0.45;
+    const c = data.controls[it.name], placed = c && c.x != null;  // verified: the icon moves to the spot set by hand
+    const p = toScreen(placed ? c : it);
+    ctx.globalAlpha = placed || data.items[it.name] ? 0.9 : 0.45;
     if (full) {  // outlines only, so the print's own marks (transformers, curbs) show through
       ctx.strokeStyle = css(it.kind === "Lockbox" ? "--lb" : /pole/i.test(it.kind) ? "--pole" : "--vault"); ctx.lineWidth = 2; ctx.globalAlpha = 0.8;
       if (it.kind === "Lockbox") { ctx.beginPath(); ctx.moveTo(p.x, p.y - z); ctx.lineTo(p.x + z, p.y + z * 0.8); ctx.lineTo(p.x - z, p.y + z * 0.8); ctx.closePath(); ctx.stroke(); }
@@ -1206,6 +1207,7 @@ function drawPrint() {
   }
   // spots set by hand (where the box actually is)
   for (const [n, c] of Object.entries(data.controls)) if (c.x != null) {
+    if (designPos(n)) continue;  // items on the print are drawn at this spot already
     const p = toScreen(c); ctx.strokeStyle = css("--ink"); ctx.lineWidth = 2;
     ctx.beginPath(); ctx.moveTo(p.x - 9, p.y); ctx.lineTo(p.x + 9, p.y); ctx.moveTo(p.x, p.y - 9); ctx.lineTo(p.x, p.y + 9); ctx.stroke();
     ctx.fillStyle = css("--ink"); ctx.font = "700 12px " + css("--body"); ctx.textAlign = "left"; ctx.textBaseline = "bottom"; ctx.fillText(n, p.x + 6, p.y - 6);
@@ -1233,6 +1235,7 @@ function drawPrint() {
   if (sol && sol.ok) {
     ctx.font = "600 12px " + css("--body"); ctx.textAlign = "left"; ctx.textBaseline = "middle";
     for (const [n, rd] of Object.entries(data.items)) {
+      if (designPos(n) && data.controls[n] && data.controls[n].x != null) continue;  // verified: its GPS sits on the item's spot
       const q = toScreen(sol.map(sol.local(rd))), d = controlPos(n);
       if (d) { const dp = toScreen(d); ctx.strokeStyle = css("--shot"); ctx.lineWidth = 1.5; ctx.setLineDash([4, 3]); ctx.beginPath(); ctx.moveTo(dp.x, dp.y); ctx.lineTo(q.x, q.y); ctx.stroke(); ctx.setLineDash([]); }
       const rad = Math.max(3, rd.acc_ft * sol.unit * view.s);
