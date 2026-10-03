@@ -438,7 +438,7 @@ summary { font-weight: 600; cursor: pointer; }
 </div></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-03.32";
+const APP_VERSION = "2026-10-03.33";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -1798,9 +1798,9 @@ $("settings-cancel").onclick = () => { $("settings-sheet").hidden = true; };
 $("edit-layout").onclick = () => { $("settings-sheet").hidden = true; setEditing(true); };
 // gear > Edit location type list: every type there is (all projects), scroll it or add one (Steven 2026-10-03)
 function showTypeLib(hi) {
-  const all = allTypeNames().slice().sort((a, b) => a.localeCompare(b));
+  const all = allTypeNames().filter(n => !isRemovedType(n)).sort((a, b) => a.localeCompare(b));
   $("type-lib-count").textContent = `${all.length} types. These are offered on every project.`;
-  $("type-lib-list").innerHTML = all.map(n => `<div class="item" style="cursor:default;grid-template-columns:1fr;display:block${norm(n) === norm(hi || "") ? ";background:#fff3b0" : ""}" data-tl="${esc(n)}"><span class="nm">${esc(n)}</span><span></span></div>`).join("");
+  $("type-lib-list").innerHTML = all.map(n => `<button class="item loc-opt" style="display:block;text-align:left;width:100%${norm(n) === norm(hi || "") ? ";background:#fff3b0" : ""}" data-tl="${esc(n)}"><span class="nm">${esc(n)}</span></button>`).join("");
   const h = hi && $("type-lib-list").querySelector(`[data-tl="${CSS.escape(allTypeNames().find(n => norm(n) === norm(hi)) || "")}"]`);
   if (h) h.scrollIntoView({ block: "center" });
 }
@@ -1813,6 +1813,36 @@ function addLibType() {
 }
 $("type-lib-add").onclick = addLibType;
 $("type-lib-new").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); addLibType(); } });
+// tap a type: Keep or Delete. A type with locations under it in any project can't be deleted (Steven 2026-10-03)
+function kindIs(i, t) {
+  const k = norm(i.kind || ""), n = norm(t);
+  return k === n || (n === "vault" && /vault/.test(k)) || (n === "pedestal" && /pedestal/.test(k)) || (n === "building" && /^building /i.test(i.group || ""));
+}
+async function typeUsedIn(t) {
+  const out = [];
+  for (const p of allProjects()) {
+    let d = LS.get("data." + p.slug, null), jb = p.job ? LS.get("job." + p.slug, null) : null;
+    if (gh.on()) { try { d = (await gh.raw(`gps/readings/${p.slug}.json`)) || d; } catch {} if (p.job && !jb) { try { jb = await gh.raw(`gps/jobs/${p.slug}.json`); } catch {} } }
+    const gone = (d && d.gone) || {};
+    const its = [...((jb && jb.items) || []), ...((d && d.extra) || []).filter(e => !gone[e.name])];
+    if (its.some(i => kindIs(i, t))) out.push(p.slug === RANDOM ? "System points" : p.name);
+  }
+  return out;
+}
+async function deleteLibType(t) {
+  if (DEFAULT_TYPES.includes(t)) { toast(`${t} is a starter type and stays`); return false; }
+  toast("Checking every project…");
+  const used = await typeUsedIn(t);
+  if (used.length) { await ask(`${t} can't be deleted. It has locations in: ${used.join(", ")}.`, "OK", "Close"); return false; }
+  typesRemoved[t] = Date.now(); delete typesRestored[t]; LS.set("typesRemoved", typesRemoved); LS.set("typesRestored", typesRestored);
+  typeLib = typeLib.filter(n => norm(n) !== norm(t)); LS.set("types", typeLib); pushTypes(); toast(`Deleted ${t}`); return true;
+}
+$("type-lib-list").addEventListener("click", async e => {
+  const b = e.target.closest("[data-tl]"); if (!b) return;
+  const t = b.dataset.tl;
+  if (await ask(t, "Keep", "Delete")) return;
+  if (await deleteLibType(t)) showTypeLib();
+});
 $("type-lib-done").onclick = () => { $("type-lib").hidden = true; };
 /* ---------- gear > Delete test data (Steven 2026-10-03, while he is the only tester). Garden Homes and all its data are protected. ---------- */
 const PROTECTED = "garden-homes-unilever-englewood-cliffs";
@@ -1823,7 +1853,7 @@ function showTestData() {
   $("td-proj").hidden = tdTab !== "locs";
   if (tdTab === "types") {
     $("td-note").textContent = "Deleting a type takes it off the list offered on every project. Lockbox, Vault, Building and Pedestal stay.";
-    $("td-list").innerHTML = allTypeNames().slice().sort((a, b) => a.localeCompare(b)).map(n => tdRow(n, "", n, !DEFAULT_TYPES.includes(n))).join("");
+    $("td-list").innerHTML = allTypeNames().filter(n => !isRemovedType(n)).sort((a, b) => a.localeCompare(b)).map(n => tdRow(n, "", n, !DEFAULT_TYPES.includes(n))).join("");
   } else if (tdTab === "projects") {
     $("td-note").textContent = "Deleting a project removes it and its locations from every phone. Garden Homes is real and is kept.";
     $("td-list").innerHTML = allProjects().filter(p => p.slug !== RANDOM).map(p => tdRow(p.name, ST_NAME[statusOf(p.slug)] || "", p.slug, p.slug !== PROTECTED && !p.job)).join("") || `<div class="item" style="display:block"><span class="sub">No projects</span></div>`;
@@ -1848,8 +1878,7 @@ $("td-list").addEventListener("click", async e => {
   const key = b.dataset.tddel;
   if (tdTab === "types") {
     if (!await ask(`Delete the location type "${key}" from the list?`, "Yes, delete it", "No, keep it")) return;
-    typesRemoved[key] = Date.now(); delete typesRestored[key]; LS.set("typesRemoved", typesRemoved); LS.set("typesRestored", typesRestored);
-    typeLib = typeLib.filter(n => norm(n) !== norm(key)); LS.set("types", typeLib); pushTypes(); toast(`Deleted ${key}`);
+    await deleteLibType(key);
   } else if (tdTab === "projects") {
     if (key === PROTECTED) return;
     const name = (allProjects().find(p => p.slug === key) || {}).name || key;
