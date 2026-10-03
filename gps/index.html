@@ -438,7 +438,7 @@ summary { font-weight: 600; cursor: pointer; }
 </div></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-03.33";
+const APP_VERSION = "2026-10-03.34";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -768,7 +768,7 @@ function render() {
   const shownTypes = types().filter(t => t === cat || items.some(i => inCat(i, t)) || (!isR && t === "Building" && groups.some(g => /^Building /.test(g))));
   shownTypesNow = shownTypes;
   $("cats").innerHTML = shownTypes.map(t => `<button class="btn" data-cat="${esc(t)}" aria-pressed="${t === cat}">${esc(t)}</button>`).join("")
-    + (current === RANDOM ? `<button class="btn" data-act="add-loctype" style="grid-column:1/-1">Add Location Type</button>` : (cat ? `<button class="btn" data-act="add-loc" style="grid-column:1/-1">+ Add new location</button>` : `<button class="btn" data-act="add-ltype" style="grid-column:1/-1">Add new location type</button>`));   // page 2: opens the add new type page (Steven 2026-10-03)   // + Add type lives on page 2-5 now
+    + (current === RANDOM ? `<button class="btn" data-act="add-loctype" style="grid-column:1/-1">Add Location Type</button>` : (cat ? `<button class="btn" data-act="add-loc" style="grid-column:1/-1">+ Add new location</button>` : `<button class="btn" data-act="add-ltype" style="grid-column:1/-1">Add new location</button>`));   // page 2: opens the add new type page (Steven 2026-10-03)   // + Add type lives on page 2-5 now
   const bGroups = groups.filter(g => /^Building /.test(g));
   const list = group ? items.filter(i => i.group === group) : cat ? items.filter(i => inCat(i, cat)).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true })) : [];
   const showGroups = !group && cat === "Building" && bGroups.length;
