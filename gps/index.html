@@ -370,7 +370,7 @@ summary { font-weight: 600; cursor: pointer; }
 <div class="gmap" id="gmap" hidden><iframe id="gmap-frame" title="Google Maps" loading="lazy"></iframe><button class="btn big primary" id="gmap-back">Back</button></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-03.10";
+const APP_VERSION = "2026-10-03.11";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -659,7 +659,7 @@ function render() {
   // System point page: type buttons first; the name box shows once a type is picked
   $("loc-wrap").classList.toggle("rmode", isR);
   $("loc-h").hidden = $("loc").hidden = isR && !cat;
-  if (!isR && cat) $("loc").hidden = true;   // page 2-1: no search box (Steven, 2026-10-03)
+  if (!isR) $("loc").hidden = true;   // pages 2 and 2-1: no search box (Steven, 2026-10-03)
   if (isR && !cat) { $("groups").hidden = true; locOpen = false; }
   $("next-btn").hidden = finding || shot.running;
   $("next-btn").textContent = selected ? "Pick a different location" : Object.keys(data.items).length ? "Next location" : "Capture first location";
@@ -677,7 +677,7 @@ function render() {
   if (cat && !types().includes(cat)) cat = null;
   const shownTypes = isR ? types() : types().filter(t => t === cat || items.some(i => inCat(i, t)) || (t === "Building" && groups.some(g => /^Building /.test(g))));   // a type with no points has no button
   $("cats").innerHTML = shownTypes.map(t => `<button class="btn" data-cat="${esc(t)}" aria-pressed="${t === cat}">${esc(t)}</button>`).join("")
-    + (current === RANDOM ? `<button class="btn" data-act="add-loctype" style="grid-column:1/-1">Add Location Type</button>` : `<button class="btn" data-act="add-loc" style="grid-column:1/-1">+ Add new location</button>` + (cat ? "" : `<button class="btn" data-act="add-type" style="grid-column:1/-1">+ Add type</button>`));
+    + (current === RANDOM ? `<button class="btn" data-act="add-loctype" style="grid-column:1/-1">Add Location Type</button>` : `<button class="btn" data-act="add-loc" style="grid-column:1/-1">+ Add new location</button>`);   // + Add type lives on page 2-5 now
   const bGroups = groups.filter(g => /^Building /.test(g));
   const list = group ? items.filter(i => i.group === group) : cat ? items.filter(i => inCat(i, cat)).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true })) : [];
   const showGroups = !group && cat === "Building" && bGroups.length;
