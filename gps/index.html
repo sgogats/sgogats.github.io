@@ -355,7 +355,7 @@ summary { font-weight: 600; cursor: pointer; }
 <div class="gmap" id="gmap" hidden><iframe id="gmap-frame" title="Google Maps" loading="lazy"></iframe><button class="btn big primary" id="gmap-back">Back</button></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-03.1";
+const APP_VERSION = "2026-10-03.2";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -1235,7 +1235,7 @@ function drawPrint() {
   if (sol && sol.ok) {
     ctx.font = "600 12px " + css("--body"); ctx.textAlign = "left"; ctx.textBaseline = "middle";
     for (const [n, rd] of Object.entries(data.items)) {
-      if (designPos(n) && data.controls[n] && data.controls[n].x != null) continue;  // verified: its GPS sits on the item's spot
+      if (data.controls[n] && data.controls[n].x != null) continue;  // verified: its GPS sits on the item's spot, no line
       const q = toScreen(sol.map(sol.local(rd))), d = controlPos(n);
       if (d) { const dp = toScreen(d); ctx.strokeStyle = css("--shot"); ctx.lineWidth = 1.5; ctx.setLineDash([4, 3]); ctx.beginPath(); ctx.moveTo(dp.x, dp.y); ctx.lineTo(q.x, q.y); ctx.stroke(); ctx.setLineDash([]); }
       const rad = Math.max(3, rd.acc_ft * sol.unit * view.s);
