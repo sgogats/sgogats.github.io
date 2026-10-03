@@ -456,7 +456,7 @@ summary { font-weight: 600; cursor: pointer; }
 </div></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-03.36";
+const APP_VERSION = "2026-10-03.37";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -1478,10 +1478,23 @@ function drawPrint() {
       ctx.fillStyle = css("--panel"); ctx.fillText(focusName, p.x + 32, p.y);
     }
   }
+  // buildings mapped by walking their corners: outline drawn over the print (checks the building sits where the print shows it)
+  if (sol && sol.ok && !hideCorners) {
+    const gs = [...new Set(Object.values(data.items).filter(x => x.corner).map(x => x.group))];
+    for (const g of gs) {
+      const qs = buildingCorners(g).map(n => toScreen(sol.map(sol.local(data.items[n]))));
+      ctx.strokeStyle = "#d6007a"; ctx.lineWidth = 3; ctx.fillStyle = "rgba(214,0,122,.12)";
+      ctx.beginPath(); qs.forEach((q, i) => i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y)); if (qs.length > 2) ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = "#d6007a"; for (const q of qs) { ctx.beginPath(); ctx.arc(q.x, q.y, 4, 0, 7); ctx.fill(); }
+      if (qs.length) { const cx = qs.reduce((a, q) => a + q.x, 0) / qs.length, cy = qs.reduce((a, q) => a + q.y, 0) / qs.length;
+        ctx.font = "700 12px " + css("--body"); ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(g + " (walked)", cx, cy + 16); }
+    }
+  }
   // shots mapped through the fit
   if (sol && sol.ok) {
     ctx.font = "600 12px " + css("--body"); ctx.textAlign = "left"; ctx.textBaseline = "middle";
     for (const [n, rd] of Object.entries(data.items)) {
+      if (rd.corner) continue;
       if (data.controls[n] && data.controls[n].x != null) continue;  // verified: its GPS sits on the item's spot, no line
       const q = toScreen(sol.map(sol.local(rd))), d = controlPos(n);
       if (d) { const dp = toScreen(d); ctx.strokeStyle = css("--shot"); ctx.lineWidth = 1.5; ctx.setLineDash([4, 3]); ctx.beginPath(); ctx.moveTo(dp.x, dp.y); ctx.lineTo(q.x, q.y); ctx.stroke(); ctx.setLineDash([]); }
@@ -1510,7 +1523,7 @@ function renderFitNote() {
   box.textContent = txt;
 }
 function renderCtrlRows() {
-  const rows = Object.entries(data.items).sort((a, b) => a[0].localeCompare(b[0], undefined, { numeric: true }));
+  const rows = Object.entries(data.items).filter(([, x]) => !x.corner).sort((a, b) => a[0].localeCompare(b[0], undefined, { numeric: true }));
   const byN = {}; if (sol) for (const c of sol.ctrl) byN[c.n] = c;
   $("ctrl-rows").innerHTML = rows.length ? rows.map(([n, r]) => {
     const has = !!controlPos(n), used = isUsed(n), c = byN[n];
@@ -1933,7 +1946,7 @@ $("td-list").addEventListener("click", async e => {
 });
 /* ---------- building mapping (Steven 2026-10-03): walk around a building, stop at every corner, capture GPS.
    Corners are saved in walking order as "Building 1 corner 1", "... corner 2" and so on, so the outline can be drawn without a print. ---------- */
-var cornerFor = null;
+var cornerFor = null, hideCorners = false;
 function buildingCorners(g) { return Object.keys(data.items).filter(n => data.items[n].corner && data.items[n].group === g).sort((a, b) => (parseInt(a.split(" corner ")[1]) || 0) - (parseInt(b.split(" corner ")[1]) || 0)); }
 $("bmap-next").onclick = () => {
   if (shot.running || !group) return;
@@ -1946,6 +1959,7 @@ $("bmap-done").onclick = () => {
   group = null; render(); window.scrollTo(0, 0);
   // no print: show the building drawn from its corners on a white screen (Steven 2026-10-03)
   if (!(job && job.plan) && cs.length >= 3) drawBuilding(g, cs);
+  else if (job && job.plan && cs.length >= 2) { showTab("print"); toast(`${g}: your walked corners are drawn in pink over the print`); }
 };
 function drawBuilding(g, cs) {
   const pts = cs.map(n => data.items[n]), lat0 = pts.reduce((s, p) => s + p.lat, 0) / pts.length, lon0 = pts.reduce((s, p) => s + p.lon, 0) / pts.length;
