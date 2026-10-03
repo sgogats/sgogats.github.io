@@ -429,7 +429,7 @@ summary { font-weight: 600; cursor: pointer; }
 </div></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-03.30";
+const APP_VERSION = "2026-10-03.31";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -912,17 +912,17 @@ $("type-name").addEventListener("keydown", e => { if (e.key === "Enter") { e.pre
 let typeCheckLib = false, typeCheckPick = null, typeCheckNew = null, typeCheckName = "";
 function checkNewType(typed, onPick, onNew) {
   typed = typed.trim(); if (!typed) return;
-  // exact name, or the only type that contains what was typed ("splice" = Splice can): just use it
+  // only an exact name goes straight through ("splice" is NOT Splice can: fiber splice, splice panel, coax splice... Steven)
   const all = allTypeNames(), part = all.filter(n => norm(n).includes(norm(typed)));
-  const have = all.find(n => norm(n) === norm(typed)) || (part.length === 1 ? part[0] : null);
+  const have = all.find(n => norm(n) === norm(typed));
   if (have) { onPick(have); return; }
   typeCheckPick = onPick; typeCheckNew = onNew; typeCheckName = typed;
   if (document.activeElement) document.activeElement.blur();
   $("type-check-list").innerHTML = allTypeNames().slice().sort((a, b) => a.localeCompare(b)).map(n => `<button class="item loc-opt" data-tc="${esc(n)}"><span class="nm">${esc(n)}</span><span></span></button>`).join("")
     + `<button class="btn primary" id="type-check-new" style="width:100%;margin-top:10px">Confirm adding new location type “${esc(typed)}”</button>`;
   $("type-check").hidden = false; $("type-check-list").scrollTop = 0;
-  // several types contain it ("box"): show them first, no red flash
-  if (part.length > 1) { const first = $("type-check-list").querySelector(`[data-tc="${CSS.escape(part.sort((a, b) => a.localeCompare(b))[0])}"]`); if (first) first.scrollIntoView({ block: "start" }); return; }
+  // types that contain what was typed are shown first in the list
+  if (part.length) { const first = $("type-check-list").querySelector(`[data-tc="${CSS.escape(part.sort((a, b) => a.localeCompare(b))[0])}"]`); if (first) first.scrollIntoView({ block: "start" }); }
   flashEmpty("Location type does not exist. Verify you want to add it");
 }
 function typeEntered() {
