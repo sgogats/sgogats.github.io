@@ -460,7 +460,7 @@ summary { font-weight: 600; cursor: pointer; }
 </div></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-03.49";
+const APP_VERSION = "2026-10-04.50";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -1326,7 +1326,8 @@ function merge(a, b) {
   out.assigned = Object.assign({}, b.assigned || {}, a.assigned || {});
   for (const [k, t] of Object.entries(out.gone)) { if (out.items[k] && out.items[k].t <= t) delete out.items[k]; out.extra = out.extra.filter(e => e.name !== k || (out.items[k] && out.items[k].t > t)); }
   out.labels = Object.assign({}, b.labels || {}, a.labels || {});
-  out.runs = Object.assign({}, b.runs || {}, a.runs || {});   // conduit runs: which vault each end joins
+  out.runs = Object.assign({}, b.runs || {}, a.runs || {});
+  out.tracks = Object.assign({}, b.tracks || {}, a.tracks || {});   // walked trench dots   // conduit runs: which vault each end joins
   out.bldgs = [...new Set([...(a.bldgs || []), ...(b.bldgs || [])])];   // buildings added on page 2-5
   const ta = a.types ? a.typesT || 0 : -1, tb = b.types ? b.typesT || 0 : -1;    // newest button list wins
   if (tb > ta) { out.types = b.types; out.typesT = b.typesT; out.typesOwn = b.typesOwn; }
@@ -2129,21 +2130,189 @@ function drawBuilding(g, cs) {
   $("bdraw-sub").textContent = `${cs.length} corners, joined in the order you walked. North is up.`;
   $("bdraw").hidden = false;
 }
+/* ---------- conduit / trench mapping v2 (Steven 2026-10-04) ----------
+   Start and stop locations are named and typed first (both required), each gets a 10 second fixed reading, and the trench
+   between them is walked: a GPS dot every half second. The line is smoothed: jitter on straight runs is averaged out
+   (3 dots before and 3 after), real turns become curves. Undo: back to V 03.49, see memory "how-to-put-conduit-mapping-back". */
+var cm = null;
+function drawCmap() {
+  const f = (w, x) => x ? `${x.name} (${x.type})` : `Tap to enter the ${w} location`;
+  $("cmap-start").textContent = f("start", cm.start); $("cmap-stop").textContent = f("stop", cm.stop);
+  $("cmap-start").classList.toggle("primary", !!cm.start); $("cmap-stop").classList.toggle("primary", !!cm.stop);
+  $("cmap-next").disabled = !(cm.start && cm.stop);
+}
+function askText(msg, ph, page) {
+  return new Promise(res => {
+    $("lname-msg").textContent = msg; $("lname-in").value = ""; $("lname-in").placeholder = ph || ""; $("lname-page").textContent = page || "Page 2-9a · Location name";
+    const done = v => { $("lname").hidden = true; res(v); };
+    $("lname-ok").onclick = () => { const v = $("lname-in").value.trim(); if (!v) { toast("Type it in first"); return; } done(v); };
+    $("lname-in").onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); $("lname-ok").click(); } };
+    $("lname-cancel").onclick = () => done(null);
+    $("lname").hidden = false; $("lname-in").focus();
+  });
+}
+function pickLocType(name) {   // the big list of types; not there? the green Other bar at the very bottom
+  return new Promise(res => {
+    const ts = allTypeNames().slice().sort((a, b) => a.localeCompare(b));
+    $("ltype-msg").textContent = `Enter type of location for ${name}`;
+    $("ltype-list").innerHTML = ts.map(t => `<button class="item" data-t="${esc(t)}"><span></span><span class="nm">${esc(t)}</span><span></span></button>`).join("")
+      + `<button class="item" data-other="1" style="background:#1e9e4a;color:#fff"><span></span><span class="nm" style="color:#fff">Other</span><span></span></button>`;
+    $("ltype-list").scrollTop = 0;
+    const done = v => { $("ltype").hidden = true; res(v); };
+    $("ltype-list").onclick = async e => {
+      const b = e.target.closest("button"); if (!b) return;
+      if (b.dataset.t) { done(b.dataset.t); return; }
+      $("ltype").hidden = true;
+      const t = await askText("Enter the new type of location", "e.g. Handhole", "Page 2-9c · New type");
+      if (!t) { $("ltype").hidden = false; return; }
+      const known = allTypeNames().find(n => norm(n) === norm(t));
+      if (known) { done(known); return; }
+      if (await ask(`Verify spelling: ${t}`, "OK", "Back", true)) {
+        if (isRemovedType(t)) { typesRestored[t] = Date.now(); LS.set("typesRestored", typesRestored); }
+        typeLib.push(t); pushTypes(); done(t);
+      } else $("ltype").hidden = false;
+    };
+    $("ltype-cancel").onclick = () => done(null);
+    $("ltype").hidden = false;
+  });
+}
+async function enterEnd(which) {
+  $("cmap").hidden = true;
+  const name = await askText(`Enter the ${which} location name`, which === "start" ? "e.g. LB-3" : "e.g. V-12");
+  if (name) {
+    const it = itemsList().find(i => norm(i.name) === norm(name));
+    const type = it ? typeOf(it) : await pickLocType(name);   // a location already in the project keeps its type
+    if (type) cm[which] = { name: it ? it.name : name, type, had: !!it };
+  }
+  drawCmap(); $("cmap").hidden = false;
+}
+document.addEventListener("DOMContentLoaded", () => {   // these pop-ups sit below the script in the page
+$("cmap-start").onclick = () => enterEnd("start");
+$("cmap-stop").onclick = () => enterEnd("stop");
+$("cmap-cancel").onclick = () => { $("cmap").hidden = true; cm = null; };
+$("cmap-next").onclick = async () => {
+  if (!(cm && cm.start && cm.stop)) return;
+  if (norm(cm.start.name) === norm(cm.stop.name)) { toast("Start and stop must be different locations"); return; }
+  $("cmap").hidden = true;
+  if (!await ask("Start mapping", "OK", "Cancel", true)) { $("cmap").hidden = false; return; }
+  mapTrench(cm);
+};
+});
+function ensureLoc(x) {   // add a typed-in location to the project, and its type to the project's buttons
+  if (x.had || itemsList().some(i => norm(i.name) === norm(x.name))) return;
+  if (!types().some(n => norm(n) === norm(x.type))) setTypes([...types(), x.type], `Add type ${x.type}`);
+  data.extra = data.extra || []; data.extra.push({ name: x.name, group: typeGroup(x.type) || "Added in field", kind: typeKind(x.type) });
+}
+let trkWake = null;
+function trkScreen(title, sub, stopText) { $("trk-title").textContent = title; $("trk-sub").textContent = sub; $("trk-stop").textContent = stopText; $("trk").hidden = false; }
+function trkWakeOn() { try { if (navigator.wakeLock && !trkWake) navigator.wakeLock.request("screen").then(w => trkWake = w).catch(() => {}); } catch {} }
+function trkWakeOff() { if (trkWake) { trkWake.release().catch(() => {}); trkWake = null; } }
+function holdReading(title, sub) {   // 10 second fixed reading; resolves the average, or null if cancelled
+  return new Promise(res => {
+    const need = +cfg.secs || 10, samples = [], t0 = Date.now(); let id = null, tm = null;
+    const end = v => { if (id != null) navigator.geolocation.clearWatch(id); clearInterval(tm); res(v); };
+    trkScreen(title, sub + " Getting a fix…", "Cancel"); $("trk-cv").style.visibility = "hidden";
+    $("trk-stop").onclick = () => end(null);
+    id = navigator.geolocation.watchPosition(p => samples.push({ lat: p.coords.latitude, lon: p.coords.longitude, acc: p.coords.accuracy, alt: p.coords.altitude, t: p.timestamp }),
+      e => { if (e.code === 1) { toast("Location is blocked. Allow location for this site."); end(null); } }, { enableHighAccuracy: true, maximumAge: 0, timeout: 30000 });
+    tm = setInterval(() => {
+      const secs = (Date.now() - t0) / 1000, last = samples[samples.length - 1];
+      $("trk-sub").textContent = `${sub} ${Math.min(need, Math.floor(secs))} of ${need} s` + (last ? ` · ±${Math.round(last.acc * FT)} ft` : " · waiting for GPS");
+      if (secs >= need && samples.length) end(average(samples));
+      if (secs > need + 50 && !samples.length) { toast("No GPS fix came in. Step into the open and try again."); end(null); }
+    }, 250);
+  });
+}
+function walkTrack(startPt) {   // a dot every half second until Stop; resolves the dots
+  return new Promise(res => {
+    const pts = []; let last = null, id = null, tm = null;
+    trkScreen("Start walking trench", "Walk the trench. Tap Stop at the end.", "Stop"); $("trk-cv").style.visibility = "visible";
+    const end = () => { if (id != null) navigator.geolocation.clearWatch(id); clearInterval(tm); res(pts); };
+    $("trk-stop").onclick = end;
+    id = navigator.geolocation.watchPosition(p => { last = p; }, () => {}, { enableHighAccuracy: true, maximumAge: 0, timeout: 30000 });
+    let lastT = 0;
+    tm = setInterval(() => {
+      if (last && last.timestamp !== lastT) { lastT = last.timestamp; pts.push([+last.coords.latitude.toFixed(7), +last.coords.longitude.toFixed(7), Math.round(last.coords.accuracy * FT * 10) / 10, Math.round(last.timestamp / 100) / 10]); }
+      const ft = runFeet([startPt, ...pts.map(q => ({ lat: q[0], lon: q[1] }))]);
+      $("trk-sub").textContent = `Walk the trench. Tap Stop at the end. ${pts.length} dots · ${Math.round(ft)} ft` + (last ? ` · ±${Math.round(last.coords.accuracy * FT)} ft` : "");
+      drawTrk(startPt, pts);
+    }, 500);
+  });
+}
+function drawTrk(startPt, pts) {   // live picture while walking: raw dots and the smoothed line
+  const c = $("trk-cv"), r = c.getBoundingClientRect(), k = devicePixelRatio || 1;
+  if (c.width !== Math.round(r.width * k)) { c.width = Math.round(r.width * k); c.height = Math.round(r.height * k); }
+  const x = c.getContext("2d"); x.setTransform(k, 0, 0, k, 0, 0); x.fillStyle = "#fff"; x.fillRect(0, 0, r.width, r.height);
+  const all = [startPt, ...pts.map(q => ({ lat: q[0], lon: q[1] }))], c0 = Math.cos(startPt.lat * Math.PI / 180);
+  const f = p => ({ x: (p.lon - startPt.lon) * 364000 * c0, y: -(p.lat - startPt.lat) * 364000 }), q = all.map(f);
+  const xs = q.map(p => p.x), ys = q.map(p => p.y), w = Math.max(30, Math.max(...xs) - Math.min(...xs)), h = Math.max(30, Math.max(...ys) - Math.min(...ys));
+  const s = Math.min((r.width - 40) / w, (r.height - 40) / h), ox = r.width / 2 - (Math.min(...xs) + Math.max(...xs)) / 2 * s, oy = r.height / 2 - (Math.min(...ys) + Math.max(...ys)) / 2 * s;
+  const S = p => ({ x: p.x * s + ox, y: p.y * s + oy });
+  x.fillStyle = "#9aa"; for (const p of q) { const z = S(p); x.beginPath(); x.arc(z.x, z.y, 2.5, 0, 7); x.fill(); }
+  const sm = smoothTrack(pts, startPt, null).map(f).map(S);
+  x.strokeStyle = "#ff8c1a"; x.lineWidth = 4; x.lineJoin = x.lineCap = "round"; x.beginPath(); sm.forEach((z, i) => i ? x.lineTo(z.x, z.y) : x.moveTo(z.x, z.y)); x.stroke();
+  const a = S(q[0]); x.fillStyle = "#1e9e4a"; x.fillRect(a.x - 7, a.y - 7, 14, 14);
+  const b = S(q[q.length - 1]); x.fillStyle = "#1f6fd1"; x.beginPath(); x.arc(b.x, b.y, 7, 0, 7); x.fill();
+}
+// the smoothed line: drop rough fixes, average 3 dots before and 3 after, straighten near-straight stretches, round the turns
+function smoothTrack(raw, a, b) {
+  let pts = raw.map(q => ({ lat: q[0], lon: q[1], acc: q[2] }));
+  if (pts.length > 4) { const accs = pts.map(p => p.acc || 0).sort((x, y) => x - y), med = accs[accs.length >> 1]; pts = pts.filter(p => !(p.acc > Math.max(med * 2.5, 30))); }
+  const ends = [a, ...pts, b].filter(Boolean); if (ends.length < 3) return ends.map(p => ({ lat: p.lat, lon: p.lon }));
+  const lat0 = ends[0].lat, lon0 = ends[0].lon, c0 = Math.cos(lat0 * Math.PI / 180);
+  const to = p => ({ x: (p.lon - lon0) * 364000 * c0, y: (p.lat - lat0) * 364000 }), back = p => ({ lat: lat0 + p.y / 364000, lon: lon0 + p.x / (364000 * c0) });
+  const P = ends.map(to), n = P.length;
+  const avg = P.map((p, i) => { if (i === 0 || i === n - 1) return p; let sx = 0, sy = 0, k = 0; for (let j = Math.max(0, i - 3); j <= Math.min(n - 1, i + 3); j++) { sx += P[j].x; sy += P[j].y; k++; } return { x: sx / k, y: sy / k }; });
+  const keep = new Array(n).fill(false); keep[0] = keep[n - 1] = true;   // straighten: Douglas-Peucker, 3 ft
+  (function dp(i, j) {
+    let best = 0, bi = -1; const A = avg[i], B = avg[j], dx = B.x - A.x, dy = B.y - A.y, L = Math.hypot(dx, dy) || 1;
+    for (let m = i + 1; m < j; m++) { const d = Math.abs(dy * (avg[m].x - A.x) - dx * (avg[m].y - A.y)) / L; if (d > best) { best = d; bi = m; } }
+    if (best > 3) { keep[bi] = true; dp(i, bi); dp(bi, j); }
+  })(0, n - 1);
+  let line = avg.filter((_, i) => keep[i]);
+  for (let it = 0; it < 3 && line.length > 2; it++) {   // round the turns (Chaikin), ends stay put
+    const out = [line[0]];
+    for (let i = 0; i < line.length - 1; i++) { const p = line[i], q = line[i + 1];
+      if (i > 0) out.push({ x: .75 * p.x + .25 * q.x, y: .75 * p.y + .25 * q.y });
+      if (i < line.length - 2) out.push({ x: .25 * p.x + .75 * q.x, y: .25 * p.y + .75 * q.y }); }
+    out.push(line[line.length - 1]); line = out;
+  }
+  return line.map(back);
+}
+async function mapTrench(sel) {
+  const n = Math.max(0, ...runNames().map(k => parseInt(k.replace(/\D+/g, "")) || 0)) + 1, r = `Conduit run ${n}`;
+  trkWakeOn();
+  const a = await holdReading(`Position phone on ${sel.start.name}`, "Hold the phone steady.");
+  if (!a) { $("trk").hidden = true; trkWakeOff(); toast("Stopped. Nothing was saved."); return; }
+  ensureLoc(sel.start);
+  data.items[sel.start.name] = Object.assign(a, { t: Date.now(), group: (itemsList().find(i => i.name === sel.start.name) || {}).group || typeGroup(sel.start.type) || "Added in field" });
+  if (data.deleted) delete data.deleted[sel.start.name];
+  saveLocal();
+  const pts = await walkTrack(data.items[sel.start.name]);
+  data.tracks = data.tracks || {}; data.tracks[r] = pts;   // keep the walk even if the end reading is cancelled
+  data.runs = data.runs || {}; data.runs[r] = { from: sel.start.name, track: true, t: Date.now() };
+  saveLocal();
+  const b = await holdReading(`Position over ${sel.stop.name}`, "Hold the phone steady.");
+  if (b) {
+    ensureLoc(sel.stop);
+    data.items[sel.stop.name] = Object.assign(b, { t: Date.now(), group: (itemsList().find(i => i.name === sel.stop.name) || {}).group || typeGroup(sel.stop.type) || "Added in field" });
+    if (data.deleted) delete data.deleted[sel.stop.name];
+    data.runs[r].to = sel.stop.name;
+  } else data.runs[r].toOpen = true;
+  data.runs[r].t = Date.now();
+  $("trk").hidden = true; trkWakeOff(); cm = null;
+  saveLocal(); push(`Conduit ${r}: ${sel.start.name} to ${sel.stop.name}, ${pts.length} dots`);
+  render(); showTab("print"); toast(`${r} saved: ${pts.length} dots, ${Math.round(runFeet(runPath(r)))} ft`);
+}
 /* ---------- conduit mapping (Steven 2026-10-03): walk the run, capture the start, every bend, the end.
    Points save as "Conduit run 1 point 1", "... point 2"; each end can join a Vault, Lockbox or Riser pole, and the wall it enters is kept for the vault conduit sheet. ---------- */
 var runFor = null;
 const RUN_JOIN_FT = 75;
 function runPoints(r) { return Object.keys(data.items).filter(n => data.items[n].run && data.items[n].group === r).sort((a, b) => (parseInt(a.split(" point ")[1]) || 0) - (parseInt(b.split(" point ")[1]) || 0)); }
 function runNames() { return [...new Set([...Object.keys(data.runs || {}), ...Object.values(data.items).filter(x => x.run).map(x => x.group)])]; }
-async function startRun() {
-  const open = Object.entries(data.runs || {}).filter(([, x]) => x.toOpen || x.fromOpen).map(([k]) => k);
-  if (open.length) {   // an unfinished run: its open end is the start of this one, and it all becomes one run (Steven 2026-10-03)
-    const k = await choose("Are you continuing one of these unfinished conduit runs?", open.map(k => `${k} (${runPoints(k).length} points)`), "No, start a new run");
-    if (k >= 0) { continueRun(open[k]); return; }
-  }
-  const n = Math.max(0, ...runNames().map(k => parseInt(k.replace(/\D+/g, "")) || 0)) + 1;
-  await ask("Proceed to the starting point of the conduit run and capture the GPS location.", "OK", "", true);
-  runCapture(`Conduit run ${n}`);
+async function startRun() {   // v03.50 (Steven 2026-10-04): name the start and stop, fixed readings at both ends, walk the trench in between
+  await ask("Please enter your start and stop locations.", "OK", "", true);
+  cm = { start: null, stop: null }; drawCmap(); $("cmap").hidden = false;
 }
 async function continueRun(r) {
   const run = data.runs[r], ps = runPoints(r);
@@ -2253,8 +2422,15 @@ async function finishRun(r) {
   if (job && job.plan) { showTab("print"); toast(`${r} is drawn in orange on the print`); }
   else drawRun(r);
 }
+const smoothCache = new Map();
 function runPath(r) {   // GPS points of the run with the joined vaults at the ends
-  const ru = (data.runs || {})[r] || {}, pts = runPoints(r).map(n => data.items[n]);
+  const ru = (data.runs || {})[r] || {}, tr = (data.tracks || {})[r];
+  if (tr) {   // walked trench: the smoothed line from the start reading to the stop reading
+    const A = ru.from && data.items[ru.from], B = ru.to && data.items[ru.to], key = `${r}|${tr.length}|${A && A.t}|${B && B.t}`;
+    let line = smoothCache.get(key); if (!line) { line = smoothTrack(tr, A, B); smoothCache.set(key, line); }
+    return line.map((p, i) => (i === 0 && A) ? Object.assign({ end: ru.from }, p) : (i === line.length - 1 && B) ? Object.assign({ end: ru.to }, p) : p);
+  }
+  const pts = runPoints(r).map(n => data.items[n]);
   if (ru.from && data.items[ru.from]) pts.unshift(Object.assign({ end: ru.from }, data.items[ru.from]));
   if (ru.to && data.items[ru.to]) pts.push(Object.assign({ end: ru.to }, data.items[ru.to]));
   return pts;
@@ -2439,6 +2615,19 @@ else setSync("", "Phone only");
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") { pullDesign(); pullStatus(); } });
 render();
 </script>
+<div class="ask" id="cmap" hidden><div><span class="ask-no-label">Page 2-9 · Start and stop</span>
+  <div>Start position</div><button class="btn big gray" id="cmap-start"></button>
+  <div>Stop position</div><button class="btn big gray" id="cmap-stop"></button>
+  <button class="btn primary" id="cmap-next" disabled>Next</button><button class="btn" id="cmap-cancel">Cancel</button></div></div>
+<div class="ask" id="lname" hidden><div><span class="ask-no-label" id="lname-page">Page 2-9a · Location name</span><div id="lname-msg"></div>
+  <input id="lname-in" type="text" autocomplete="off" enterkeyhint="done"><button class="btn primary" id="lname-ok">OK</button><button class="btn" id="lname-cancel">Cancel</button></div></div>
+<div class="ask" id="ltype" hidden><div><span class="ask-no-label">Page 2-9b · Type of location</span><div id="ltype-msg"></div>
+  <div class="list loc-list" id="ltype-list" style="max-height:55vh;overflow:auto"></div><button class="btn" id="ltype-cancel">Cancel</button></div></div>
+<div id="trk" hidden style="position:fixed;inset:0;z-index:59;background:#fff;color:#111;display:grid;grid-template-rows:auto 1fr auto;padding:16px;gap:10px">
+  <div><span class="ask-no-label" id="trk-title" style="color:#111"></span><div id="trk-sub" style="font-size:22px;font-weight:700;line-height:1.3"></div></div>
+  <canvas id="trk-cv" style="width:100%;height:100%;min-height:0;border:1px solid #ccc;border-radius:8px"></canvas>
+  <button class="btn big" id="trk-stop" style="background:#e0201a;color:#fff;border-color:#e0201a">Stop</button>
+</div>
 <div class="ask" id="choose" hidden><div><span class="ask-no-label">Page 2-7 · Connect</span><div id="choose-msg"></div><div class="list loc-list" id="choose-list" style="max-height:45vh;overflow:auto"></div><button class="btn" id="choose-none"></button></div></div>
 <div class="ask" id="newend" hidden><div><span class="ask-no-label">Page 2-8 · New location here</span><div>What is it?</div><div class="cats" id="newend-types"></div><label class="field"><span>Name</span><input id="newend-name" type="text" autocomplete="off" placeholder="enter name"></label><button class="btn primary" id="newend-save">Save</button><button class="btn" id="newend-cancel">Cancel</button></div></div>
 <div class="ask" id="ask" hidden><div><span class="ask-no-label" id="ask-page"></span><div id="ask-msg"></div><button class="btn primary" id="ask-yes"></button><button class="btn" id="ask-no"></button></div></div>

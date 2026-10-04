@@ -67,6 +67,13 @@ function draw() {
   for (const d of docs) {
     if (pick && d.slug !== pick) continue;
     const kinds = {}; for (const e of d.extra || []) kinds[e.name] = e.kind;
+    // walked trenches (v03.50): the smoothed line from the start reading to the stop reading
+    for (const [rn, tr] of Object.entries(d.tracks || {})) {
+      const info = (d.runs || {})[rn] || {}, A = info.from && (d.items || {})[info.from], B = info.to && (d.items || {})[info.to];
+      const ll = smoothTrack(tr, A && A.lat != null ? A : null, B && B.lat != null ? B : null).map(p => [p.lat, p.lon]); if (ll.length < 2) continue;
+      ll.forEach(p => pts.push(p));
+      L.polyline(ll, { color: "#ff8c1a", weight: 5, opacity: 0.95 }).addTo(layer).bindTooltip(esc(rn), { sticky: true, className: "lbl" });
+    }
     // conduit runs: one continuous line through their points, joined to the vault/pole at each end (Steven 2026-10-03)
     const runs = {};
     for (const [n, r] of Object.entries(d.items || {})) if (r.run && r.lat != null) (runs[r.group] = runs[r.group] || []).push([parseInt(n.split(" point ")[1]) || 0, r]);
@@ -97,6 +104,31 @@ function draw() {
   }
   if (pts.length) map.fitBounds(pts, { padding: [40, 40], maxZoom: 19 });
   say(pts.length ? "" : "No GPS shots saved for this project yet.");
+}
+// same smoothing as GPS Shots: drop rough fixes, average 3 dots each side, straighten (3 ft), round the turns
+function smoothTrack(raw, a, b) {
+  let pts = raw.map(q => ({ lat: q[0], lon: q[1], acc: q[2] }));
+  if (pts.length > 4) { const accs = pts.map(p => p.acc || 0).sort((x, y) => x - y), med = accs[accs.length >> 1]; pts = pts.filter(p => !(p.acc > Math.max(med * 2.5, 30))); }
+  const ends = [a, ...pts, b].filter(Boolean); if (ends.length < 3) return ends.map(p => ({ lat: p.lat, lon: p.lon }));
+  const lat0 = ends[0].lat, lon0 = ends[0].lon, c0 = Math.cos(lat0 * Math.PI / 180);
+  const to = p => ({ x: (p.lon - lon0) * 364000 * c0, y: (p.lat - lat0) * 364000 }), back = p => ({ lat: lat0 + p.y / 364000, lon: lon0 + p.x / (364000 * c0) });
+  const P = ends.map(to), n = P.length;
+  const avg = P.map((p, i) => { if (i === 0 || i === n - 1) return p; let sx = 0, sy = 0, k = 0; for (let j = Math.max(0, i - 3); j <= Math.min(n - 1, i + 3); j++) { sx += P[j].x; sy += P[j].y; k++; } return { x: sx / k, y: sy / k }; });
+  const keep = new Array(n).fill(false); keep[0] = keep[n - 1] = true;
+  (function dp(i, j) {
+    let best = 0, bi = -1; const A = avg[i], B = avg[j], dx = B.x - A.x, dy = B.y - A.y, L = Math.hypot(dx, dy) || 1;
+    for (let m = i + 1; m < j; m++) { const d = Math.abs(dy * (avg[m].x - A.x) - dx * (avg[m].y - A.y)) / L; if (d > best) { best = d; bi = m; } }
+    if (best > 3) { keep[bi] = true; dp(i, bi); dp(bi, j); }
+  })(0, n - 1);
+  let line = avg.filter((_, i) => keep[i]);
+  for (let it = 0; it < 3 && line.length > 2; it++) {
+    const out = [line[0]];
+    for (let i = 0; i < line.length - 1; i++) { const p = line[i], q = line[i + 1];
+      if (i > 0) out.push({ x: .75 * p.x + .25 * q.x, y: .75 * p.y + .25 * q.y });
+      if (i < line.length - 2) out.push({ x: .25 * p.x + .75 * q.x, y: .25 * p.y + .75 * q.y }); }
+    out.push(line[line.length - 1]); line = out;
+  }
+  return line.map(back);
 }
 async function gh(path, raw) {
   const r = await fetch(`https://api.github.com/repos/${cfg.repo}/contents/${path}?ref=${encodeURIComponent(cfg.branch)}&t=${Date.now()}`,
