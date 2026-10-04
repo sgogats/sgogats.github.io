@@ -460,7 +460,7 @@ summary { font-weight: 600; cursor: pointer; }
 </div></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-04.50";
+const APP_VERSION = "2026-10-04.51";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -2279,11 +2279,20 @@ function smoothTrack(raw, a, b) {
   }
   return line.map(back);
 }
+// the 6 ft rule stays (Steven 2026-10-04): a new start/stop name read within 6 ft of a location already mapped asks to join it instead
+async function joinNear(x, pt) {
+  if (x.had) return;
+  const v = nearbyEnds(pt, null).find(v => v.d <= RUN_NEAR_FT && !v.bldg && norm(v.name) !== norm(x.name));
+  if (v && await ask(`${x.name} is ${Math.round(v.d)} ft from ${v.name}. Join to ${v.name}?`, `Join to ${v.name}`, `No, keep ${x.name}`)) {
+    const it = itemsList().find(i => i.name === v.name); Object.assign(x, { name: v.name, type: it ? typeOf(it) : x.type, had: true });
+  }
+}
 async function mapTrench(sel) {
   const n = Math.max(0, ...runNames().map(k => parseInt(k.replace(/\D+/g, "")) || 0)) + 1, r = `Conduit run ${n}`;
   trkWakeOn();
   const a = await holdReading(`Position phone on ${sel.start.name}`, "Hold the phone steady.");
   if (!a) { $("trk").hidden = true; trkWakeOff(); toast("Stopped. Nothing was saved."); return; }
+  await joinNear(sel.start, a);
   ensureLoc(sel.start);
   data.items[sel.start.name] = Object.assign(a, { t: Date.now(), group: (itemsList().find(i => i.name === sel.start.name) || {}).group || typeGroup(sel.start.type) || "Added in field" });
   if (data.deleted) delete data.deleted[sel.start.name];
@@ -2294,6 +2303,7 @@ async function mapTrench(sel) {
   saveLocal();
   const b = await holdReading(`Position over ${sel.stop.name}`, "Hold the phone steady.");
   if (b) {
+    await joinNear(sel.stop, b);
     ensureLoc(sel.stop);
     data.items[sel.stop.name] = Object.assign(b, { t: Date.now(), group: (itemsList().find(i => i.name === sel.stop.name) || {}).group || typeGroup(sel.stop.type) || "Added in field" });
     if (data.deleted) delete data.deleted[sel.stop.name];
