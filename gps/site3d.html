@@ -53,7 +53,7 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { GLTFExporter } from "three/addons/exporters/GLTFExporter.js";
 
-const APP_VERSION = "V 01.04";
+const APP_VERSION = "V 01.05";
 const $ = id => document.getElementById(id);
 $("ver").textContent = APP_VERSION;
 const say = html => { $("msg").innerHTML = html; };
@@ -150,43 +150,93 @@ function build() {
   for (const l of (seed && seed.lockboxes) || []) spot[l.name] = spot[l.name] || { x: l.x, y: l.y, kind: "Lockbox" };
   for (const [n, c] of Object.entries(ctl)) if (spot[n] && c && c.use !== false && c.x != null) Object.assign(spot[n], { x: c.x, y: c.y });
 
-  // lockboxes hang on their building's wall: move each one onto the nearest wall of its building (print points)
-  const boxes = {};
-  for (const b of job.buildings || []) { const bx = b.box || (b.x0 != null ? [b.x0, b.y0, b.x1, b.y1] : null); if (bx) boxes[String(b.name)] = [Math.min(bx[0], bx[2]), Math.min(bx[1], bx[3]), Math.max(bx[0], bx[2]), Math.max(bx[1], bx[3])]; }
+  // buildings: the real outline drawn on the print (the thick wall line), not the designer's rough box
+  const lines = (job.plan && job.plan.lines) || [];
+  const bbOf = p => { let a = 1e9, b = 1e9, c = -1e9, d = -1e9; for (let i = 0; i < p.length; i += 2) { a = Math.min(a, p[i]); c = Math.max(c, p[i]); b = Math.min(b, p[i + 1]); d = Math.max(d, p[i + 1]); } return [a, b, c, d]; };
+  const overlap = (a, b) => Math.max(0, Math.min(a[2], b[2]) - Math.max(a[0], b[0])) * Math.max(0, Math.min(a[3], b[3]) - Math.max(a[1], b[1]));
+  const outlines = lines.filter(([c, w, p]) => c === "#282828" && Math.abs(w - 2.04) < 0.01 && p.length >= 8);
+  const dashes = lines.filter(([c, w, p]) => c === "#282828" && Math.abs(w - 1.44) < 0.01 && p.length === 4);
+  const inPoly = (x, y, P) => { let o = false; for (let i = 0, j = P.length - 1; i < P.length; j = i++) { const [xi, yi] = P[i], [xj, yj] = P[j]; if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) o = !o; } return o; };
+  const bldg = {};                               // name -> {poly, outer: segs, party: segs, c: centre}
+  for (const b of job.buildings || []) {
+    const box = b.box || (b.x0 != null ? [b.x0, b.y0, b.x1, b.y1] : null); if (!box || box.some(v => v == null)) continue;
+    const bx = [Math.min(box[0], box[2]), Math.min(box[1], box[3]), Math.max(box[0], box[2]), Math.max(box[1], box[3])];
+    let best = null, bo = 0;
+    for (const o of outlines) { const v = overlap(bbOf(o[2]), bx); if (v > bo) { bo = v; best = o; } }
+    let poly;
+    if (best && bo > 0.5 * (bx[2] - bx[0]) * (bx[3] - bx[1])) {
+      const p = best[2]; poly = []; for (let i = 0; i < p.length; i += 2) poly.push([p[i], p[i + 1]]);
+      const gap = Math.hypot(poly[0][0] - poly[poly.length - 1][0], poly[0][1] - poly[poly.length - 1][1]);
+      if (gap < 0.5) poly.pop();
+      else if (gap > 15) {                       // outline drawn in pieces: wrap all the wall lines of this building instead
+        const ob = bbOf(p), pts = [];
+        for (const [c, w, q] of lines) if (c === "#282828" && (Math.abs(w - 2.04) < 0.01 || Math.abs(w - 1.04) < 0.01)) {
+          const qb = bbOf(q); if (qb[0] >= ob[0] - 15 && qb[2] <= ob[2] + 15 && qb[1] >= ob[1] - 15 && qb[3] <= ob[3] + 15) for (let i = 0; i < q.length; i += 2) pts.push([q[i], q[i + 1]]);
+        }
+        pts.sort((u, v) => u[0] - v[0] || u[1] - v[1]);
+        const cr = (o, a2, b2) => (a2[0] - o[0]) * (b2[1] - o[1]) - (a2[1] - o[1]) * (b2[0] - o[0]), lo = [], hi = [];
+        for (const q of pts) { while (lo.length > 1 && cr(lo[lo.length - 2], lo[lo.length - 1], q) <= 0) lo.pop(); lo.push(q); }
+        for (const q of pts.slice().reverse()) { while (hi.length > 1 && cr(hi[hi.length - 2], hi[hi.length - 1], q) <= 0) hi.pop(); hi.push(q); }
+        if (lo.length + hi.length > 5) poly = lo.slice(0, -1).concat(hi.slice(0, -1));
+      }
+    } else poly = [[bx[0], bx[1]], [bx[2], bx[1]], [bx[2], bx[3]], [bx[0], bx[3]]];
+    const outer = poly.map((q, i) => [q, poly[(i + 1) % poly.length]]);
+    // walls between units: the dashed lines inside the outline, joined into whole walls
+    const groups = {};
+    for (const [, , d] of dashes) {
+      const mx = (d[0] + d[2]) / 2, my = (d[1] + d[3]) / 2; if (!inPoly(mx, my, poly)) continue;
+      let ang = Math.atan2(d[3] - d[1], d[2] - d[0]); if (ang < 0) ang += Math.PI; if (ang >= Math.PI - 0.02) ang -= Math.PI;
+      const ux = Math.cos(ang), uy = Math.sin(ang), off = -mx * uy + my * ux;
+      const key = Math.round(ang * 30) + "|" + Math.round(off);
+      const g = groups[key] || (groups[key] = { ux, uy, off, lo: 1e9, hi: -1e9 });
+      for (const t of [d[0] * ux + d[1] * uy, d[2] * ux + d[3] * uy]) { g.lo = Math.min(g.lo, t); g.hi = Math.max(g.hi, t); }
+    }
+    const party = Object.values(groups).filter(g => g.hi - g.lo > 8).map(g => [[g.lo * g.ux - g.off * g.uy, g.lo * g.uy + g.off * g.ux], [g.hi * g.ux - g.off * g.uy, g.hi * g.uy + g.off * g.ux]]);
+    const c = poly.reduce((a, q) => [a[0] + q[0] / poly.length, a[1] + q[1] / poly.length], [0, 0]);
+    bldg[String(b.name)] = { poly, outer, party, c };
+  }
+  const nearestOn = (x, y, segs) => {            // closest point on any segment -> {x, y, d, seg}
+    let best = null;
+    for (const sg of segs) {
+      const [[ax, ay], [bx2, by2]] = sg, L2 = (bx2 - ax) ** 2 + (by2 - ay) ** 2 || 1e-9;
+      const t = Math.max(0, Math.min(1, ((x - ax) * (bx2 - ax) + (y - ay) * (by2 - ay)) / L2));
+      const qx = ax + t * (bx2 - ax), qy = ay + t * (by2 - ay), d = Math.hypot(x - qx, y - qy);
+      if (!best || d < best.d) best = { x: qx, y: qy, d, seg: sg };
+    }
+    return best;
+  };
+  const wallTurn = sg => -Math.atan2(sg[1][1] - sg[0][1], sg[1][0] - sg[0][0]);   // rotation.y that lays a box along this wall
+
+  // lockboxes hang on the outside wall of their building, at the closest point to where they were placed
   const lbBldg = {};
   for (const l of (seed && seed.lockboxes) || []) if (l.building != null) lbBldg[l.name] = String(l.building);
   for (const it of job.items || []) { const m = /^Building\s+(.+)$/i.exec(it.group || ""); if (m && !lbBldg[it.name]) lbBldg[it.name] = m[1].trim(); }
   for (const [name, s] of Object.entries(spot)) {
     const k = (s.kind || "").toLowerCase(); if (!k.includes("lockbox") || k.includes("vault")) continue;
-    let bx = boxes[lbBldg[name]];
-    if (!bx) {                                   // no building named: the closest one, if it is close
-      let best = 1e9;
-      for (const b of Object.values(boxes)) { const dx = Math.max(b[0] - s.x, 0, s.x - b[2]), dy = Math.max(b[1] - s.y, 0, s.y - b[3]), d = Math.hypot(dx, dy); if (d < best) { best = d; bx = b; } }
-      if (best > 30 * ppf) bx = null;
-    }
-    if (!bx) continue;
-    const [x0, y0, x1, y1] = bx;
-    const cx = Math.min(Math.max(s.x, x0), x1), cy = Math.min(Math.max(s.y, y0), y1);
-    const walls = [[Math.abs(cx - x0), x0, cy, -1, 0], [Math.abs(x1 - cx), x1, cy, 1, 0], [Math.abs(cy - y0), cx, y0, 0, -1], [Math.abs(y1 - cy), cx, y1, 0, 1]];
-    const inside = s.x > x0 && s.x < x1 && s.y > y0 && s.y < y1;
-    // outside the building: the wall it is closest to; inside: the nearest wall
-    const w = inside ? walls.sort((a, b) => a[0] - b[0])[0]
-                     : walls.find(w => (w[3] && Math.sign(s.x - cx) === w[3] && s.x !== cx) || (w[4] && Math.sign(s.y - cy) === w[4] && s.y !== cy)) || walls.sort((a, b) => a[0] - b[0])[0];
-    s.x = w[1]; s.y = w[2]; s.wall = [w[3], w[4]];
+    let B = bldg[lbBldg[name]], hit = B && nearestOn(s.x, s.y, B.outer);
+    if (!B) for (const cand of Object.values(bldg)) { const h = nearestOn(s.x, s.y, cand.outer); if (h.d < 30 * ppf && (!hit || h.d < hit.d)) { hit = h; B = cand; } }
+    if (!hit) continue;
+    const nx = hit.x - B.c[0], ny = hit.y - B.c[1], sg = hit.seg, ex = sg[1][0] - sg[0][0], ey = sg[1][1] - sg[0][1], el = Math.hypot(ex, ey) || 1;
+    let ox = -ey / el, oy = ex / el; if (ox * nx + oy * ny < 0) { ox = -ox; oy = -oy; }   // points away from the building
+    s.x = hit.x; s.y = hit.y; s.wall = { turn: wallTurn(sg), out: [ox, oy] };
   }
 
-  // buildings
-  const bMat = new THREE.MeshLambertMaterial({ color: 0xc9b79c, transparent: true, opacity: 0.55, depthWrite: false });
+  const bMat = new THREE.MeshLambertMaterial({ color: 0xc9b79c, transparent: true, opacity: 0.55, depthWrite: false, side: THREE.DoubleSide });
+  const pwMat = new THREE.MeshLambertMaterial({ color: 0xa8957a, transparent: true, opacity: 0.7 });
   const eMat = new THREE.LineBasicMaterial({ color: 0x6b5a45 });
   const bh = H.townhouse;   // real height, not stretched
-  for (const b of job.buildings || []) {
-    const box = b.box || (b.x0 != null ? [b.x0, b.y0, b.x1, b.y1] : null); if (!box) continue;
-    const [x0, y0, x1, y1] = box, w = Math.abs(x1 - x0) / ppf, d = Math.abs(y1 - y0) / ppf;
-    const c = at((x0 + x1) / 2, (y0 + y1) / 2); c.y = bh / 2;
-    const g = new THREE.BoxGeometry(w, bh, d);
-    const m = new THREE.Mesh(g, bMat); m.position.copy(c); m.name = "Bldg " + b.name; site.add(m);
-    const e = new THREE.LineSegments(new THREE.EdgesGeometry(g), eMat); e.position.copy(c); site.add(e);
-    const t = label("Bldg " + b.name, "#6b4e16"); t.position.set(c.x, bh + labelH, c.z); site.add(t);
+  for (const [name, B] of Object.entries(bldg)) {
+    const shape = new THREE.Shape(B.poly.map(([x, y]) => { const v = at(x, y); return new THREE.Vector2(v.x, v.z); }));
+    const g = new THREE.ExtrudeGeometry(shape, { depth: bh, bevelEnabled: false });
+    g.rotateX(Math.PI / 2); g.translate(0, bh, 0);             // footprint on the ground, walls straight up
+    const m = new THREE.Mesh(g, bMat); m.name = "Bldg " + name; site.add(m);
+    site.add(new THREE.LineSegments(new THREE.EdgesGeometry(g, 30), eMat));
+    for (const [a, b] of B.party) {                            // walls between units
+      const A = at(a[0], a[1]), Bv = at(b[0], b[1]), len = A.distanceTo(Bv);
+      const w = new THREE.Mesh(new THREE.BoxGeometry(len, bh, 0.4), pwMat);
+      w.position.set((A.x + Bv.x) / 2, bh / 2, (A.z + Bv.z) / 2); w.rotation.y = -Math.atan2(Bv.z - A.z, Bv.x - A.x); site.add(w);
+    }
+    const c = at(B.c[0], B.c[1]); const t = label("Bldg " + name, "#6b4e16"); t.position.set(c.x, bh + labelH, c.z); site.add(t);
   }
 
   // conduit / fiber runs, 36" under the ground, plus the drop down from each end
@@ -247,7 +297,7 @@ function build() {
     if (k.includes("lockbox") && !k.includes("vault")) {
       const m = new THREE.Mesh(new THREE.BoxGeometry(1.5, 2, 0.5), lMat);   // about a real lockbox: 18" x 24"
       m.position.copy(at(s.x, s.y)); m.position.y = H.lockbox + 1;   // bottom 16" up; real height, never stretched
-      if (s.wall) { m.rotation.y = s.wall[0] ? Math.PI / 2 : 0; m.position.x += s.wall[0] * 0.25; m.position.z += s.wall[1] * 0.25; }   // flat against the wall
+      if (s.wall) { m.rotation.y = s.wall.turn; m.position.x += s.wall.out[0] * 0.25; m.position.z += s.wall.out[1] * 0.25; }   // flat against the outside wall
       m.name = name; site.add(m);
       const t = label(name, "#2b8a3e"); t.position.copy(m.position).add(new THREE.Vector3(0, labelH, 0)); site.add(t);
     } else if (k.includes("pole")) {
@@ -264,10 +314,18 @@ function build() {
   let nids = 0;
   for (const u of (seed && seed.units) || []) {
     if (u.nid_x == null) continue;
-    const m = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.6, 0.4), nMat); m.position.copy(at(u.nid_x, u.nid_y)); m.position.y = H.nid; site.add(m); nids++;   // real height: on the 10 ft wall, never stretched
+    let x = u.nid_x, y = u.nid_y, turn = 0, B = bldg[String(u.building)];
+    const hit = B && nearestOn(x, y, [...B.party, ...B.outer]);
+    if (hit && hit.d < 20) {                    // on the garage wall nearest to where the designer put it, on the same side
+      const sg = hit.seg, ex = sg[1][0] - sg[0][0], ey = sg[1][1] - sg[0][1], el = Math.hypot(ex, ey) || 1;
+      let ox = -ey / el, oy = ex / el; if (ox * (x - hit.x) + oy * (y - hit.y) < 0) { ox = -ox; oy = -oy; }
+      x = hit.x + ox * 0.3 * ppf; y = hit.y + oy * 0.3 * ppf; turn = wallTurn(sg);
+    }
+    const m = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.6, 0.4), nMat); m.position.copy(at(x, y)); m.position.y = H.nid; m.rotation.y = turn;   // 48" up: real height, never stretched
+    m.name = "NID " + (u.number || ""); site.add(m); nids++;
   }
 
-  const bcount = (job.buildings || []).filter(b => b.box || b.x0 != null).length;
+  const bcount = Object.keys(bldg).length;
   say(`${bcount} buildings, ${runs} fiber runs, ${nids} NID panels.` +
       (stretch > 1 ? ` Underground depth drawn ${stretch}x so you can see it.` : "") +
       (missing ? ` ${missing} runs skipped (end point not found).` : "") +
