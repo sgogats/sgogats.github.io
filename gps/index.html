@@ -71,6 +71,8 @@ p { margin: 6px 0; }
 .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
 .stack { display: grid; gap: 10px; }
 .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.test-tick { padding: 10px 2px; font-size: 16px; gap: 12px; flex-wrap: nowrap; cursor: pointer; }
+.test-tick input { width: 26px; height: 26px; flex: none; accent-color: var(--accent, #1a7f37); }
 .row > * { min-width: 0; }
 input::placeholder, textarea::placeholder { color: color-mix(in srgb, var(--ink) 62%, transparent); opacity: 1; }
 input[type=text], input[type=password], input[type=number], input[type=tel] { font-size: 19px; }
@@ -470,6 +472,7 @@ html.field .tc-k { color: var(--accent); }
     <label class="field"><span>Contact name</span><input id="np-contact" type="text" placeholder="e.g. John Smith" autocomplete="off"></label>
     <label class="field"><span>Contact phone number</span><input id="np-phone" type="tel" placeholder="e.g. 201-555-0123" autocomplete="off"></label>
     <label class="field"><span>PID number</span><input id="np-pid" type="text" placeholder="e.g. 245-543" autocomplete="off"></label>
+    <label class="row small test-tick"><input type="checkbox" id="np-test"> Test data (leave blank for a real job)</label>
     <button class="btn big" id="np-print">Upload print (PDF or DXF)</button>
     <input id="np-print-file" type="file" accept=".pdf,.dxf,application/pdf" hidden>
     <input id="pr-file" type="file" accept=".pdf,.dxf,application/pdf" hidden>
@@ -703,7 +706,7 @@ html.field .tc-k { color: var(--accent); }
 </div></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-05.68";
+const APP_VERSION = "2026-10-05.69";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -1007,6 +1010,7 @@ $("proj-edit").onclick = () => {
   const info = (p.job ? jobInfo[p.slug] : p.info) || {};
   $("pe-name").value = p.name; $("pe-name").disabled = !!p.job;   // a designer job keeps the designer's name
   for (const [k, id] of Object.entries(PE)) $(id).value = info[k] || "";
+  $("pe-test").checked = !isReal(p);
   $("pedit").hidden = false;
 };
 document.addEventListener("DOMContentLoaded", () => {   // page 2-6 sits after this script
@@ -1015,6 +1019,7 @@ $("pe-save").onclick = async () => {
   const p = allProjects().find(x => x.slug === current); if (!p) { $("pedit").hidden = true; return; }
   const name = $("pe-name").value.trim() || p.name, info = {};
   for (const [k, id] of Object.entries(PE)) { const v = $(id).value.trim(); if (v) info[k] = v; }
+  info.kind = $("pe-test").checked ? "test" : "real";   // change 13: Real job or Test data
   const s = p.slug;
   if (p.job) { jobInfo[s] = info; LS.set("jobInfo", jobInfo); }
   else { const c = custom.find(x => x.slug === s); if (c) { c.name = name; c.info = info; LS.set("custom", custom); } data.project = name; saveLocal(); }
@@ -1037,6 +1042,7 @@ $("np-make").onclick = async () => {
   const name = $("np-name").value.trim(); if (!name) { toast("Type a project name first"); return; }
   const s = slug(name), info = {}, file = npFile;
   for (const [k, id] of Object.entries(NP_INFO)) { const v = $(id).value.trim(); if (v) info[k] = v; }
+  info.kind = $("np-test").checked ? "test" : "real"; $("np-test").checked = false;   // change 13: every new job is real unless Test data is ticked
   let c = custom.find(x => x.slug === s);
   if (!allProjects().some(p => p.slug === s)) { c = { name, slug: s }; custom.push(c); }
   if (c && Object.keys(info).length) c.info = info;
@@ -2482,6 +2488,14 @@ $("type-lib-list").addEventListener("click", async e => {
 $("type-lib-done").onclick = () => { $("type-lib").hidden = true; };
 /* ---------- gear > Delete test data (Steven 2026-10-03, while he is the only tester). Garden Homes and all its data are protected. ---------- */
 const PROTECTED = "garden-homes-unilever-englewood-cliffs";
+/* change 13 (Steven 2026-10-05): each project is a Real job or Test data (tick box on New project and Edit project). Real jobs are never deleted here.
+   Projects made before the tick box: Garden Homes and designer jobs count as real, the rest as test, until he ticks or unticks it. */
+function isReal(p) {
+  if (!p || p.slug === RANDOM) return false;
+  const info = (p.job ? jobInfo[p.slug] : p.info) || {};
+  return info.kind ? info.kind === "real" : (p.slug === PROTECTED || !!p.job);
+}
+const realSlug = s => isReal(allProjects().find(p => p.slug === s));
 let tdTab = "types", tdProj = null;
 function tdRow(name, sub, key, can) { return `<div class="item" style="cursor:default;grid-template-columns:1fr auto"><span><span class="nm">${esc(name)}</span>${sub ? `<br><span class="sub">${esc(sub)}</span>` : ""}</span>${can ? `<button class="btn cancel" style="min-height:36px;padding:4px 12px;width:auto" data-tddel="${esc(key)}">Delete</button>` : `<span class="sub">Kept</span>`}</div>`; }
 function showTestData() {
@@ -2491,16 +2505,16 @@ function showTestData() {
     $("td-note").textContent = "Deleting a type takes it off the list offered on every project. Lockbox, Vault, Building and Pedestal stay.";
     $("td-list").innerHTML = allTypeNames().filter(n => !isRemovedType(n)).sort((a, b) => a.localeCompare(b)).map(n => tdRow(n, "", n, !DEFAULT_TYPES.includes(n))).join("");
   } else if (tdTab === "projects") {
-    $("td-note").textContent = "Deleting a project removes it and its locations from every phone. Garden Homes is real and is kept.";
-    $("td-list").innerHTML = allProjects().filter(p => p.slug !== RANDOM).map(p => tdRow(p.name, ST_NAME[statusOf(p.slug)] || "", p.slug, p.slug !== PROTECTED && !p.job)).join("") || `<div class="item" style="display:block"><span class="sub">No projects</span></div>`;
+    $("td-note").textContent = "Deleting a project removes it and its locations from every phone. Real jobs are kept (untick Test data in Edit project to change that).";
+    $("td-list").innerHTML = allProjects().filter(p => p.slug !== RANDOM).map(p => tdRow(p.name, ST_NAME[statusOf(p.slug)] || "", p.slug, !isReal(p) && !p.job)).join("") || `<div class="item" style="display:block"><span class="sub">No projects</span></div>`;
   } else {
-    const ps = allProjects().filter(p => p.slug !== PROTECTED);
+    const ps = allProjects().filter(p => !isReal(p));
     $("td-proj").innerHTML = `<option value="${RANDOM}">System points</option>` + ps.filter(p => p.slug !== RANDOM).map(p => `<option value="${esc(p.slug)}">${esc(p.name)}</option>`).join("");
     const ok = v => v && [...$("td-proj").options].some(o => o.value === v);
     tdProj = ok(tdProj) ? tdProj : ok(current) ? current : $("td-proj").options[0].value;
     $("td-proj").value = tdProj; const s = tdProj;
     if (s !== current) { $("td-list").innerHTML = `<div class="item"><span class="sub">Loading…</span></div>`; Promise.resolve(openProject(s)).then(() => { home = true; selected = null; showTestData(); }); return; }
-    $("td-note").textContent = "Garden Homes is real, so it isn't in this list. Locations from a job's print can't be deleted here.";
+    $("td-note").textContent = "Real jobs aren't in this list, only Test data. Locations from a job's print can't be deleted here.";
     const fromPrint = new Set(job ? job.items.map(i => i.name) : []);
     $("td-list").innerHTML = itemsList().sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true })).map(i => tdRow(i.name, typeOf(i) + (data.items[i.name] ? " · has GPS" : ""), i.name, !fromPrint.has(i.name))).join("") || `<div class="item" style="display:block"><span class="sub">No locations in this project</span></div>`;
   }
@@ -2516,7 +2530,7 @@ $("td-list").addEventListener("click", async e => {
     if (!await ask(`Delete the location type "${key}" from the list?`, "Yes, delete it", "No, keep it")) return;
     await deleteLibType(key);
   } else if (tdTab === "projects") {
-    if (key === PROTECTED) return;
+    if (realSlug(key)) return;
     const name = (allProjects().find(p => p.slug === key) || {}).name || key;
     if (!await ask(`Delete the project "${name}" and all its locations from every phone? This can't be undone.`, "Yes, delete it", "No, keep it")) return;
     if (gh.on() && !(await editProjects(d => { d.removed = Object.assign({}, d.removed, { [key]: Date.now() }); d.projects = d.projects.filter(p => p.slug !== key); delete d.status[key]; }, `GPS Shots: delete test project ${name}`))) { toast("Couldn't delete it. Check the GitHub key."); return; }
@@ -2524,7 +2538,7 @@ $("td-list").addEventListener("click", async e => {
     if (current === key) current = null;
     renderProjects(); toast(`Deleted ${name}`);
   } else {
-    if (current === PROTECTED) return;
+    if (realSlug(current)) return;
     if (!await ask(`Delete the location "${key}"${data.items[key] ? " and its GPS" : ""}?`, "Yes, delete it", "No, keep it")) return;
     const t = Date.now();
     data.gone = Object.assign({}, data.gone, { [key]: t }); data.deleted = Object.assign({}, data.deleted, { [key]: t });
@@ -3182,6 +3196,7 @@ render();
   <label class="field"><span>Contact name</span><input id="pe-contact" type="text" autocomplete="off"></label>
   <label class="field"><span>Contact phone number</span><input id="pe-phone" type="tel" autocomplete="off"></label>
   <label class="field"><span>PID number</span><input id="pe-pid" type="text" autocomplete="off"></label>
+  <label class="row small test-tick"><input type="checkbox" id="pe-test"> Test data (leave blank for a real job)</label>
   <button class="btn primary" id="pe-save">Save and close</button>
   <button class="btn cancel" id="pe-cancel">Cancel</button></div></div>
 <div class="ask big" id="vsize" hidden><div><span class="ask-no-label">Page 2-9e · Verify size</span><div>Verify conduit size</div>
