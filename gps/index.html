@@ -376,8 +376,9 @@ html.field .btn.st-now::after { background: transparent; color: var(--accent); b
 html.field #status-name::before { color: var(--accent); }
 #status-box [data-setst="canceled"]:not(.st-now) { border-color: var(--red); color: var(--red) !important; }
 /* page 2: project card with the address under the name; Edit and Cancel stacked on the right */
-.work-head { position: relative; padding-right: 110px; min-height: 108px; }
-html.field .work-head { min-height: 116px; }
+.work-head { position: relative; padding-right: 110px; }
+.work-head:has(#proj-edit:not([hidden])) { min-height: 108px; }
+html.field .work-head:has(#proj-edit:not([hidden])) { min-height: 116px; }
 #change-proj { position: absolute; right: 12px; top: 12px; min-height: 40px; width: 84px; }
 #proj-edit { position: absolute; right: 12px; top: 58px; width: 84px !important; }
 .work-addr { font-size: 13px; color: var(--muted); margin-top: 2px; }
@@ -398,6 +399,17 @@ html.field .hring div { width: 136px; height: 136px; background: #000; font-size
 /* walk screen: a "saved as you walk" tag on the drawing */
 #trk-saved { position: absolute; margin: 8px; padding: 7px 10px; border-radius: 10px; background: rgba(255,255,255,.95); color: #1e7d3c; font: 700 13px/1 var(--display); box-shadow: 0 1px 3px rgba(0,0,0,.15); pointer-events: none; }
 html.field #trk-saved { background: #000; color: var(--good); border: 2px solid var(--good); box-shadow: none; }
+
+.brand { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.cs-row { display: grid; grid-template-columns: 2fr 1fr; gap: 8px; }
+.type-card { display: flex; align-items: center; gap: 10px; background: var(--panel); border: var(--bb) solid var(--line); border-radius: var(--r); padding: 12px; }
+.type-card > div { flex: 1; } .type-card b { font: 800 20px/1.2 var(--display); display: block; margin-top: 3px; }
+.tc-k { font: 700 11px/1 var(--display); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+html.field .tc-k { color: var(--accent); }
+#addloc-retype { width: auto; min-height: 40px; padding: 6px 14px; }
+#addloc-more { --ic: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2024%2024%22%3E%3Cpath%20stroke%3D%22%23000%22%20stroke-width%3D%222.5%22%20stroke-linecap%3D%22round%22%20d%3D%22M12%205v14M5%2012h14%22/%3E%3C/svg%3E"); }
+#addloc-more::before { content: ""; width: 20px; height: 20px; flex: none; background: currentColor; -webkit-mask: var(--ic) center / contain no-repeat; mask: var(--ic) center / contain no-repeat; }
+#addloc-make { background: var(--accent) !important; border-color: var(--accent) !important; color: var(--accent-ink) !important; }
 @media (prefers-reduced-motion: reduce) { .prog i { transition: none; } }
 </style>
 </head>
@@ -405,7 +417,7 @@ html.field #trk-saved { background: #000; color: var(--good); border: 2px solid 
 <header class="bar">
   <div class="bar-in">
     <button class="gear" id="gear" aria-label="Settings" title="Settings"><svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.830l-.06-.06a1.65 1.65 0 0 0-1.820-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.650 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
-    <div class="bar-t"><div class="brand">GPS Shots</div><div class="bar-pg"><span class="page-no" id="page-no"></span><span class="ver-no" id="ver-no"></span></div>
+    <div class="bar-t"><div class="brand" id="brand">GPS Shots</div><div class="bar-pg"><span class="page-no" id="page-no"></span><span class="ver-no" id="ver-no"></span></div>
       <div class="bar-btns"><button class="modebtn" id="mode-btn" type="button"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><g class="ic-sun"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></g><g class="ic-house"><path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/></g></svg><span class="modelbl">Field mode</span></button><button class="btn edit-words" id="edit-words" hidden>Edit</button></div></div>
     <div class="bar-r"><button class="btn top-setup" id="top-setup" data-tab="setup" aria-selected="false">Settings</button>
     <span id="sync" class="sync" title="GitHub sync">Phone only</span></div>
@@ -452,8 +464,8 @@ html.field #trk-saved { background: #000; color: var(--good); border: 2px solid 
     <label class="field"><span>Project name</span><input id="np-name" type="text" placeholder="e.g. Palisade Ave Townhomes" autocomplete="off"></label>
     <label class="field"><span>Project address line 1</span><input id="np-addr1" type="text" placeholder="e.g. 800 Sylvan Ave" autocomplete="off"></label>
     <label class="field"><span>Project address line 2</span><input id="np-addr2" type="text" placeholder="e.g. Building 2" autocomplete="off"></label>
-    <label class="field"><span>City</span><input id="np-city" type="text" placeholder="e.g. Englewood Cliffs" autocomplete="off"></label>
-    <label class="field"><span>State</span><input id="np-state" type="text" placeholder="e.g. NJ" autocomplete="off"></label>
+    <div class="cs-row"><label class="field"><span>City</span><input id="np-city" type="text" placeholder="e.g. Englewood Cliffs" autocomplete="off"></label>
+    <label class="field"><span>State</span><input id="np-state" type="text" placeholder="e.g. NJ" autocomplete="off"></label></div>
     <label class="field"><span>Zip code</span><input id="np-zip" type="text" inputmode="numeric" placeholder="e.g. 07632" autocomplete="off"></label>
     <label class="field"><span>Contact name</span><input id="np-contact" type="text" placeholder="e.g. John Smith" autocomplete="off"></label>
     <label class="field"><span>Contact phone number</span><input id="np-phone" type="tel" placeholder="e.g. 201-555-0123" autocomplete="off"></label>
@@ -486,7 +498,7 @@ html.field #trk-saved { background: #000; color: var(--good); border: 2px solid 
         <div class="cats" id="addloc-types"></div>
       </div>
       <div id="addloc-step2" class="stack" hidden>
-        <p style="margin:0">Type: <b id="addloc-type"></b> <button class="btn" id="addloc-retype" style="min-height:36px;padding:4px 10px;margin-left:6px">Change</button></p>
+        <div class="type-card"><div><div class="tc-k">Type</div><b id="addloc-type"></b></div><button class="btn" id="addloc-retype">Change</button></div>
         <label class="field"><span>Name</span><input id="addloc-name" type="text" placeholder="e.g. OLT-1" autocomplete="off" enterkeyhint="done"></label>
         <button class="btn big gray" id="addloc-make">Add and capture GPS location</button>
         <button class="btn big gray" id="addloc-bmap" hidden>Map building with GPS coordinates</button>
@@ -691,7 +703,7 @@ html.field #trk-saved { background: #000; color: var(--good); border: 2px solid 
 </div></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-05.67";
+const APP_VERSION = "2026-10-05.68";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -2340,6 +2352,10 @@ function pageNo() { let sn = "main"; try { sn = screenNow(); } catch {} const n 
 $("ver-no").textContent = " · V " + APP_VERSION.slice(8);   // day.build, e.g. V 03.12
 setInterval(() => {
   const t = "Page " + pageNo(); if ($("page-no").textContent !== t) $("page-no").textContent = t;
+  { let sn = "main"; try { sn = screenNow(); } catch {}   // the top bar names the page, like Mockup v3
+    const pn = (allProjects().find(p => p.slug === current) || {}).name || "GPS Shots";
+    const T = { newproject: "New project", lists: $("lists-title").textContent, status: "Change status of job", setup: "Setup", vaultlist: pn, capture: pn, addloc: "Add new location", addtype: "Add new location", editproject: "Edit project", print: "Put shots on the print", placing: "Put shots on the print", random: "System point" };
+    const bt = T[sn] || "GPS Shots"; if ($("brand").textContent !== bt) $("brand").textContent = bt; }
   if (!$("ask").hidden) { const a = "Page " + pageNo().replace(/a$/, "") + (shot.running ? "b" : "a"); if ($("ask-page").textContent !== a) $("ask-page").textContent = a; }
 }, 300);
 
@@ -3160,8 +3176,8 @@ render();
   <label class="field"><span>Project name</span><input id="pe-name" type="text" autocomplete="off"></label>
   <label class="field"><span>Project address line 1</span><input id="pe-addr1" type="text" autocomplete="off"></label>
   <label class="field"><span>Project address line 2</span><input id="pe-addr2" type="text" autocomplete="off"></label>
-  <label class="field"><span>City</span><input id="pe-city" type="text" autocomplete="off"></label>
-  <label class="field"><span>State</span><input id="pe-state" type="text" autocomplete="off"></label>
+  <div class="cs-row"><label class="field"><span>City</span><input id="pe-city" type="text" autocomplete="off"></label>
+  <label class="field"><span>State</span><input id="pe-state" type="text" autocomplete="off"></label></div>
   <label class="field"><span>Zip code</span><input id="pe-zip" type="text" inputmode="numeric" autocomplete="off"></label>
   <label class="field"><span>Contact name</span><input id="pe-contact" type="text" autocomplete="off"></label>
   <label class="field"><span>Contact phone number</span><input id="pe-phone" type="tel" autocomplete="off"></label>
