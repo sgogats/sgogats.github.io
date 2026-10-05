@@ -248,7 +248,7 @@ summary { font-weight: 600; cursor: pointer; }
 
   <div id="collect-main">
     <div class="work-head">
-      <div><div class="muted small">Current project</div><div class="work-proj" id="work-proj"></div></div>
+      <div><div class="muted small">Current project</div><div class="work-proj" id="work-proj"></div><button class="btn" id="proj-edit" style="min-height:34px;padding:4px 16px;font-size:15px;width:auto;margin-top:6px" hidden>Edit</button></div>
       <button class="btn cancel" id="change-proj">Cancel</button>
     </div>
     <button class="btn big primary" id="next-btn">Next location</button>
@@ -469,7 +469,7 @@ summary { font-weight: 600; cursor: pointer; }
 </div></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-05.59";
+const APP_VERSION = "2026-10-05.60";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -615,7 +615,7 @@ function addCustom(list) {
     if (!p || !p.slug || p.slug === RANDOM || jobs.some(j => j.slug === p.slug)) continue;
     const have = custom.find(c => c.slug === p.slug);
     if (!have) { custom.push({ name: p.name || p.slug, slug: p.slug }); changed = true; }
-    else if (p.name && have.name !== p.name && have.name === p.slug.replace(/-/g, " ")) { have.name = p.name; changed = true; }   // real name over a file-name guess
+    else if (p.name && have.name !== p.name) { have.name = p.name; changed = true; }   // the shared name wins (real name over a file-name guess, or edited on page 2-6)
     const c = have || custom.find(x => x.slug === p.slug);   // project details and uploaded print travel with the project
     if (p.info && JSON.stringify(c.info) !== JSON.stringify(p.info)) { c.info = p.info; changed = true; }
     if (p.print && (!c.print || c.print.t !== p.print.t)) { c.print = p.print; changed = true; if (p.slug === current) loadPrint(p.slug); }
@@ -628,6 +628,7 @@ async function pullStatus() {
   try {
     const t = await gh.raw("gps/projects.json") || {};
     statuses = Object.assign({}, t.status || {}); LS.set("status", statuses);
+    if (t.jobInfo) { jobInfo = t.jobInfo; LS.set("jobInfo", jobInfo); }
     // projects removed for good (test data): drop them from this phone too, so they are never sent back up
     const gone = t.removed || {};
     if (Object.keys(gone).length) {
@@ -735,7 +736,7 @@ document.addEventListener("click", e => { if (e.target.closest("[data-home]")) g
 $("np-cancel").onclick = goHome;
 /* new project details (Steven 2026-10-05): name, address 1 and 2, contact, phone, PID, plus the print. Kept in gps/projects.json; to be linked to BMS by PID later */
 const NP_INFO = { addr1: "np-addr1", addr2: "np-addr2", contact: "np-contact", phone: "np-phone", pid: "np-pid" };
-let npFile = null;
+let npFile = null, jobInfo = LS.get("jobInfo", {});   // details of designer jobs (Garden Homes), whose names come from the designer
 function setNpFile(f) { npFile = f; $("np-print").textContent = f ? `Print: ${f.name} · tap to change` : "Upload print (PDF or DXF)"; }
 $("np-print").onclick = () => $("np-print-file").click();
 $("np-print-file").onchange = e => {
@@ -743,6 +744,32 @@ $("np-print-file").onchange = e => {
   if (f && !/\.(pdf|dxf)$/i.test(f.name)) { toast(/\.dwg$/i.test(f.name) ? "A DWG can't open on a phone. Save it as PDF or DXF first." : "Pick a PDF or DXF file"); return; }
   setNpFile(f);
 };
+/* page 2-6: Edit project details (Steven 2026-10-05). Save and close or Cancel, both back to page 2 */
+const PE = { addr1: "pe-addr1", addr2: "pe-addr2", contact: "pe-contact", phone: "pe-phone", pid: "pe-pid" };
+$("proj-edit").onclick = () => {
+  const p = allProjects().find(x => x.slug === current); if (!p) return;
+  const info = (p.job ? jobInfo[p.slug] : p.info) || {};
+  $("pe-name").value = p.name; $("pe-name").disabled = !!p.job;   // a designer job keeps the designer's name
+  for (const [k, id] of Object.entries(PE)) $(id).value = info[k] || "";
+  $("pedit").hidden = false;
+};
+document.addEventListener("DOMContentLoaded", () => {   // page 2-6 sits after this script
+$("pe-cancel").onclick = () => { $("pedit").hidden = true; };
+$("pe-save").onclick = async () => {
+  const p = allProjects().find(x => x.slug === current); if (!p) { $("pedit").hidden = true; return; }
+  const name = $("pe-name").value.trim() || p.name, info = {};
+  for (const [k, id] of Object.entries(PE)) { const v = $(id).value.trim(); if (v) info[k] = v; }
+  const s = p.slug;
+  if (p.job) { jobInfo[s] = info; LS.set("jobInfo", jobInfo); }
+  else { const c = custom.find(x => x.slug === s); if (c) { c.name = name; c.info = info; LS.set("custom", custom); } data.project = name; saveLocal(); }
+  $("pedit").hidden = true; renderProjects(); render(); toast("Project saved");
+  if (gh.on() && !(await editProjects(d => {
+    if (p.job) { d.jobInfo = d.jobInfo || {}; d.jobInfo[s] = info; return; }
+    let q = d.projects.find(x => x.slug === s); if (!q) { q = { slug: s, t: Date.now() }; d.projects.push(q); }
+    q.name = name; q.info = info;
+  }, `GPS Shots: edit project ${name}`))) toast("Saved on this phone only for now");
+};
+});
 $("pr-file").onchange = async e => {
   const f = e.target.files[0] || null, s = current; e.target.value = ""; if (!f || !s) return;
   if (!/\.(pdf|dxf)$/i.test(f.name)) { toast(/\.dwg$/i.test(f.name) ? "A DWG can't open on a phone. Save it as PDF or DXF first." : "Pick a PDF or DXF file"); return; }
@@ -2061,7 +2088,7 @@ async function checkOffSpots() {
 // 1 = home and its pages, 2 = inside a project, 3 = the print, 4 = system points; a pop-up on a page adds a letter (2-3a)
 const PAGE_NO = { main: "1", newproject: "1-1", lists: "1-2", status: "1-3", setup: "1-5",
   project: "2", vaultlist: "2-1", addtype: "2-2", capture: "2-3", clean: "2-4", addloc: "2-5",
-  print: "3", placing: "3-1", random: "4" };
+  print: "3", placing: "3-1", random: "4", editproject: "2-6" };
 function pageNo() { let sn = "main"; try { sn = screenNow(); } catch {} const n = PAGE_NO[sn] || "?"; return shot.running ? n + "a" : n; }
 $("ver-no").textContent = "V " + APP_VERSION.slice(8);   // day.build, e.g. V 03.12
 setInterval(() => {
@@ -2077,6 +2104,7 @@ let forcedScreen = null;
 const SCREEN_BG = { main: "#e3f2ff", addtype: "#e2e4e7" };   // Steven's screen notes; the designer can change them
 function screenNow() {
   if (DESIGN_MODE && forcedScreen) return forcedScreen;
+  if ($("pedit") && !$("pedit").hidden) return "editproject";
   if (!$("tab-print").hidden) { let pl = false; try { pl = !!placing; } catch {} return pl ? "placing" : "print"; }
   if (!$("tab-setup").hidden) return "setup";
   if (!$("new-project-box").hidden) return "newproject";
@@ -2100,7 +2128,7 @@ function applyDesign() {
   const d = design || {}, th = d.theme || {};
   let css = "";
   const sn = screenNow();
-  $("proj-status-btn").hidden = $("proj-map").hidden = sn !== "project";
+  $("proj-status-btn").hidden = $("proj-map").hidden = $("proj-edit").hidden = sn !== "project";
   $("change-proj").hidden = sn === "addloc" || sn === "capture";   // a page with a big bottom Cancel gets no small top Cancel (Steven)
   $("proj-map").href = "map.html?p=" + encodeURIComponent(current || "");
   const sr = selected && data.items && data.items[selected];
@@ -2830,6 +2858,15 @@ render();
   <canvas id="trk-cv" style="width:100%;height:100%;min-height:0;border:1px solid #ccc;border-radius:8px"></canvas>
   <button class="btn big" id="trk-stop" style="background:#e0201a;color:#fff;border-color:#e0201a">Stop</button>
 </div>
+<div class="ask" id="pedit" hidden><div><span class="ask-no-label">Page 2-6 · Edit project</span>
+  <label class="field"><span>Project name</span><input id="pe-name" type="text" autocomplete="off"></label>
+  <label class="field"><span>Project address line 1</span><input id="pe-addr1" type="text" autocomplete="off"></label>
+  <label class="field"><span>Project address line 2</span><input id="pe-addr2" type="text" autocomplete="off"></label>
+  <label class="field"><span>Contact name</span><input id="pe-contact" type="text" autocomplete="off"></label>
+  <label class="field"><span>Contact phone number</span><input id="pe-phone" type="tel" autocomplete="off"></label>
+  <label class="field"><span>PID number</span><input id="pe-pid" type="text" autocomplete="off"></label>
+  <button class="btn primary" id="pe-save">Save and close</button>
+  <button class="btn cancel" id="pe-cancel">Cancel</button></div></div>
 <div class="ask big" id="vsize" hidden><div><span class="ask-no-label">Page 2-9e · Verify size</span><div>Verify conduit size</div>
   <button class="btn primary" id="vsize-now"></button>
   <div style="font-size:18px;font-weight:600">Or pick a different size:</div>
