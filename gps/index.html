@@ -251,7 +251,7 @@ html.field .work-head .muted.small { color: var(--accent); font-weight: 800; }
 html.field .btn { border-radius: var(--r); }
 .btn.big, #project-box .btn.big, .ask.big .btn { min-height: calc(var(--bh) + 10px); font: var(--bw) calc(var(--bf) + 2px)/1.2 var(--display); letter-spacing: .01em; text-transform: none; }
 /* page 2: every big button one size (change 4) */
-#collect-main .cats .btn, #proj-map, #proj-3d, #proj-status-btn { min-height: var(--bh); font: var(--bw) var(--bf)/1.2 var(--display); }
+#collect-main .cats .btn, #proj-map, #proj-print, #proj-3d, #proj-status-btn { min-height: var(--bh); font: var(--bw) var(--bf)/1.2 var(--display); }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink) !important; }
 .btn.cancel { background: var(--red); border-color: var(--red); color: var(--red-ink) !important; }
 .btn.danger { background: var(--panel); border-color: var(--red); color: var(--red) !important; }
@@ -344,6 +344,7 @@ html.field .chips button[aria-pressed="true"] { border-color: var(--accent); bac
 #np-print, [data-act="up-print"] { --ic: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2024%2024%22%3E%3Cpath%20fill%3D%22none%22%20stroke%3D%22%23000%22%20stroke-width%3D%222%22%20stroke-linejoin%3D%22round%22%20d%3D%22M14%203H6v18h12V7l-4-4Zm0%200v4h4M12%2011v6m-3-3%203-3%203%203%22/%3E%3C/svg%3E"); }
 [data-act="add-ltype"], [data-act="add-loctype"] { --ic: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2024%2024%22%3E%3Cpath%20stroke%3D%22%23000%22%20stroke-width%3D%222.5%22%20stroke-linecap%3D%22round%22%20d%3D%22M12%205v14M5%2012h14%22/%3E%3C/svg%3E"); }
 [data-act="map-conduit"] { --ic: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2024%2024%22%3E%3Ccircle%20cx%3D%226%22%20cy%3D%2219%22%20r%3D%222.5%22%20fill%3D%22none%22%20stroke%3D%22%23000%22%20stroke-width%3D%222%22/%3E%3Ccircle%20cx%3D%2218%22%20cy%3D%225%22%20r%3D%222.5%22%20fill%3D%22none%22%20stroke%3D%22%23000%22%20stroke-width%3D%222%22/%3E%3Cpath%20fill%3D%22none%22%20stroke%3D%22%23000%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20d%3D%22M8.5%2019H15a3.5%203.5%200%200%200%200-7H9a3.5%203.5%200%200%201%200-7h6.5%22/%3E%3C/svg%3E"); }
+#proj-print { --ic: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2024%2024%22%3E%3Cpath%20fill%3D%22none%22%20stroke%3D%22%23000%22%20stroke-width%3D%222%22%20stroke-linejoin%3D%22round%22%20d%3D%22M5%204h14a2%202%200%200%201%202%202v12a2%202%200%200%201-2%202H5a2%202%200%200%201-2-2V6a2%202%200%200%201%202-2Zm-2%205h18M9%209v11%22/%3E%3C/svg%3E"); }
 #proj-map, #shot-map { --ic: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2024%2024%22%3E%3Cpath%20fill%3D%22none%22%20stroke%3D%22%23000%22%20stroke-width%3D%222%22%20stroke-linejoin%3D%22round%22%20d%3D%22m9%204-6%202v14l6-2%206%202%206-2V4l-6%202-6-2Zm0%200v14m6-12v14%22/%3E%3C/svg%3E"); }
 #proj-3d { --ic: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2024%2024%22%3E%3Cpath%20fill%3D%22none%22%20stroke%3D%22%23000%22%20stroke-width%3D%222%22%20stroke-linejoin%3D%22round%22%20d%3D%22m12%203%208%204.5v9L12%2021l-8-4.5v-9L12%203Zm0%200v18m8-13.5-8%204.5-8-4.5%22/%3E%3C/svg%3E"); }
 #proj-status-btn { --ic: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2024%2024%22%3E%3Cpath%20fill%3D%22none%22%20stroke%3D%22%23000%22%20stroke-width%3D%222%22%20stroke-linejoin%3D%22round%22%20d%3D%22M5%2021V4m0%200h11l-2%204%202%204H5%22/%3E%3C/svg%3E"); }
@@ -351,8 +352,8 @@ html.field .chips button[aria-pressed="true"] { border-color: var(--accent); bac
 #open-setup { --ic: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2024%2024%22%3E%3Ccircle%20cx%3D%2212%22%20cy%3D%2212%22%20r%3D%223%22%20fill%3D%22none%22%20stroke%3D%22%23000%22%20stroke-width%3D%222%22/%3E%3Cpath%20fill%3D%22none%22%20stroke%3D%22%23000%22%20stroke-width%3D%222%22%20d%3D%22M19.4%2015a1.7%201.7%200%200%200%20.3%201.8l.1.1a2%202%200%201%201-2.8%202.8l-.1-.1a1.7%201.7%200%200%200-1.8-.3%201.7%201.7%200%200%200-1%201.5V21a2%202%200%201%201-4%200v-.1a1.7%201.7%200%200%200-1.1-1.5%201.7%201.7%200%200%200-1.8.3l-.1.1a2%202%200%201%201-2.8-2.8l.1-.1a1.7%201.7%200%200%200%20.3-1.8%201.7%201.7%200%200%200-1.5-1H3a2%202%200%201%201%200-4h.1a1.7%201.7%200%200%200%201.5-1.1%201.7%201.7%200%200%200-.3-1.8l-.1-.1a2%202%200%201%201%202.8-2.8l.1.1a1.7%201.7%200%200%200%201.8.3H9a1.7%201.7%200%200%200%201-1.5V3a2%202%200%201%201%204%200v.1a1.7%201.7%200%200%200%201%201.5%201.7%201.7%200%200%200%201.8-.3l.1-.1a2%202%200%201%201%202.8%202.8l-.1.1a1.7%201.7%200%200%200-.3%201.8V9a1.7%201.7%200%200%200%201.5%201H21a2%202%200%201%201%200%204h-.1a1.7%201.7%200%200%200-1.5%201Z%22/%3E%3C/svg%3E"); }
 #editloc-btn { --ic: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2024%2024%22%3E%3Cpath%20fill%3D%22none%22%20stroke%3D%22%23000%22%20stroke-width%3D%222%22%20stroke-linejoin%3D%22round%22%20d%3D%22M4%2020h4L19%209l-4-4L4%2016v4Z%22/%3E%3C/svg%3E"); }
 #store { --ic: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2024%2024%22%3E%3Cpath%20fill%3D%22none%22%20stroke%3D%22%23000%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20d%3D%22M20%2012a8%208%200%201%201-2.3-5.7M20%204v5h-5%22/%3E%3C/svg%3E"); }
-#random-btn::before, #addloc-make::before, #np-print::before, [data-act="up-print"]::before, [data-act="add-ltype"]::before, [data-act="add-loctype"]::before, [data-act="map-conduit"]::before, #proj-map::before, #shot-map::before, #proj-3d::before, #proj-status-btn::before, #open-types::before, #open-setup::before, #editloc-btn::before, #store::before { content: ""; width: 20px; height: 20px; flex: none; background: currentColor; -webkit-mask: var(--ic) center / contain no-repeat; mask: var(--ic) center / contain no-repeat; }
-html.field :is(#random-btn, #addloc-make, #np-print, [data-act="up-print"], [data-act="add-ltype"], [data-act="add-loctype"], [data-act="map-conduit"], #proj-map, #shot-map, #proj-3d, #proj-status-btn, #open-types, #open-setup, #editloc-btn, #store)::before { width: 24px; height: 24px; }
+#random-btn::before, #addloc-make::before, #np-print::before, [data-act="up-print"]::before, #proj-print::before, [data-act="add-ltype"]::before, [data-act="add-loctype"]::before, [data-act="map-conduit"]::before, #proj-map::before, #shot-map::before, #proj-3d::before, #proj-status-btn::before, #open-types::before, #open-setup::before, #editloc-btn::before, #store::before { content: ""; width: 20px; height: 20px; flex: none; background: currentColor; -webkit-mask: var(--ic) center / contain no-repeat; mask: var(--ic) center / contain no-repeat; }
+html.field :is(#random-btn, #addloc-make, #np-print, #proj-print, [data-act="up-print"], [data-act="add-ltype"], [data-act="add-loctype"], [data-act="map-conduit"], #proj-map, #shot-map, #proj-3d, #proj-status-btn, #open-types, #open-setup, #editloc-btn, #store)::before { width: 24px; height: 24px; }
 #store::before { display: none; }
 /* home: + Create new project is the green button; the four project lists sit in one list with a colored dot and an arrow */
 #project-box #np-open { background: var(--accent); border-color: var(--accent); color: var(--accent-ink) !important; }
@@ -562,7 +563,8 @@ html.field .tc-k { color: var(--accent); }
         <button class="btn primary" id="ni-add">Add item</button>
       </div>
     </details>
-    <a class="btn big maplink" id="proj-map" href="map.html" style="margin-top:18px" hidden>Plot on Google Maps</a>
+    <button class="btn big" id="proj-print" style="margin-top:18px" hidden>Plot on print</button>
+    <a class="btn big maplink" id="proj-map" href="map.html" style="margin-top:10px" hidden>Plot on Google Maps</a>
     <a class="btn big maplink" id="proj-3d" href="site3d.html" style="margin-top:10px" hidden>See it in 3D</a>
     <button class="btn big" id="proj-status-btn" style="margin-top:10px" hidden>Change project status</button>
   </div>
@@ -708,7 +710,7 @@ html.field .tc-k { color: var(--accent); }
 </div></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-05.70";
+const APP_VERSION = "2026-10-05.71";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -2312,7 +2314,7 @@ $("top-setup").onclick = () => openSettings();
 function tabBar() {
   const c = document.querySelector('.tabs [data-tab="collect"]');
   c.hidden = !$("tab-collect").hidden && !$("pick-view").hidden;
-  document.querySelector("nav.tabs").hidden = !$("tab-collect").hidden && !$("pick-view").hidden;   // no job picked yet: nothing to plot
+  document.querySelector("nav.tabs").hidden = true;   // bottom Collect / Plot on print bar removed: Plot on print is a button on the project page (Steven 2026-10-05)
   $("top-setup").hidden = true;   // home Settings button gone: the gear does it (Steven 2026-10-03)
   $("ver-no").hidden = !(!$("tab-collect").hidden && !$("pick-view").hidden && !$("project-box").hidden);
    // version shows on the home page, next to Setup
@@ -2401,7 +2403,8 @@ function applyDesign() {
   const d = design || {}, th = d.theme || {};
   let css = "";
   const sn = screenNow();
-  $("proj-status-btn").hidden = $("proj-map").hidden = $("proj-3d").hidden = $("proj-edit").hidden = sn !== "project";
+  $("proj-status-btn").hidden = $("proj-map").hidden = $("proj-print").hidden = $("proj-3d").hidden = $("proj-edit").hidden = sn !== "project";
+  if (sn === "project" && !(jobs.some(j => j.slug === current) || (custom.find(c => c.slug === current) || {}).print)) $("proj-3d").hidden = true;   // no print, no 3D button (Steven 2026-10-05)
   $("change-proj").hidden = sn === "addloc" || sn === "capture";   // a page with a big bottom Cancel gets no small top Cancel (Steven)
   $("proj-map").href = "map.html?p=" + encodeURIComponent(current || "");
   $("proj-3d").href = "site3d.html?p=" + encodeURIComponent(current || "");
@@ -3165,6 +3168,7 @@ $("shot-last").onclick = () => {
 };
 $("gmap-back").onclick = () => { $("gmap").hidden = true; $("gmap-frame").src = "about:blank"; };
 $("s-cancel").onclick = () => { fillSetup(); showTab(setupFrom || "collect"); render(); };
+$("proj-print").onclick = () => { if (!shot.running) showTab("print"); };
 $("print-cancel").onclick = () => { try { if (placing) endPlacing(); } catch {} showTab("collect"); render(); };
 /* ---------- start ---------- */
 renderProjects();
