@@ -72,7 +72,7 @@ function draw() {
       const info = (d.runs || {})[rn] || {}, A = info.from && (d.items || {})[info.from], B = info.to && (d.items || {})[info.to];
       const ll = smoothTrack(tr, A && A.lat != null ? A : null, B && B.lat != null ? B : null).map(p => [p.lat, p.lon]); if (ll.length < 2) continue;
       ll.forEach(p => pts.push(p));
-      const col = ({ '1"': "#8a8f98", '2"': "#ff8c1a" })[info.size] || "#ff8c1a";   // conduit size colors (Steven 2026-10-05)
+      const col = ({ '1"': "#8a8f98", '1¼"': "#b39a6e", '1½"': "#d99447", '2"': "#ff8c1a", '3"': "#e03a1e", '4"': "#8e3fbf" })[info.size] || "#ff8c1a";   // conduit size colors (Steven 2026-10-05)
       L.polyline(ll, { color: col, weight: 5, opacity: 0.95 }).addTo(layer).bindTooltip(esc(rn + (info.size ? ` · ${info.size} conduit` : "")), { sticky: true, className: "lbl" });
     }
     // conduit runs: one continuous line through their points, joined to the vault/pole at each end (Steven 2026-10-03)

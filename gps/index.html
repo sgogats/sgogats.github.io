@@ -460,7 +460,7 @@ summary { font-weight: 600; cursor: pointer; }
 </div></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-05.55";
+const APP_VERSION = "2026-10-05.56";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -2146,7 +2146,7 @@ function drawCmap() {
 }
 // conduit size: pick from a list (Steven 2026-10-05); each size has its own line color
 const CONDUIT_SIZES = ['1"', '1¼"', '1½"', '2"', '3"', '4"'];
-const SIZE_COLORS = { '1"': "#8a8f98", '2"': "#ff8c1a" };   // Steven: 1" gray, 2" orange; others not chosen yet
+const SIZE_COLORS = { '1"': "#8a8f98", '1¼"': "#b39a6e", '1½"': "#d99447", '2"': "#ff8c1a", '3"': "#e03a1e", '4"': "#8e3fbf" };   // Steven: 1" gray, 2" orange; 1¼" 1½" 3" 4" are defaults until he picks
 function runColor(ru) { return (ru && ru.size && SIZE_COLORS[ru.size]) || "#ff8c1a"; }
 function runLabel(rn, ru, ft) { return `${rn}${ru && ru.size ? ` · ${ru.size} conduit` : ru && ru.kind === "Trench" ? " · trench" : ""} · ${Math.round(ft).toLocaleString()} ft`; }
 function verifySize(cur) {   // top button = the size now (tap to confirm), list underneath to change it
