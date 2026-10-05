@@ -460,7 +460,7 @@ summary { font-weight: 600; cursor: pointer; }
 </div></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-05.52";
+const APP_VERSION = "2026-10-05.53";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -2299,6 +2299,7 @@ async function mapTrench(sel) {
   data.items[sel.start.name] = Object.assign(a, { t: Date.now(), group: (itemsList().find(i => i.name === sel.start.name) || {}).group || typeGroup(sel.start.type) || "Added in field" });
   if (data.deleted) delete data.deleted[sel.start.name];
   saveLocal();
+  await ask(`${sel.start.name} is recorded. Tap OK, then start walking the trench.`, "OK", "", true);   // walk starts only on OK (Steven 2026-10-05)
   const pts = await walkTrack(data.items[sel.start.name]);
   data.tracks = data.tracks || {}; data.tracks[r] = pts;   // keep the walk even if the end reading is cancelled
   data.runs = data.runs || {}; data.runs[r] = { from: sel.start.name, track: true, t: Date.now() };
