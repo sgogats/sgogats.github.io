@@ -53,7 +53,7 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { GLTFExporter } from "three/addons/exporters/GLTFExporter.js";
 
-const APP_VERSION = "V 01.02";
+const APP_VERSION = "V 01.03";
 const $ = id => document.getElementById(id);
 $("ver").textContent = APP_VERSION;
 const say = html => { $("msg").innerHTML = html; };
@@ -150,6 +150,31 @@ function build() {
   for (const l of (seed && seed.lockboxes) || []) spot[l.name] = spot[l.name] || { x: l.x, y: l.y, kind: "Lockbox" };
   for (const [n, c] of Object.entries(ctl)) if (spot[n] && c && c.use !== false && c.x != null) Object.assign(spot[n], { x: c.x, y: c.y });
 
+  // lockboxes hang on their building's wall: move each one onto the nearest wall of its building (print points)
+  const boxes = {};
+  for (const b of job.buildings || []) { const bx = b.box || (b.x0 != null ? [b.x0, b.y0, b.x1, b.y1] : null); if (bx) boxes[String(b.name)] = [Math.min(bx[0], bx[2]), Math.min(bx[1], bx[3]), Math.max(bx[0], bx[2]), Math.max(bx[1], bx[3])]; }
+  const lbBldg = {};
+  for (const l of (seed && seed.lockboxes) || []) if (l.building != null) lbBldg[l.name] = String(l.building);
+  for (const it of job.items || []) { const m = /^Building\s+(.+)$/i.exec(it.group || ""); if (m && !lbBldg[it.name]) lbBldg[it.name] = m[1].trim(); }
+  for (const [name, s] of Object.entries(spot)) {
+    const k = (s.kind || "").toLowerCase(); if (!k.includes("lockbox") || k.includes("vault")) continue;
+    let bx = boxes[lbBldg[name]];
+    if (!bx) {                                   // no building named: the closest one, if it is close
+      let best = 1e9;
+      for (const b of Object.values(boxes)) { const dx = Math.max(b[0] - s.x, 0, s.x - b[2]), dy = Math.max(b[1] - s.y, 0, s.y - b[3]), d = Math.hypot(dx, dy); if (d < best) { best = d; bx = b; } }
+      if (best > 30 * ppf) bx = null;
+    }
+    if (!bx) continue;
+    const [x0, y0, x1, y1] = bx;
+    const cx = Math.min(Math.max(s.x, x0), x1), cy = Math.min(Math.max(s.y, y0), y1);
+    const walls = [[Math.abs(cx - x0), x0, cy, -1, 0], [Math.abs(x1 - cx), x1, cy, 1, 0], [Math.abs(cy - y0), cx, y0, 0, -1], [Math.abs(y1 - cy), cx, y1, 0, 1]];
+    const inside = s.x > x0 && s.x < x1 && s.y > y0 && s.y < y1;
+    // outside the building: the wall it is closest to; inside: the nearest wall
+    const w = inside ? walls.sort((a, b) => a[0] - b[0])[0]
+                     : walls.find(w => (w[3] && Math.sign(s.x - cx) === w[3] && s.x !== cx) || (w[4] && Math.sign(s.y - cy) === w[4] && s.y !== cy)) || walls.sort((a, b) => a[0] - b[0])[0];
+    s.x = w[1]; s.y = w[2]; s.wall = [w[3], w[4]];
+  }
+
   // buildings
   const bMat = new THREE.MeshLambertMaterial({ color: 0xc9b79c, transparent: true, opacity: 0.55, depthWrite: false });
   const eMat = new THREE.LineBasicMaterial({ color: 0x6b5a45 });
@@ -169,11 +194,43 @@ function build() {
   const dropMat = new THREE.MeshLambertMaterial({ color: 0xb36200 });
   const r = Math.max(0.25, labelH * 0.07);
   let runs = 0, missing = 0;
+  // two conduits in one trench: give each its own lane side by side instead of drawing them on top of each other
+  const gap = r * 4 * ppf, placed = [];          // print points between lanes
+  const near = (s, t) => {                       // segment s runs along segment t (same line, overlapping)
+    const tx = t[2] - t[0], ty = t[3] - t[1], tl = Math.hypot(tx, ty), sx = s[2] - s[0], sy = s[3] - s[1], sl = Math.hypot(sx, sy);
+    if (tl < 1 || sl < 1 || Math.abs(tx * sy - ty * sx) / (tl * sl) > 0.2) return false;
+    for (const [px, py, a, L] of [[(s[0] + s[2]) / 2, (s[1] + s[3]) / 2, t, tl], [(t[0] + t[2]) / 2, (t[1] + t[3]) / 2, s, sl]]) {   // either middle lies on the other
+      const u = ((px - a[0]) * (a[2] - a[0]) + (py - a[1]) * (a[3] - a[1])) / (L * L);
+      if (u < -0.05 || u > 1.05) continue;
+      const qx = a[0] + u * (a[2] - a[0]), qy = a[1] + u * (a[3] - a[1]);
+      if (Math.hypot(px - qx, py - qy) < gap * 1.5) return true;
+    }
+    return false;
+  };
+  const LANE = [0, 1, -1, 2, -2, 3, -3];
   for (const cd of (seed && seed.conduits) || []) {
     const a = spot[cd.a], b = spot[cd.b];
     if (!a || !b) { missing++; continue; }
     const pts = [[a.x, a.y], ...(cd.bends || []), [b.x, b.y]].filter((p, i, arr) => i === 0 || p[0] !== arr[i - 1][0] || p[1] !== arr[i - 1][1]);
-    const v = pts.map(([x, y]) => at(x, y, H.fiber));
+    const segOff = [];                           // sideways shift of each segment, print points
+    for (let i = 0; i < pts.length - 1; i++) {
+      const sg = [pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1]];
+      const used = new Set(placed.filter(p => near(sg, p.sg)).map(p => p.lane));
+      const lane = LANE.find(l => !used.has(l)) ?? 0;
+      placed.push({ sg, lane });
+      const L = Math.hypot(sg[2] - sg[0], sg[3] - sg[1]) || 1;
+      segOff.push([-(sg[3] - sg[1]) / L * lane * gap, (sg[2] - sg[0]) / L * lane * gap]);
+    }
+    const shifted = pts.map((p, i) => {          // ends stay at the vault / lockbox; bends take the shift of the segments beside them
+      if (i === 0 || i === pts.length - 1) return p;
+      const o1 = segOff[i - 1], o2 = segOff[i];
+      return [p[0] + (o1[0] + o2[0]) / 2, p[1] + (o1[1] + o2[1]) / 2];
+    });
+    if (shifted.length === 2 && (segOff[0][0] || segOff[0][1])) {   // a straight run with a twin: bend it out into its lane
+      const [p, q] = shifted, o = segOff[0];
+      shifted.splice(1, 0, [p[0] + (q[0] - p[0]) * 0.15 + o[0], p[1] + (q[1] - p[1]) * 0.15 + o[1]], [p[0] + (q[0] - p[0]) * 0.85 + o[0], p[1] + (q[1] - p[1]) * 0.85 + o[1]]);
+    }
+    const v = shifted.map(([x, y]) => at(x, y, H.fiber));
     const run = new THREE.Group(); run.name = `Fiber ${cd.a} to ${cd.b}`; site.add(run);
     for (let i = 0; i < v.length - 1; i++) run.add(tube(v[i], v[i + 1], r, fMat));
     run.add(tube(at(a.x, a.y, 0), v[0], r * 0.8, dropMat));
@@ -189,7 +246,9 @@ function build() {
     const k = (s.kind || "").toLowerCase();
     if (k.includes("lockbox") && !k.includes("vault")) {
       const m = new THREE.Mesh(new THREE.BoxGeometry(vs * 0.5, vs * 0.6, vs * 0.25), lMat);
-      m.position.copy(at(s.x, s.y, H.lockbox)); m.position.y += vs * 0.3; site.add(m);
+      m.position.copy(at(s.x, s.y, H.lockbox)); m.position.y += vs * 0.3;
+      if (s.wall) { m.rotation.y = s.wall[0] ? Math.PI / 2 : 0; m.position.x += s.wall[0] * vs * 0.125; m.position.z += s.wall[1] * vs * 0.125; }   // flat against the wall
+      m.name = name; site.add(m);
       const t = label(name, "#2b8a3e"); t.position.copy(m.position).add(new THREE.Vector3(0, labelH, 0)); site.add(t);
     } else if (k.includes("pole")) {
       const m = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.8, 35, 10), pMat); m.position.copy(at(s.x, s.y)); m.position.y = 17.5; site.add(m);
