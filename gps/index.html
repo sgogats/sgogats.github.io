@@ -448,7 +448,8 @@ summary { font-weight: 600; cursor: pointer; }
 </div></div>
 <div class="ask" id="edit-sheet" hidden><div>
   <span class="ask-no-label" id="es-title">Edit this button</span>
-  <label class="field"><span>Words</span><input id="es-text" type="text" autocomplete="off"></label>
+  <label class="field" id="es-words"><span>Words</span><input id="es-text" type="text" autocomplete="off"></label>
+  <div class="small muted" id="es-locked" hidden style="margin:0">The words come from your job, so they stay the same. You can change the color and text size.</div>
   <div id="es-look" class="stack" style="gap:10px">
     <div class="small muted" style="margin:0">Color</div><div class="es-row" id="es-colors"></div>
     <div class="small muted" style="margin:0">Size</div>
@@ -460,7 +461,7 @@ summary { font-weight: 600; cursor: pointer; }
 </div></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-05.56";
+const APP_VERSION = "2026-10-05.57";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -2566,7 +2567,12 @@ $("edit-undo").onclick = async () => {
 };
 function editTarget(el) {
   const t = el.closest("button, a.btn, input, textarea"); if (!t || t.id === "edit-words") return null;
-  if (t.closest("[data-n],[data-g],[data-i],[data-pool],[data-p],[data-lp],[data-ls],[data-t]") || t.matches("[data-cat],[data-addt],[data-setst],#ask-yes,#ask-no")) return { fixed: true };
+  const dv = t.closest("[data-n],[data-g],[data-i],[data-pool],[data-p],[data-lp],[data-ls],[data-t],[data-cat],[data-addt],[data-setst]");
+  if (dv || t.matches("#ask-yes,#ask-no")) {   // words come from the job: words stay locked, color and size can still change (Steven 2026-10-05)
+    if (!dv) return { fixed: true };
+    const a = [...dv.attributes].find(x => /^data-(n|g|i|pool|p|lp|ls|t|cat|addt|setst)$/.test(x.name)), box = a.name === "data-i" && dv.parentElement && dv.parentElement.closest("[id]");   // a list number only means something inside its own list
+    return { sel: `${box ? "#" + box.id + " " : ""}[${a.name}="${a.value.replace(/"/g, '\\"')}"]`, el: t, locked: true };
+  }
   for (const a of ["data-act", "data-tab", "data-size", "data-look", "data-addt-new"]) if (t.hasAttribute(a)) return { sel: `[${a}="${t.getAttribute(a).replace(/"/g, '\\"')}"]`, el: t };
   if (t.id) return { sel: "#" + t.id, el: t };
   return null;
@@ -2577,7 +2583,8 @@ function editSheet(tg) {
   editTg = tg; const box = tg.el.matches("input,textarea"), o = (((design || {}).els || {})[tg.sel]) || {};
   const orig = tg.sel === "#addloc-name" ? "enter name" : tg.el.dataset.orig != null ? tg.el.dataset.orig : (box ? tg.el.placeholder : tg.el.textContent.trim());
   tg.orig = orig; editPick = { bg: o.bg || "", size: o.size || "" };
-  $("es-title").textContent = box ? "Edit the example in this box" : "Edit this button";
+  $("es-title").textContent = tg.locked ? "Change this button's color and size" : box ? "Edit the example in this box" : "Edit this button";
+  $("es-words").hidden = !!tg.locked; $("es-locked").hidden = !tg.locked;
   $("es-text").value = o.text || (tg.sel === "#addloc-name" ? "enter name" : box ? tg.el.placeholder : tg.el.textContent.trim());
   $("es-orig").textContent = orig;
   $("es-look").hidden = box;
@@ -2596,7 +2603,7 @@ $("es-save").onclick = () => saveEdit(false);
 async function saveEdit(reset) {
   const tg = editTg; if (!tg) return;
   if (!gh.on()) { toast("Needs the GitHub key (open from the Home Screen icon)"); return; }
-  const text = $("es-text").value.trim(), box = tg.el.matches("input,textarea");
+  const text = tg.locked ? "" : $("es-text").value.trim(), box = tg.el.matches("input,textarea");
   try {
     const m = await gh.meta("gps/design.json"), fresh = m ? JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(m.content.replace(/\s/g, "")), c => c.charCodeAt(0)))) : {};
     fresh.els = fresh.els || {};
@@ -2609,7 +2616,7 @@ async function saveEdit(reset) {
     if (!Object.keys(o).some(k => k !== "label")) delete fresh.els[tg.sel];
     fresh.updated = new Date().toISOString();
     await gh.put("gps/design.json", fresh, m && m.sha, `GPS Shots edit: ${tg.orig.slice(0, 40)}${reset ? " back to original" : ""}`);
-    if (!o.text) { if (box) tg.el.placeholder = tg.orig; else tg.el.textContent = tg.orig; }
+    if (!o.text && !tg.locked) { if (box) tg.el.placeholder = tg.orig; else tg.el.textContent = tg.orig; }
     design = fresh; LS.set("design", fresh); editChanged = true; $("edit-sheet").hidden = true; editTg = null; render(); applyDesign(); toast("Saved for every phone");
   } catch (err) { toast("Couldn't save: " + err.message); }
 }
