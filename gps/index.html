@@ -234,7 +234,10 @@ summary { font-weight: 600; cursor: pointer; }
     <h2>New project</h2>
     <label class="field"><span>Project name</span><input id="np-name" type="text" placeholder="e.g. Palisade Ave Townhomes" autocomplete="off"></label>
     <label class="field"><span>Project address line 1</span><input id="np-addr1" type="text" placeholder="e.g. 800 Sylvan Ave" autocomplete="off"></label>
-    <label class="field"><span>Project address line 2</span><input id="np-addr2" type="text" placeholder="e.g. Englewood Cliffs, NJ 07632" autocomplete="off"></label>
+    <label class="field"><span>Project address line 2</span><input id="np-addr2" type="text" placeholder="e.g. Building 2" autocomplete="off"></label>
+    <label class="field"><span>City</span><input id="np-city" type="text" placeholder="e.g. Englewood Cliffs" autocomplete="off"></label>
+    <label class="field"><span>State</span><input id="np-state" type="text" placeholder="e.g. NJ" autocomplete="off"></label>
+    <label class="field"><span>Zip code</span><input id="np-zip" type="text" inputmode="numeric" placeholder="e.g. 07632" autocomplete="off"></label>
     <label class="field"><span>Contact name</span><input id="np-contact" type="text" placeholder="e.g. John Smith" autocomplete="off"></label>
     <label class="field"><span>Contact phone number</span><input id="np-phone" type="tel" placeholder="e.g. 201-555-0123" autocomplete="off"></label>
     <label class="field"><span>PID number</span><input id="np-pid" type="text" placeholder="e.g. 245-543" autocomplete="off"></label>
@@ -469,7 +472,7 @@ summary { font-weight: 600; cursor: pointer; }
 </div></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-05.61";
+const APP_VERSION = "2026-10-05.62";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -732,7 +735,7 @@ function goHome() {
   if (shot.running) { stopShot(true); $("hold").hidden = true; }
   try { if (placing) endPlacing(); } catch {}
   $("ask").hidden = true; $("gmap").hidden = true; $("type-box").hidden = true; adding = null;
-  for (const id of ["loc", "np-name", "np-addr1", "np-addr2", "np-contact", "np-phone", "np-pid", "proj-search", "type-name"]) $(id).value = "";
+  for (const id of ["loc", "np-name", "np-addr1", "np-addr2", "np-city", "np-state", "np-zip", "np-contact", "np-phone", "np-pid", "proj-search", "type-name"]) $(id).value = "";
   setNpFile(null);
   projList(); locOpen = false;
   home = true; selected = group = cat = null; finding = false;
@@ -742,7 +745,7 @@ function goHome() {
 document.addEventListener("click", e => { if (e.target.closest("[data-home]")) goHome(); });
 $("np-cancel").onclick = goHome;
 /* new project details (Steven 2026-10-05): name, address 1 and 2, contact, phone, PID, plus the print. Kept in gps/projects.json; to be linked to BMS by PID later */
-const NP_INFO = { addr1: "np-addr1", addr2: "np-addr2", contact: "np-contact", phone: "np-phone", pid: "np-pid" };
+const NP_INFO = { addr1: "np-addr1", addr2: "np-addr2", city: "np-city", state: "np-state", zip: "np-zip", contact: "np-contact", phone: "np-phone", pid: "np-pid" };
 let npFile = null, jobInfo = LS.get("jobInfo", {});   // details of designer jobs (Garden Homes), whose names come from the designer
 function setNpFile(f) { npFile = f; $("np-print").textContent = f ? `Print: ${f.name} · tap to change` : "Upload print (PDF or DXF)"; }
 $("np-print").onclick = () => $("np-print-file").click();
@@ -752,7 +755,7 @@ $("np-print-file").onchange = e => {
   setNpFile(f);
 };
 /* page 2-6: Edit project details (Steven 2026-10-05). Save and close or Cancel, both back to page 2 */
-const PE = { addr1: "pe-addr1", addr2: "pe-addr2", contact: "pe-contact", phone: "pe-phone", pid: "pe-pid" };
+const PE = { addr1: "pe-addr1", addr2: "pe-addr2", city: "pe-city", state: "pe-state", zip: "pe-zip", contact: "pe-contact", phone: "pe-phone", pid: "pe-pid" };
 $("proj-edit").onclick = () => {
   const p = allProjects().find(x => x.slug === current); if (!p) return;
   const info = (p.job ? jobInfo[p.slug] : p.info) || {};
@@ -2867,10 +2870,13 @@ render();
   <canvas id="trk-cv" style="width:100%;height:100%;min-height:0;border:1px solid #ccc;border-radius:8px"></canvas>
   <button class="btn big" id="trk-stop" style="background:#e0201a;color:#fff;border-color:#e0201a">Stop</button>
 </div>
-<div class="ask" id="pedit" hidden><div><span class="ask-no-label">Page 2-6 · Edit project</span>
+<div class="ask" id="pedit" hidden><div style="max-height:92vh;overflow:auto"><span class="ask-no-label">Page 2-6 · Edit project</span>
   <label class="field"><span>Project name</span><input id="pe-name" type="text" autocomplete="off"></label>
   <label class="field"><span>Project address line 1</span><input id="pe-addr1" type="text" autocomplete="off"></label>
   <label class="field"><span>Project address line 2</span><input id="pe-addr2" type="text" autocomplete="off"></label>
+  <label class="field"><span>City</span><input id="pe-city" type="text" autocomplete="off"></label>
+  <label class="field"><span>State</span><input id="pe-state" type="text" autocomplete="off"></label>
+  <label class="field"><span>Zip code</span><input id="pe-zip" type="text" inputmode="numeric" autocomplete="off"></label>
   <label class="field"><span>Contact name</span><input id="pe-contact" type="text" autocomplete="off"></label>
   <label class="field"><span>Contact phone number</span><input id="pe-phone" type="tel" autocomplete="off"></label>
   <label class="field"><span>PID number</span><input id="pe-pid" type="text" autocomplete="off"></label>
