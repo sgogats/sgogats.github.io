@@ -191,14 +191,14 @@ summary { font-weight: 600; cursor: pointer; }
 /* ===== Mockup v3 look (Steven 2026-10-05, BMS-IDEAS design/gps-shots): Indoor mode = white with green buttons; Field mode (html.field) = dark with yellow buttons.
    Same buttons, same names, same pages; only the look changes. Every big button is one size, one letter style, centered (change 4). ===== */
 :root {
-  --bg: #f3f5f4; --panel: #ffffff; --ink: #14201b; --muted: #5d6b65; --line: #dbe2de;
+  --bg: #f3f5f4; --panel: #ffffff; --ink: #14201b; --muted: #34403b; --line: #dbe2de;
   --accent: #0b6e4f; --accent-ink: #ffffff; --brand-dk: #07513a; --brand-lt: #e3f1eb; --bad: #d93025; --red: #d93025; --red-ink: #fff;
   --good: #1e7d3c; --warn: #b26a00; --card2: #ffffff; --bar: #0b6e4f; --bar-ink: #ffffff; --in-bg: #ffffff; --r: 14px; --bh: 54px; --bf: 17px; --bw: 700; --bb: 1.5px;
   --display: -apple-system, "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; --body: var(--display);
 }
 html.field {
   color-scheme: dark;
-  --bg: #111417; --panel: #1d2227; --card2: #262c33; --ink: #ffffff; --muted: #b9c0c7; --line: #4a525b;
+  --bg: #111417; --panel: #1d2227; --card2: #262c33; --ink: #ffffff; --muted: #dde2e7; --line: #4a525b;
   --accent: #ffd200; --accent-ink: #141200; --brand-dk: #ffd200; --brand-lt: #3a3300; --bad: #ff4a3d; --red: #ff4a3d;
   --good: #3ddc84; --warn: #ffb020; --lb: #ff6b6b; --vault: #6aa4ff; --bar: #000000; --bar-ink: #ffffff; --in-bg: #000000; --r: 10px; --bh: 64px; --bf: 19px; --bw: 800; --bb: 2px;
   --display: "Barlow", -apple-system, "Segoe UI", Roboto, Arial, sans-serif; --body: var(--display);
@@ -236,6 +236,8 @@ h2 { font: 800 22px/1.15 var(--display); text-transform: none; letter-spacing: 0
 html.field h2 { font-size: 24px; }
 h3 { font: 700 12px/1 var(--display); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 16px 2px 8px; }
 html.field h3 { font-weight: 800; font-size: 13px; letter-spacing: .1em; color: var(--accent); }
+/* page 2-1 heading over the type buttons: bigger, centered, dark (Steven 2026-10-05) */
+#loc-wrap:not(.rmode) #loc-h { font: 800 21px/1.2 var(--display); text-transform: none; letter-spacing: 0; text-align: center; color: var(--ink); margin: 16px 0 12px; }
 .pick-title { font: 800 22px/1.15 var(--display); text-transform: none; letter-spacing: 0; color: var(--ink); margin: 14px 0 4px; }
 html.field .pick-title { font-size: 24px; }
 .work-proj { font: 800 20px/1.2 var(--display); text-transform: none; letter-spacing: 0; }
@@ -489,7 +491,7 @@ html.field .tc-k { color: var(--accent); }
     <button class="btn big primary" id="next-btn">Next location</button>
     <button class="btn big" id="done-btn" style="margin-top:8px" hidden>Done</button>
     <div id="loc-wrap" hidden>
-    <h3 id="loc-h">Which location?</h3>
+    <h3 id="loc-h">Pick Location Type</h3>
     <input id="loc" type="text" placeholder="Pick or type a location or box" autocomplete="off" role="combobox" aria-expanded="false" aria-controls="groups" enterkeyhint="go">
     <div class="list loc-list" id="groups" role="listbox" aria-label="Locations" hidden></div>
     <h3 id="cats-h" hidden>Type</h3>
@@ -706,7 +708,7 @@ html.field .tc-k { color: var(--accent); }
 </div></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-05.69";
+const APP_VERSION = "2026-10-05.70";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -1194,7 +1196,7 @@ function render() {
   { const pp = allProjects().find(p => p.slug === current), inf = (pp && (pp.job ? (typeof jobInfo !== "undefined" && jobInfo[pp.slug]) : pp.info)) || {};
     $("work-addr").textContent = [inf.addr1, inf.addr2, inf.city].filter(Boolean).join(" · "); }
   const isR = current === RANDOM;
-  $("loc-h").textContent = isR ? "Name of this point" : "Which location?";
+  $("loc-h").textContent = isR ? "Name of this point" : "Pick Location Type";   // Steven 2026-10-05
   $("cats-h").hidden = $("newtype-h").hidden = !isR;
   $("type-cancel").hidden = false; typeBoxMode();
   if (isR) $("newtype-h").hidden = $("type-box").hidden;
@@ -1430,6 +1432,8 @@ $("cats").addEventListener("click", e => {
   typeCheck = b.dataset.act === "add-ltype";
   if (b.dataset.act === "add-type" || b.dataset.act === "add-loctype" || b.dataset.act === "add-ltype") { if (current === RANDOM) { $("type-box").hidden = false; render(); }  $("type-box").hidden = false; $("type-name").value = ""; renderTypeSugg(); applyDesign(); $("type-name").focus(); return; }
   if (current === RANDOM) { cat = cat === b.dataset.cat ? null : b.dataset.cat; render(); if (cat && $("loc").value.trim()) { locOpen = true; renderGroups(); } if (cat) $("loc").focus(); return; }
+  { const t = b.dataset.cat, its = itemsList();   // a type with no locations yet goes straight to Add new location (Steven 2026-10-05)
+    if (!its.some(i => inCat(i, t)) && !(t === "Building" && (data.bldgs || []).length)) { cat = null; group = null; selected = null; adding = { type: t }; render(); $("addloc-name").value = ""; window.scrollTo(0, 0); $("addloc-name").focus(); return; } }
   cat = b.dataset.cat; group = null; selected = null; locOpen = false; $("loc").value = ""; render();
   $("items-h").scrollIntoView({ behavior: "smooth", block: "start" });
 });
