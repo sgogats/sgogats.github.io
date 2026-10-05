@@ -460,7 +460,7 @@ summary { font-weight: 600; cursor: pointer; }
 </div></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-05.53";
+const APP_VERSION = "2026-10-05.54";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -1482,9 +1482,10 @@ function drawSheet(g, o) {
   }
   for (const rn of runNames()) {   // conduit runs: one continuous orange line
     const pts = runPath(rn), qs = pts.map(S); if (qs.length < 2) continue;
-    c.strokeStyle = "#ff8c1a"; c.lineWidth = 3; c.beginPath(); qs.forEach((q, i) => i ? c.lineTo(q.x, q.y) : c.moveTo(q.x, q.y)); c.stroke();
+    const ru = (data.runs || {})[rn];
+    c.strokeStyle = runColor(ru); c.lineWidth = 3; c.beginPath(); qs.forEach((q, i) => i ? c.lineTo(q.x, q.y) : c.moveTo(q.x, q.y)); c.stroke();
     const m = Math.floor((qs.length - 1) / 2), a = qs[m], b = qs[m + 1];
-    c.textAlign = "center"; c.textBaseline = "bottom"; const lab = `${rn} · ${Math.round(runFeet(pts)).toLocaleString()} ft`, hw = c.measureText(lab).width / 2 + 4;
+    c.textAlign = "center"; c.textBaseline = "bottom"; const lab = runLabel(rn, ru, runFeet(pts)), hw = c.measureText(lab).width / 2 + 4;
     outText(c, lab, Math.min(Math.max((a.x + b.x) / 2, hw), r.width - hw), (a.y + b.y) / 2 - 6);
   }
   const kinds = {}; for (const i of itemsList()) kinds[i.name] = i.kind;
@@ -1635,10 +1636,11 @@ function drawPrint() {
   if (sol && sol.ok) for (const r of runNames()) {
     const qs = runPath(r).map(p => { const d = p.end && controlPos(p.end); return toScreen(d || sol.map(sol.local(p))); });
     if (qs.length < 2) continue;
-    ctx.strokeStyle = "#e07000"; ctx.lineWidth = 3; ctx.beginPath(); qs.forEach((q, i) => i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y)); ctx.stroke();
-    ctx.fillStyle = "#e07000"; for (const q of qs) { ctx.beginPath(); ctx.arc(q.x, q.y, 3.5, 0, 7); ctx.fill(); }
+    const col = runColor((data.runs || {})[r]);
+    ctx.strokeStyle = col; ctx.lineWidth = 3; ctx.beginPath(); qs.forEach((q, i) => i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y)); ctx.stroke();
+    if (!(data.tracks || {})[r]) { ctx.fillStyle = col; for (const q of qs) { ctx.beginPath(); ctx.arc(q.x, q.y, 3.5, 0, 7); ctx.fill(); } }
     const m = qs[Math.floor((qs.length - 1) / 2)], m2 = qs[Math.floor((qs.length - 1) / 2) + 1];
-    ctx.font = "700 12px " + css("--body"); ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(r, (m.x + m2.x) / 2, (m.y + m2.y) / 2 - 10);
+    ctx.font = "700 12px " + css("--body"); ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillStyle = css("--ink"); ctx.fillText(runLabel(r, (data.runs || {})[r], runFeet(runPath(r))), (m.x + m2.x) / 2, (m.y + m2.y) / 2 - 10);
   }
   // shots mapped through the fit
   if (sol && sol.ok) {
@@ -2140,6 +2142,19 @@ function drawCmap() {
   $("cmap-start").textContent = f("start", cm.start); $("cmap-stop").textContent = f("stop", cm.stop);
   $("cmap-start").classList.toggle("primary", !!cm.start); $("cmap-stop").classList.toggle("primary", !!cm.stop);
   $("cmap-next").disabled = !(cm.start && cm.stop);
+  $("cmap-size").textContent = cm.size ? `${cm.size} conduit` : "Tap to pick the size (or it asks later)";
+}
+// conduit size: pick from a list (Steven 2026-10-05); each size has its own line color
+const CONDUIT_SIZES = ['1"', '1¼"', '1½"', '2"', '3"', '4"'];
+const SIZE_COLORS = { '1"': "#8a8f98", '2"': "#ff8c1a" };   // Steven: 1" gray, 2" orange; others not chosen yet
+function runColor(ru) { return (ru && ru.size && SIZE_COLORS[ru.size]) || "#ff8c1a"; }
+function runLabel(rn, ru, ft) { return `${rn}${ru && ru.size ? ` · ${ru.size} conduit` : ru && ru.kind === "Trench" ? " · trench" : ""} · ${Math.round(ft).toLocaleString()} ft`; }
+async function pickSize() {
+  const k = await choose("Select the conduit size", [...CONDUIT_SIZES, "Other"], "Cancel", "Page 2-9d · Conduit size");
+  if (k < 0) return null;
+  if (k < CONDUIT_SIZES.length) return CONDUIT_SIZES[k];
+  const t = await askText("Enter the conduit size", 'e.g. 6"', "Page 2-9d · Conduit size");
+  return t || null;
 }
 function askText(msg, ph, page) {
   return new Promise(res => {
@@ -2190,10 +2205,16 @@ document.addEventListener("DOMContentLoaded", () => {   // these pop-ups sit bel
 $("cmap-start").onclick = () => enterEnd("start");
 $("cmap-stop").onclick = () => enterEnd("stop");
 $("cmap-cancel").onclick = () => { $("cmap").hidden = true; cm = null; };
+$("cmap-size").onclick = async () => { $("cmap").hidden = true; const z = await pickSize(); if (z) cm.size = z; drawCmap(); $("cmap").hidden = false; };
 $("cmap-next").onclick = async () => {
   if (!(cm && cm.start && cm.stop)) return;
   if (norm(cm.start.name) === norm(cm.stop.name)) { toast("Start and stop must be different locations"); return; }
   $("cmap").hidden = true;
+  cm.kind = await ask("Conduit or Trench?", "Conduit", "Trench", true) ? "Conduit" : "Trench";
+  if (cm.kind === "Conduit" && !cm.size) {   // asks the size only if it wasn't picked yet (Steven 2026-10-05)
+    const z = await pickSize(); if (!z) { $("cmap").hidden = false; return; }
+    cm.size = z; drawCmap();
+  }
   if (!await ask("Start mapping", "OK", "Cancel", true)) { $("cmap").hidden = false; return; }
   mapTrench(cm);
 };
@@ -2250,7 +2271,7 @@ function drawTrk(startPt, pts) {   // live picture while walking: raw dots and t
   const S = p => ({ x: p.x * s + ox, y: p.y * s + oy });
   x.fillStyle = "#9aa"; for (const p of q) { const z = S(p); x.beginPath(); x.arc(z.x, z.y, 2.5, 0, 7); x.fill(); }
   const sm = smoothTrack(pts, startPt, null).map(f).map(S);
-  x.strokeStyle = "#ff8c1a"; x.lineWidth = 4; x.lineJoin = x.lineCap = "round"; x.beginPath(); sm.forEach((z, i) => i ? x.lineTo(z.x, z.y) : x.moveTo(z.x, z.y)); x.stroke();
+  x.strokeStyle = runColor(cm); x.lineWidth = 4; x.lineJoin = x.lineCap = "round"; x.beginPath(); sm.forEach((z, i) => i ? x.lineTo(z.x, z.y) : x.moveTo(z.x, z.y)); x.stroke();
   const a = S(q[0]); x.fillStyle = "#1e9e4a"; x.fillRect(a.x - 7, a.y - 7, 14, 14);
   const b = S(q[q.length - 1]); x.fillStyle = "#1f6fd1"; x.beginPath(); x.arc(b.x, b.y, 7, 0, 7); x.fill();
 }
@@ -2302,7 +2323,7 @@ async function mapTrench(sel) {
   await ask(`${sel.start.name} is recorded. Tap OK, then start walking the trench.`, "OK", "", true);   // walk starts only on OK (Steven 2026-10-05)
   const pts = await walkTrack(data.items[sel.start.name]);
   data.tracks = data.tracks || {}; data.tracks[r] = pts;   // keep the walk even if the end reading is cancelled
-  data.runs = data.runs || {}; data.runs[r] = { from: sel.start.name, track: true, t: Date.now() };
+  data.runs = data.runs || {}; data.runs[r] = Object.assign({ from: sel.start.name, track: true, kind: sel.kind || "Conduit", t: Date.now() }, sel.size && sel.kind !== "Trench" ? { size: sel.size } : {});
   saveLocal();
   const go = await ask(`Place your phone or iPad on the stop location: ${sel.stop.name}. Hold it steady, then tap OK.`, "OK", "Skip", true);
   const b = go && await holdReading(`Position over ${sel.stop.name}`, "Hold the phone steady.");
@@ -2375,8 +2396,9 @@ function wallOf(v, p) {   // which side of the vault the conduit leaves from, to
   const e = (p.lon - v.lon) * Math.cos(v.lat * Math.PI / 180), n = p.lat - v.lat;
   return Math.abs(n) >= Math.abs(e) ? (n > 0 ? "north" : "south") : (e > 0 ? "east" : "west");
 }
-function choose(msg, opts, none) {   // big list pop-up; resolves the picked index, or -1
+function choose(msg, opts, none, page) {   // big list pop-up; resolves the picked index, or -1
   return new Promise(res => {
+    $("choose-page").textContent = page || "Page 2-7 · Connect";
     $("choose-msg").textContent = msg; $("choose-none").textContent = none;
     $("choose-list").innerHTML = opts.map((o, i) => `<button class="item" data-i="${i}"><span></span><span class="nm">${esc(o)}</span><span></span></button>`).join("");
     $("choose-list").onclick = e => { const b = e.target.closest("[data-i]"); if (!b) return; $("choose").hidden = true; res(+b.dataset.i); };
@@ -2457,7 +2479,7 @@ function drawRun(r) {
   const xs = xy.map(p => p.x), ys = xy.map(p => p.y), w = Math.max(...xs) - Math.min(...xs) || 1, h = Math.max(...ys) - Math.min(...ys) || 1, pad = Math.max(w, h) * 0.15 + 5;
   const svg = $("bdraw-svg"); svg.setAttribute("viewBox", `${Math.min(...xs) - pad} ${Math.min(...ys) - pad} ${w + 2 * pad} ${h + 2 * pad}`);
   const fs = Math.max(w, h) / 18;
-  let out = `<polyline points="${xy.map(p => `${p.x},${p.y}`).join(" ")}" fill="none" stroke="#e07000" stroke-width="${fs * 0.22}" stroke-linejoin="round" stroke-linecap="round"/>`;
+  let out = `<polyline points="${xy.map(p => `${p.x},${p.y}`).join(" ")}" fill="none" stroke="${runColor(ru)}" stroke-width="${fs * 0.22}" stroke-linejoin="round" stroke-linecap="round"/>`;
   for (let i = 1; i < xy.length; i++) { const a = xy[i - 1], b = xy[i]; out += `<text x="${(a.x + b.x) / 2}" y="${(a.y + b.y) / 2}" font-size="${fs * 0.8}" fill="#1f6fd1" text-anchor="middle" dominant-baseline="middle" paint-order="stroke" stroke="#fff" stroke-width="${fs * 0.25}">${Math.round(feetApart(pts[i - 1], pts[i]))} ft</text>`; }
   let k = 0;
   out += xy.map((p, i) => pts[i].end
@@ -2632,6 +2654,7 @@ render();
 <div class="ask" id="cmap" hidden><div><span class="ask-no-label">Page 2-9 · Start and stop</span>
   <div>Start position</div><button class="btn big gray" id="cmap-start"></button>
   <div>Stop position</div><button class="btn big gray" id="cmap-stop"></button>
+  <div>Conduit size</div><button class="btn gray" id="cmap-size"></button>
   <button class="btn primary" id="cmap-next" disabled>Next</button><button class="btn" id="cmap-cancel">Cancel</button></div></div>
 <div class="ask" id="lname" hidden><div><span class="ask-no-label" id="lname-page">Page 2-9a · Location name</span><div id="lname-msg"></div>
   <input id="lname-in" type="text" autocomplete="off" enterkeyhint="done"><button class="btn primary" id="lname-ok">OK</button><button class="btn" id="lname-cancel">Cancel</button></div></div>
@@ -2642,7 +2665,7 @@ render();
   <canvas id="trk-cv" style="width:100%;height:100%;min-height:0;border:1px solid #ccc;border-radius:8px"></canvas>
   <button class="btn big" id="trk-stop" style="background:#e0201a;color:#fff;border-color:#e0201a">Stop</button>
 </div>
-<div class="ask" id="choose" hidden><div><span class="ask-no-label">Page 2-7 · Connect</span><div id="choose-msg"></div><div class="list loc-list" id="choose-list" style="max-height:45vh;overflow:auto"></div><button class="btn" id="choose-none"></button></div></div>
+<div class="ask" id="choose" hidden><div><span class="ask-no-label" id="choose-page">Page 2-7 · Connect</span><div id="choose-msg"></div><div class="list loc-list" id="choose-list" style="max-height:45vh;overflow:auto"></div><button class="btn" id="choose-none"></button></div></div>
 <div class="ask" id="newend" hidden><div><span class="ask-no-label">Page 2-8 · New location here</span><div>What is it?</div><div class="cats" id="newend-types"></div><label class="field"><span>Name</span><input id="newend-name" type="text" autocomplete="off" placeholder="enter name"></label><button class="btn primary" id="newend-save">Save</button><button class="btn" id="newend-cancel">Cancel</button></div></div>
 <div class="ask" id="ask" hidden><div><span class="ask-no-label" id="ask-page"></span><div id="ask-msg"></div><button class="btn primary" id="ask-yes"></button><button class="btn" id="ask-no"></button></div></div>
 </body>
