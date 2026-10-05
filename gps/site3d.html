@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>3D Site</title>
+<style>
+  :root { --bg:#eef1f4; --bar:#ffffff; --ink:#1d2733; --muted:#5b6876; --btn:#1f6feb; --line:#d6dce3; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { --bg:#12161b; --bar:#1b2128; --ink:#e6edf3; --muted:#9aa7b4; --btn:#2f81f7; --line:#2c343d; }
+  }
+  * { box-sizing:border-box; }
+  html, body { margin:0; height:100%; background:var(--bg); color:var(--ink); font:16px/1.3 -apple-system, system-ui, sans-serif; overflow:hidden; }
+  #bar { position:fixed; top:0; left:0; right:0; z-index:5; background:var(--bar); border-bottom:1px solid var(--line);
+         padding:8px 12px; padding-top:max(8px, env(safe-area-inset-top)); display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+  #bar h1 { font-size:17px; margin:0 4px 0 0; }
+  #bar .ver { color:var(--muted); font-size:13px; }
+  a.back, button { background:var(--btn); color:#fff; border:0; border-radius:8px; padding:9px 12px; font-size:15px; text-decoration:none; cursor:pointer; }
+  button.plain { background:transparent; color:var(--btn); border:1px solid var(--line); }
+  button.on { background:var(--btn); color:#fff; }
+  .count { display:flex; align-items:center; gap:6px; }
+  .count b { min-width:26px; text-align:center; }
+  #view { position:fixed; inset:0; touch-action:none; }
+  #msg { position:fixed; left:12px; right:12px; bottom:12px; z-index:5; background:var(--bar); border:1px solid var(--line);
+         border-radius:10px; padding:10px 12px; font-size:15px; }
+  #key { display:flex; flex-wrap:wrap; gap:10px; margin-top:6px; font-size:14px; }
+  #key i { display:inline-block; width:12px; height:12px; border-radius:3px; margin-right:4px; vertical-align:-1px; }
+  #page { position:fixed; right:10px; bottom:10px; z-index:6; color:var(--muted); font-size:12px; }
+</style>
+</head>
+<body>
+<div id="bar">
+  <a class="back" href="./">Back</a>
+  <h1 id="title">3D Site</h1><span class="ver" id="ver"></span>
+  <button class="plain on" id="under">See underground</button>
+  <span class="count">Stretch heights <button class="plain" id="sless">−</button><b id="spread">3x</b><button class="plain" id="smore">+</button></span>
+  <button class="plain" id="reset">Reset view</button>
+</div>
+<div id="view"></div>
+<div id="msg">Loading…</div>
+<div id="page">Page 3D-2</div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+<script type="module">
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+
+const APP_VERSION = "V 01.00";
+const $ = id => document.getElementById(id);
+$("ver").textContent = APP_VERSION;
+const say = html => { $("msg").innerHTML = html; };
+
+// Heights from Steven (inches, from the ground). Townhouses are 3 stories but only the 1st-floor print exists, so one story is drawn.
+const IN = 1 / 12;
+const H = { nid: 48 * IN, lockbox: 16 * IN, fiber: -36 * IN, vaultDepth: 36 * IN, townhouse: 10 };
+
+// ---------------------------------------------------------------- data (same GitHub key as GPS Shots)
+let cfg = {}; try { cfg = JSON.parse(localStorage.getItem("gps.cfg") || "{}") || {}; } catch {}
+cfg = Object.assign({ repo: "sgogats/ASBUILT_MAKER", branch: "main" }, cfg);
+async function gh(path) {
+  const url = `https://api.github.com/repos/${cfg.repo}/contents/${path.split("/").map(encodeURIComponent).join("/")}?ref=${encodeURIComponent(cfg.branch)}&t=${Date.now()}`;
+  const r = await fetch(url, { headers: { Authorization: "Bearer " + cfg.token, Accept: "application/vnd.github.raw+json" }, cache: "no-store" });
+  if (r.status === 404) return null;
+  if (!r.ok) throw new Error(r.status === 401 ? "GitHub key was refused." : "GitHub said " + r.status);
+  return r.json();
+}
+const SEEDS = { "garden-homes-unilever-englewood-cliffs": "town homes/garden_homes_seed.json" };   // designer data: conduit runs, NIDs
+
+// ---------------------------------------------------------------- scene
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+$("view").appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(matchMedia("(prefers-color-scheme: dark)").matches ? 0x12161b : 0xdde6ee);
+const camera = new THREE.PerspectiveCamera(45, 1, 0.5, 20000);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.maxPolarAngle = Math.PI * 0.95;      // can look up from under the ground
+controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
+scene.add(new THREE.HemisphereLight(0xffffff, 0x8899aa, 1.1));
+const sun = new THREE.DirectionalLight(0xffffff, 0.8); sun.position.set(300, 600, 200); scene.add(sun);
+let site = new THREE.Group(); scene.add(site);
+function resize() { renderer.setSize(innerWidth, innerHeight); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); }
+addEventListener("resize", resize); resize();
+(function loop() { requestAnimationFrame(loop); controls.update(); renderer.render(scene, camera); })();
+
+let job = null, seed = null, readings = null, stretch = 3, seeUnder = true, groundMat = null, W = 0, D = 0;
+
+function planCanvas(plan) {
+  const [pw, ph] = plan.size, s = Math.min(3, 4096 / Math.max(pw, ph));
+  const c = document.createElement("canvas"); c.width = pw * s; c.height = ph * s;
+  const g = c.getContext("2d"); g.fillStyle = "#fbfaf5"; g.fillRect(0, 0, c.width, c.height);
+  g.scale(s, s); g.lineCap = g.lineJoin = "round";
+  for (const [col, w, p] of plan.lines || []) {
+    g.strokeStyle = col; g.lineWidth = Math.max(w, 0.5); g.beginPath(); g.moveTo(p[0], p[1]);
+    for (let i = 2; i < p.length; i += 2) g.lineTo(p[i], p[i + 1]);
+    g.stroke();
+  }
+  for (const [x, y, t, size, col, rot] of plan.texts || []) {
+    g.save(); g.translate(x, y); if (rot) g.rotate(-rot * Math.PI / 180);
+    g.fillStyle = col || "#333"; g.font = `${size || 8}px sans-serif`; g.fillText(t, 0, 0); g.restore();
+  }
+  return c;
+}
+
+let labelH = 4;
+function label(text, color = "#1d2733") {
+  const c = document.createElement("canvas"), g = c.getContext("2d"), size = 40;
+  g.font = `bold ${size}px sans-serif`; c.width = Math.ceil(g.measureText(text).width) + 20; c.height = size + 16;
+  g.font = `bold ${size}px sans-serif`; g.fillStyle = "rgba(255,255,255,0.85)"; g.fillRect(0, 0, c.width, c.height);
+  g.fillStyle = color; g.textBaseline = "middle"; g.fillText(text, 10, c.height / 2);
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), depthTest: false }));
+  sp.scale.set(c.width / c.height * labelH, labelH, 1); sp.renderOrder = 10; return sp;
+}
+function tube(a, b, r, mat) {
+  const len = a.distanceTo(b); if (len < 0.01) return new THREE.Group();
+  const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, len, 8), mat);
+  m.position.copy(a).add(b).multiplyScalar(0.5);
+  m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.clone().sub(a).normalize());
+  return m;
+}
+
+// ---------------------------------------------------------------- build the site
+function build() {
+  scene.remove(site); site = new THREE.Group(); scene.add(site);
+  const ppf = (seed && seed.project && seed.project.pt_per_ft) || job.pt_per_ft || 1.44;   // print points per foot
+  const [pw, ph] = (job.plan && job.plan.size) || [1560, 1400];
+  W = pw / ppf; D = ph / ppf; labelH = Math.max(3, W / 90);
+  const at = (x, y, h = 0) => new THREE.Vector3(x / ppf - W / 2, h * stretch, y / ppf - D / 2);
+
+  // ground = the site print laid flat
+  const tex = job.plan ? new THREE.CanvasTexture(planCanvas(job.plan)) : null;
+  if (tex) { tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = renderer.capabilities.getMaxAnisotropy(); }
+  groundMat = new THREE.MeshBasicMaterial({ map: tex, color: 0xffffff, side: THREE.DoubleSide, transparent: true, opacity: seeUnder ? 0.55 : 1, depthWrite: !seeUnder });
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(W, D), groundMat); ground.rotation.x = -Math.PI / 2; site.add(ground);
+
+  // where things are: the placed spot from GPS Shots wins, else the designed spot
+  const ctl = (readings && readings.controls) || {};
+  const spot = {};
+  for (const it of job.items || []) spot[it.name] = { x: it.x, y: it.y, kind: it.kind };
+  for (const v of (seed && seed.vaults) || []) spot[v.name] = spot[v.name] || { x: v.x, y: v.y, kind: v.kind };
+  for (const l of (seed && seed.lockboxes) || []) spot[l.name] = spot[l.name] || { x: l.x, y: l.y, kind: "Lockbox" };
+  for (const [n, c] of Object.entries(ctl)) if (spot[n] && c && c.use !== false && c.x != null) Object.assign(spot[n], { x: c.x, y: c.y });
+
+  // buildings
+  const bMat = new THREE.MeshLambertMaterial({ color: 0xc9b79c, transparent: true, opacity: 0.55, depthWrite: false });
+  const eMat = new THREE.LineBasicMaterial({ color: 0x6b5a45 });
+  const bh = H.townhouse;   // real height, not stretched
+  for (const b of job.buildings || []) {
+    const box = b.box || (b.x0 != null ? [b.x0, b.y0, b.x1, b.y1] : null); if (!box) continue;
+    const [x0, y0, x1, y1] = box, w = Math.abs(x1 - x0) / ppf, d = Math.abs(y1 - y0) / ppf;
+    const c = at((x0 + x1) / 2, (y0 + y1) / 2); c.y = bh / 2;
+    const g = new THREE.BoxGeometry(w, bh, d);
+    const m = new THREE.Mesh(g, bMat); m.position.copy(c); site.add(m);
+    const e = new THREE.LineSegments(new THREE.EdgesGeometry(g), eMat); e.position.copy(c); site.add(e);
+    const t = label("Bldg " + b.name, "#6b4e16"); t.position.set(c.x, bh + labelH, c.z); site.add(t);
+  }
+
+  // conduit / fiber runs, 36" under the ground, plus the drop down from each end
+  const fMat = new THREE.MeshLambertMaterial({ color: 0xf08c00 });
+  const dropMat = new THREE.MeshLambertMaterial({ color: 0xb36200 });
+  const r = Math.max(0.25, labelH * 0.07);
+  let runs = 0, missing = 0;
+  for (const cd of (seed && seed.conduits) || []) {
+    const a = spot[cd.a], b = spot[cd.b];
+    if (!a || !b) { missing++; continue; }
+    const pts = [[a.x, a.y], ...(cd.bends || []), [b.x, b.y]].filter((p, i, arr) => i === 0 || p[0] !== arr[i - 1][0] || p[1] !== arr[i - 1][1]);
+    const v = pts.map(([x, y]) => at(x, y, H.fiber));
+    for (let i = 0; i < v.length - 1; i++) site.add(tube(v[i], v[i + 1], r, fMat));
+    site.add(tube(at(a.x, a.y, 0), v[0], r * 0.8, dropMat));
+    site.add(tube(at(b.x, b.y, 0), v[v.length - 1], r * 0.8, dropMat));
+    runs++;
+  }
+
+  // vaults (top even with the ground), cans, poles, lockboxes (16" up)
+  const vMat = new THREE.MeshLambertMaterial({ color: 0x6c757d }), pMat = new THREE.MeshLambertMaterial({ color: 0x7a4f2a });
+  const lMat = new THREE.MeshLambertMaterial({ color: 0x2b8a3e });
+  const vs = Math.max(3, labelH * 0.9), vd = H.vaultDepth * stretch;
+  for (const [name, s] of Object.entries(spot)) {
+    const k = (s.kind || "").toLowerCase();
+    if (k.includes("lockbox") && !k.includes("vault")) {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(vs * 0.5, vs * 0.6, vs * 0.25), lMat);
+      m.position.copy(at(s.x, s.y, H.lockbox)); m.position.y += vs * 0.3; site.add(m);
+      const t = label(name, "#2b8a3e"); t.position.copy(m.position).add(new THREE.Vector3(0, labelH, 0)); site.add(t);
+    } else if (k.includes("pole")) {
+      const m = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.8, 35, 10), pMat); m.position.copy(at(s.x, s.y)); m.position.y = 17.5; site.add(m);
+      const t = label(name, "#7a4f2a"); t.position.copy(m.position).add(new THREE.Vector3(0, 20, 0)); site.add(t);
+    } else if (k) {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(vs, vd, vs * 0.7), vMat); m.position.copy(at(s.x, s.y)); m.position.y = -vd / 2; site.add(m);
+      const t = label(name, "#343a40"); t.position.copy(at(s.x, s.y)).add(new THREE.Vector3(0, labelH * 0.8, 0)); site.add(t);
+    }
+  }
+
+  // NID panels on the garages, 48" up
+  const nMat = new THREE.MeshLambertMaterial({ color: 0x1f6feb });
+  let nids = 0;
+  for (const u of (seed && seed.units) || []) {
+    if (u.nid_x == null) continue;
+    const m = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.6, 0.4), nMat); m.position.copy(at(u.nid_x, u.nid_y)); m.position.y = H.nid * stretch; site.add(m); nids++;
+  }
+
+  const bcount = (job.buildings || []).filter(b => b.box || b.x0 != null).length;
+  say(`${bcount} buildings, ${runs} fiber runs, ${nids} NID panels.` +
+      (stretch > 1 ? ` Heights of small things and fiber depth drawn ${stretch}x so you can see them.` : "") +
+      (missing ? ` ${missing} runs skipped (end point not found).` : "") +
+      ` <div id="key"><span><i style="background:#f08c00"></i>Fiber 36" under</span><span><i style="background:#6c757d"></i>Vaults</span>` +
+      `<span><i style="background:#2b8a3e"></i>Lockboxes 16"</span><span><i style="background:#1f6feb"></i>NIDs 48"</span>` +
+      `<span><i style="background:#c9b79c"></i>Townhouses (1st floor only)</span></div>`);
+}
+
+function frame() {
+  const size = Math.max(W, D);
+  controls.target.set(0, 0, 0);
+  const v = THREE.MathUtils.degToRad(camera.fov) / 2, h = Math.atan(Math.tan(v) * camera.aspect);
+  const dist = size * 0.62 / Math.tan(Math.min(v, h));
+  camera.position.copy(new THREE.Vector3(0.35, 0.8, 0.6).normalize().multiplyScalar(dist));
+  camera.updateProjectionMatrix(); controls.update();
+}
+
+// ---------------------------------------------------------------- buttons
+$("under").onclick = () => {
+  seeUnder = !seeUnder; $("under").classList.toggle("on", seeUnder);
+  if (groundMat) { groundMat.opacity = seeUnder ? 0.55 : 1; groundMat.depthWrite = !seeUnder; groundMat.needsUpdate = true; }
+};
+const setStretch = d => { stretch = Math.max(1, Math.min(10, stretch + d)); $("spread").textContent = stretch + "x"; build(); };
+$("sless").onclick = () => setStretch(-1);
+$("smore").onclick = () => setStretch(1);
+$("reset").onclick = frame;
+
+// ---------------------------------------------------------------- start
+(async () => {
+  if (!cfg.token) { say(`No GitHub key here. Open this from the GPS Shots icon on your Home Screen.`); return; }
+  let slug = new URLSearchParams(location.search).get("p");
+  if (!slug) { try { slug = JSON.parse(localStorage.getItem("gps.current") || "null"); } catch {} }
+  slug = slug || "garden-homes-unilever-englewood-cliffs";
+  try {
+    say("Loading the site…");
+    [job, readings] = await Promise.all([gh(`gps/jobs/${slug}.json`), gh(`gps/readings/${slug}.json`).catch(() => null)]);
+    if (!job) { say("This project has no print or buildings yet, so there is nothing to show in 3D."); return; }
+    if (SEEDS[slug]) seed = await gh(SEEDS[slug]).catch(() => null);
+    $("title").textContent = "3D " + (job.name || "Site");
+    build(); frame();
+  } catch (e) { say("Could not load: " + e.message); }
+})();
+</script>
+</body>
+</html>
