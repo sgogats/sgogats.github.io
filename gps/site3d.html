@@ -53,7 +53,7 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { GLTFExporter } from "three/addons/exporters/GLTFExporter.js";
 
-const APP_VERSION = "V 01.03";
+const APP_VERSION = "V 01.04";
 const $ = id => document.getElementById(id);
 $("ver").textContent = APP_VERSION;
 const say = html => { $("msg").innerHTML = html; };
@@ -245,9 +245,9 @@ function build() {
   for (const [name, s] of Object.entries(spot)) {
     const k = (s.kind || "").toLowerCase();
     if (k.includes("lockbox") && !k.includes("vault")) {
-      const m = new THREE.Mesh(new THREE.BoxGeometry(vs * 0.5, vs * 0.6, vs * 0.25), lMat);
-      m.position.copy(at(s.x, s.y, H.lockbox)); m.position.y += vs * 0.3;
-      if (s.wall) { m.rotation.y = s.wall[0] ? Math.PI / 2 : 0; m.position.x += s.wall[0] * vs * 0.125; m.position.z += s.wall[1] * vs * 0.125; }   // flat against the wall
+      const m = new THREE.Mesh(new THREE.BoxGeometry(1.5, 2, 0.5), lMat);   // about a real lockbox: 18" x 24"
+      m.position.copy(at(s.x, s.y)); m.position.y = H.lockbox + 1;   // bottom 16" up; real height, never stretched
+      if (s.wall) { m.rotation.y = s.wall[0] ? Math.PI / 2 : 0; m.position.x += s.wall[0] * 0.25; m.position.z += s.wall[1] * 0.25; }   // flat against the wall
       m.name = name; site.add(m);
       const t = label(name, "#2b8a3e"); t.position.copy(m.position).add(new THREE.Vector3(0, labelH, 0)); site.add(t);
     } else if (k.includes("pole")) {
@@ -264,12 +264,12 @@ function build() {
   let nids = 0;
   for (const u of (seed && seed.units) || []) {
     if (u.nid_x == null) continue;
-    const m = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.6, 0.4), nMat); m.position.copy(at(u.nid_x, u.nid_y)); m.position.y = H.nid * stretch; site.add(m); nids++;
+    const m = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.6, 0.4), nMat); m.position.copy(at(u.nid_x, u.nid_y)); m.position.y = H.nid; site.add(m); nids++;   // real height: on the 10 ft wall, never stretched
   }
 
   const bcount = (job.buildings || []).filter(b => b.box || b.x0 != null).length;
   say(`${bcount} buildings, ${runs} fiber runs, ${nids} NID panels.` +
-      (stretch > 1 ? ` Heights of small things and fiber depth drawn ${stretch}x so you can see them.` : "") +
+      (stretch > 1 ? ` Underground depth drawn ${stretch}x so you can see it.` : "") +
       (missing ? ` ${missing} runs skipped (end point not found).` : "") +
       ` <div id="key"><span><i style="background:#f08c00"></i>Fiber 36" under</span><span><i style="background:#6c757d"></i>Vaults</span>` +
       `<span><i style="background:#2b8a3e"></i>Lockboxes 16"</span><span><i style="background:#1f6feb"></i>NIDs 48"</span>` +
