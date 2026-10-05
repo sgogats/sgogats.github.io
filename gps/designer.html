@@ -229,15 +229,15 @@ function showFields() {
 }
 const cur = () => (design.els[sel] = design.els[sel] || {});
 $("f-text").oninput = () => { cur().text = $("f-text").value.trim(); push(); };
-$("f-bg").oninput = () => { cur().bg = $("f-bg").value; push(); };
-$("f-color").oninput = () => { cur().color = $("f-color").value; push(); };
+$("f-bg").oninput = () => { cur().bg = $("f-bg").value; cur().v3 = true; push(); };   // v3: picked for the Mockup v3 look (older colors are set aside)
+$("f-color").oninput = () => { cur().color = $("f-color").value; cur().v3 = true; push(); };
 for (const b of document.querySelectorAll("[data-clear]")) b.onclick = () => { delete cur()[b.dataset.clear]; showFields(); push(); };
-$("f-size").onclick = e => { const b = e.target.closest("[data-size]"); if (!b) return; cur().size = b.dataset.size; showFields(); push(); };
+$("f-size").onclick = e => { const b = e.target.closest("[data-size]"); if (!b) return; cur().size = b.dataset.size; cur().v3 = true; showFields(); push(); };
 $("f-hide").onchange = () => { cur().hide = $("f-hide").checked; push(); };
 $("f-goes").onchange = () => { cur().goes = $("f-goes").value; push(); };
 $("f-note").oninput = () => { cur().note = $("f-note").value; push(); };
 $("reset-el").onclick = () => { if (sel) { delete design.els[sel]; sel = null; showFields(); mark(); push(); } };
-$("screen-bg").oninput = () => { design.screens[screen] = Object.assign({}, design.screens[screen], { bg: $("screen-bg").value }); push(); };
+$("screen-bg").oninput = () => { design.screens[screen] = Object.assign({}, design.screens[screen], { bg: $("screen-bg").value, v3: true }); push(); };
 $("screen-bg-clear").onclick = () => { if (design.screens[screen]) delete design.screens[screen].bg; $("screen-bg").value = SCREEN_BG[screen] || "#eef2ef"; push(); };
 const SCREEN_BG = { main: "#e3f2ff", addtype: "#e2e4e7" };
 $("screen-note").oninput = () => { design.screens[screen] = Object.assign({}, design.screens[screen], { note: $("screen-note").value }); push(); };
@@ -251,7 +251,7 @@ function showTheme() {   // unset colours show what the app uses now
     if (/^#[0-9a-f]{6}$/i.test(v || "")) i.value = v;
   }
 }
-$("theme").oninput = e => { const i = e.target.closest("[data-th]"); if (i) { design.theme[i.dataset.th] = i.value; push(); } };
+$("theme").oninput = e => { const i = e.target.closest("[data-th]"); if (i) { design.theme[i.dataset.th] = i.value; design.theme.v3 = true; push(); } };
 $("theme").onclick = e => { const b = e.target.closest("[data-thclear]"); if (b) { delete design.theme[b.dataset.thclear]; push(); setTimeout(showTheme, 50); } };
 
 // what each button does in the app today, per screen

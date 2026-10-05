@@ -40,7 +40,7 @@ header.bar { position: sticky; top: 0; z-index: 5; background: var(--bg); paddin
 .brand span { color: var(--accent); }
 .edit-words { min-height: 30px; padding: 3px 10px; font: 700 14px/1 var(--display); margin-top: 4px; background: #e6e8eb; color: #1d2329; border-color: #cfd3d8; }
 .edit-words.on { background: #d6007a !important; color: #fff !important; border-color: #d6007a !important; }
-body.editing button:not(#edit-words):not(#edit-sheet *):not(#edit-bar *):not(#ask *), body.editing input:not(#edit-sheet *), body.editing textarea { outline: 2px dashed #d6007a !important; outline-offset: 2px; }
+body.editing button:not(#edit-words):not(#mode-btn):not(#edit-sheet *):not(#edit-bar *):not(#ask *), body.editing a.btn:not(#edit-sheet *), body.editing input:not(#edit-sheet *), body.editing textarea { outline: 2px dashed #d6007a !important; outline-offset: 2px; }
 .es-row { display: flex; flex-wrap: wrap; gap: 8px; }
 .es-sw { width: 44px; height: 44px; border-radius: 10px; border: 2px solid #cfd3d8; font: 600 11px/1 var(--display); padding: 0; }
 .es-sw:first-child { width: auto; padding: 0 10px; }
@@ -186,14 +186,153 @@ th { font: 600 13px/1 var(--display); letter-spacing: .08em; text-transform: upp
 .sync.err { color: var(--bad); }
 details { border: 1px solid var(--line); border-radius: 10px; background: var(--panel); padding: 10px 14px; }
 summary { font-weight: 600; cursor: pointer; }
+/* ===== Mockup v3 look (Steven 2026-10-05, BMS-IDEAS design/gps-shots): Indoor mode = white with green buttons; Field mode (html.field) = dark with yellow buttons.
+   Same buttons, same names, same pages; only the look changes. Every big button is one size, one letter style, centered (change 4). ===== */
+:root {
+  --bg: #f3f5f4; --panel: #ffffff; --ink: #14201b; --muted: #5d6b65; --line: #dbe2de;
+  --accent: #0b6e4f; --accent-ink: #ffffff; --brand-dk: #07513a; --brand-lt: #e3f1eb; --bad: #d93025; --red: #d93025; --red-ink: #fff;
+  --good: #1e7d3c; --warn: #b26a00; --card2: #ffffff; --bar: #0b6e4f; --bar-ink: #ffffff; --in-bg: #ffffff; --r: 14px; --bh: 54px; --bf: 17px; --bw: 700; --bb: 1.5px;
+  --display: -apple-system, "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; --body: var(--display);
+}
+html.field {
+  color-scheme: dark;
+  --bg: #111417; --panel: #1d2227; --card2: #262c33; --ink: #ffffff; --muted: #b9c0c7; --line: #4a525b;
+  --accent: #ffd200; --accent-ink: #141200; --brand-dk: #ffd200; --brand-lt: #3a3300; --bad: #ff4a3d; --red: #ff4a3d;
+  --good: #3ddc84; --warn: #ffb020; --lb: #ff6b6b; --vault: #6aa4ff; --bar: #000000; --bar-ink: #ffffff; --in-bg: #000000; --r: 10px; --bh: 64px; --bf: 19px; --bw: 800; --bb: 2px;
+  --display: "Barlow", -apple-system, "Segoe UI", Roboto, Arial, sans-serif; --body: var(--display);
+}
+body { font: 16px/1.4 var(--body); }
+html.field body { font-weight: 500; font-size: 17px; }
+/* top bar */
+header.bar { background: var(--bar); color: var(--bar-ink); border-bottom: 0; }
+html.field header.bar { border-bottom: 3px solid var(--accent); }
+.bar-in { flex-wrap: nowrap; align-items: center; padding: 10px 14px 12px; gap: 10px; }
+.gear { width: 40px; height: 40px; margin: 0; align-self: center; background: rgba(255,255,255,.14); color: var(--bar-ink); }
+html.field .gear { width: 48px; height: 48px; background: var(--card2); color: var(--accent); }
+.gear svg { width: 24px; height: 24px; }
+.bar-t { flex: 1; min-width: 0; display: grid; gap: 3px; justify-items: start; }
+.brand { font: 800 19px/1.1 var(--display); text-transform: none; letter-spacing: .01em; color: var(--bar-ink); }
+.bar-pg { font: 600 12px/1.2 var(--display); opacity: .9; white-space: nowrap; }
+html.field .bar-pg { opacity: 1; background: var(--accent); color: var(--accent-ink); padding: 3px 6px; border-radius: 3px; font-weight: 800; }
+.page-no, .ver-no { font: inherit; color: inherit; text-transform: none; letter-spacing: 0; margin: 0; }
+.bar-btns { display: flex; gap: 6px; align-items: center; margin-top: 3px; }
+.bar-r { display: grid; justify-items: end; gap: 6px; flex: none; }
+.modebtn { display: inline-flex; align-items: center; gap: 6px; min-height: 34px; padding: 4px 12px; border-radius: 999px; border: 1.5px solid rgba(255,255,255,.45); background: rgba(255,255,255,.12); color: #fff; font: 700 13px/1 var(--display); cursor: pointer; }
+html.field .modebtn { border: 2px solid var(--accent); background: #000; color: var(--accent); border-radius: 8px; min-height: 40px; font-size: 14px; }
+.modebtn .ic-house { display: none; } html.field .modebtn .ic-house { display: inline; } html.field .modebtn .ic-sun { display: none; }
+.modefloat { position: absolute; top: calc(10px + env(safe-area-inset-top, 0px)); right: 12px; z-index: 2; background: #f0f2f1; color: var(--ink); border-color: var(--line); }
+#trk { position: fixed; } #trk .modefloat { position: fixed; }
+.top-setup { min-height: 32px; padding: 4px 10px; font: 700 13px/1 var(--display); letter-spacing: 0; text-transform: none; background: rgba(255,255,255,.14); color: #fff !important; border: 1.5px solid rgba(255,255,255,.45); border-radius: 8px; }
+html.field .top-setup { background: #000; border: 2px solid var(--line); color: #fff !important; }
+.sync { font: 700 11px/1 var(--display); letter-spacing: 0; text-transform: none; border-radius: 999px; border: 0; background: rgba(255,255,255,.18); color: #fff; }
+.sync.ok { color: #fff; } .sync.err { background: #ffd666; color: #3b2a00; }
+html.field .sync { border: 2px solid var(--line); background: transparent; color: var(--muted); border-radius: 6px; font-weight: 800; }
+html.field .sync.ok { border-color: var(--good); color: var(--good); } html.field .sync.err { border-color: var(--warn); background: var(--warn); color: #1a1200; }
+.edit-words { min-height: 30px; margin: 0; }
+/* headings */
+h2 { font: 800 22px/1.15 var(--display); text-transform: none; letter-spacing: 0; }
+html.field h2 { font-size: 24px; }
+h3 { font: 700 12px/1 var(--display); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 16px 2px 8px; }
+html.field h3 { font-weight: 800; font-size: 13px; letter-spacing: .1em; color: var(--accent); }
+.pick-title { font: 800 22px/1.15 var(--display); text-transform: none; letter-spacing: 0; color: var(--ink); margin: 14px 0 4px; }
+html.field .pick-title { font-size: 24px; }
+.work-proj { font: 800 20px/1.2 var(--display); text-transform: none; letter-spacing: 0; }
+.work-head { background: var(--panel); border: var(--bb) solid var(--line); border-radius: var(--r); padding: 12px; margin-top: 14px; align-items: flex-start; }
+.work-head .muted.small { font: 700 11px/1 var(--display); letter-spacing: .08em; text-transform: uppercase; }
+html.field .work-head .muted.small { color: var(--accent); font-weight: 800; }
+/* the one button system */
+.btn, .pick-btns .btn, #project-box .btn.big, .cats .btn, .ask .btn, .hold .btn, .gmap .btn {
+  display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; min-height: var(--bh); padding: 10px 14px; border-radius: 12px;
+  border: var(--bb) solid var(--line); background: var(--card2); color: var(--ink); font: var(--bw) var(--bf)/1.2 var(--display); letter-spacing: .01em; text-transform: none; text-align: center; margin-top: 0; }
+html.field .btn { border-radius: var(--r); }
+.btn.big, #project-box .btn.big, .ask.big .btn { min-height: calc(var(--bh) + 10px); font: var(--bw) calc(var(--bf) + 2px)/1.2 var(--display); letter-spacing: .01em; text-transform: none; }
+/* page 2: every big button one size (change 4) */
+#collect-main .cats .btn, #proj-map, #proj-3d, #proj-status-btn { min-height: var(--bh); font: var(--bw) var(--bf)/1.2 var(--display); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink) !important; }
+.btn.cancel { background: var(--red); border-color: var(--red); color: var(--red-ink) !important; }
+.btn.danger { background: var(--panel); border-color: var(--red); color: var(--red) !important; }
+.btn.gray, .ask .btn.gray { background: var(--card2) !important; color: var(--ink) !important; border-color: var(--line) !important; }
+.btn:not(.primary):not(.cancel):not(.danger), .item, .item .nm, .item .sub, input, select, textarea, .tabs button { color: var(--ink); }
+.item .sub { color: var(--muted); }
+.cats .btn[aria-pressed="true"] { background: var(--brand-lt); border-color: var(--accent); color: var(--brand-dk); }
+.cats .btn .sym, .btn .sym { width: 20px; height: 20px; }
+.maplink { display: flex; }
+#next-btn { min-height: 96px; }
+#proj-edit { width: auto !important; min-height: 38px !important; padding: 4px 16px !important; font-size: 15px !important; border-radius: 10px; }
+#change-proj { width: auto; min-height: 44px; padding: 6px 16px; }
+.linkish { color: var(--accent); font: 700 15px var(--display); }
+html.field .linkish { text-decoration: underline; text-underline-offset: 3px; }
+/* the status page keeps its flashing CURRENT STATUS */
+.btn.st-now, .btn.st-now:disabled { background: var(--brand-lt); border-color: var(--accent); color: var(--brand-dk) !important; }
+/* lists, pills, forms */
+.list { border: var(--bb) solid var(--line); border-radius: var(--r); background: var(--panel); }
+.item { min-height: 56px; border-top: var(--bb) solid var(--line); }
+.item .nm { font-weight: 700; }
+html.field .item { min-height: 66px; } html.field .item .nm { font-weight: 800; font-size: 18px; }
+.lrow .lname { color: var(--ink); font: 700 17px var(--display); }
+.pill, .st-pill { font: 700 12px/1 var(--display); letter-spacing: 0; text-transform: none; border-radius: 999px; padding: 6px 9px; }
+html.field .pill, html.field .st-pill { text-transform: uppercase; letter-spacing: .04em; border: 2px solid currentColor; background: transparent !important; border-radius: 4px; font-weight: 800; }
+.pill.none { background: #eef1ef; border: 0; } html.field .pill.none { color: var(--muted); }
+.st-pill { background: var(--brand-lt); color: var(--brand-dk); border: 0; }
+html.field .st-pill { color: var(--accent); }
+input[type=text], input[type=password], input[type=number], input[type=tel], select { border: var(--bb) solid var(--line); border-radius: 10px; background: var(--in-bg); font-size: 17px; }
+html.field input[type=text], html.field input[type=password], html.field input[type=number], html.field input[type=tel], html.field select { min-height: 56px; font-size: 18px; }
+label.field span { font: 700 12px/1 var(--display); letter-spacing: .06em; color: var(--muted); }
+.shot { border: var(--bb) solid var(--line); border-radius: var(--r); }
+.shot .target { font: 800 30px/1.05 var(--display); text-transform: none; }
+html.field .shot .target { font-size: 36px; }
+.meter div { background: var(--bg); border: 0; border-radius: 10px; }
+html.field .meter div { background: #000; border: 2px solid var(--line); }
+.meter b { font: 800 22px/1.2 var(--display); font-variant-numeric: tabular-nums; }
+html.field .meter b { font-size: 26px; }
+.meter span { font: 700 11px/1 var(--display); letter-spacing: .06em; }
+html.field .prog { height: 12px; background: #000; border: 2px solid var(--line); }
+/* bottom tabs */
+nav.tabs { background: var(--panel); }
+html.field nav.tabs { background: #000; border-top: 2px solid var(--line); }
+.tabs button { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 8px 4px 10px; font: 700 12px/1 var(--display); letter-spacing: 0; text-transform: none; color: var(--muted); }
+.tabs button svg { width: 24px; height: 24px; }
+.tabs button[aria-selected="true"] { color: var(--accent); box-shadow: none; }
+html.field .tabs button { font-weight: 800; font-size: 13px; } html.field .tabs button svg { width: 28px; height: 28px; }
+html.field .tabs button[aria-selected="true"] { box-shadow: inset 0 3px 0 var(--accent); }
+/* pop-ups come up from the bottom like the mockup's sheets */
+.ask { background: rgba(10,20,15,.55); align-items: end; padding: 0; }
+html.field .ask { background: rgba(0,0,0,.72); }
+.ask > div { background: var(--bg); color: var(--ink); max-width: 560px; border-radius: 22px 22px 0 0; padding: 14px 14px calc(26px + env(safe-area-inset-bottom, 0px)); font-size: 18px; max-height: 92vh; overflow-y: auto; }
+html.field .ask > div { border-top: 3px solid var(--accent); border-radius: 18px 18px 0 0; }
+.ask.big { align-items: center; padding: 16px; }
+.ask.big > div { border-radius: 18px; color: var(--ink); }
+.ask-no-label { font: 800 20px/1.2 var(--display); text-transform: none; letter-spacing: 0; }
+/* hold still screen */
+.hold { background: #0f1a15; }
+html.field .hold { background: #000; }
+.hold .big-warn { font: 900 32px/1.1 var(--display); text-transform: none; }
+html.field .hold .big-warn { color: var(--accent); font-weight: 800; }
+.hold .meter div { background: rgba(255,255,255,.08); } .hold .meter span { color: #b7c6bf; } .hold .meter b { color: #fff; }
+/* walk screen and drawings follow the mode */
+html.field #trk, html.field #bdraw { background: #000 !important; color: #fff !important; }
+html.field #trk-title, html.field #bdraw-title { color: var(--accent) !important; }
+html.field #bdraw-sub { color: var(--muted) !important; }
+.toast { background: var(--ink); color: var(--bg); border-radius: 10px; }
+.note { background: var(--panel); border-left-color: var(--accent); }
+.tbl, details { border: var(--bb) solid var(--line); border-radius: var(--r); }
+.canvas-box { border: var(--bb) solid var(--line); border-radius: var(--r); }
+.canvas-tools .btn { min-height: 42px; min-width: 42px; width: auto; padding: 6px 10px; }
+html.field .canvas-tools .btn { min-height: 52px; min-width: 52px; background: #000; color: var(--accent); border: 2px solid var(--accent); }
+.placing .btn { width: auto; flex: 1; min-height: 44px; }
+.es-sz, .es-sw { border-radius: 10px; }
+#empty-flash-msg { text-transform: none; }
 @media (prefers-reduced-motion: reduce) { .prog i { transition: none; } }
 </style>
 </head>
 <body>
 <header class="bar">
   <div class="bar-in">
-    <div class="row" style="gap:6px;flex-wrap:nowrap;flex:1"><button class="gear" id="gear" aria-label="Settings" title="Settings"><svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.830l-.06-.06a1.65 1.65 0 0 0-1.820-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.650 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button><div><div class="brand">GPS<span>Shots</span></div><div class="row" style="gap:8px;flex-wrap:nowrap;align-items:center"><div class="page-no" id="page-no"></div><button class="btn edit-words" id="edit-words" hidden>Edit</button></div></div><div style="margin-left:auto;display:grid;justify-items:end;gap:4px"><button class="btn top-setup" id="top-setup" data-tab="setup" aria-selected="false">Settings</button><div class="ver-no" id="ver-no"></div></div></div>
-    <span id="sync" class="sync" title="GitHub sync">Phone only</span>
+    <button class="gear" id="gear" aria-label="Settings" title="Settings"><svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.830l-.06-.06a1.65 1.65 0 0 0-1.820-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.650 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
+    <div class="bar-t"><div class="brand">GPS Shots</div><div class="bar-pg"><span class="page-no" id="page-no"></span><span class="ver-no" id="ver-no"></span></div>
+      <div class="bar-btns"><button class="modebtn" id="mode-btn" type="button"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><g class="ic-sun"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></g><g class="ic-house"><path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/></g></svg><span class="modelbl">Field mode</span></button><button class="btn edit-words" id="edit-words" hidden>Edit</button></div></div>
+    <div class="bar-r"><button class="btn top-setup" id="top-setup" data-tab="setup" aria-selected="false">Settings</button>
+    <span id="sync" class="sync" title="GitHub sync">Phone only</span></div>
   </div>
 </header>
 
@@ -402,12 +541,12 @@ summary { font-weight: 600; cursor: pointer; }
 </main>
 
 <nav class="tabs" aria-label="Sections"><div class="tabs-in" role="tablist">
-  <button role="tab" data-tab="collect" aria-selected="true">Collect</button>
-  <button role="tab" data-tab="print" aria-selected="false">Plot on print</button>
+  <button role="tab" data-tab="collect" aria-selected="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2.5"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>Collect</button>
+  <button role="tab" data-tab="print" aria-selected="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M9 9v11"/></svg>Plot on print</button>
 </div></nav>
 <div class="toast" id="toast" hidden></div>
 
-<div class="hold" id="hold" hidden><div>
+<div class="hold" id="hold" hidden><button class="modebtn modefloat" type="button"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><g class="ic-sun"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2"/></g><g class="ic-house"><path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/></g></svg><span class="modelbl">Field mode</span></button><div>
   <div class="big-warn">Do not move.<br>Hold phone or iPad steady</div>
   <div id="hold-name" style="font-size:20px;font-weight:700"></div>
   <div class="meter"><div><span>Accuracy</span><b id="h-acc">…</b></div><div><span>Readings</span><b id="h-n">0</b></div><div><span>Time</span><b id="h-t">0 s</b></div></div>
@@ -473,7 +612,7 @@ summary { font-weight: 600; cursor: pointer; }
 </div></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-05.64";
+const APP_VERSION = "2026-10-05.65";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -485,6 +624,21 @@ if (!DESIGN_MODE) (async () => {
     }
   } catch {}
 })();
+/* ---------- Indoor mode / Field mode (Steven 2026-10-05, change 16): the button names the other mode; each phone or iPad remembers its pick ---------- */
+function setMode(m) {
+  const field = m === "field"; document.documentElement.classList.toggle("field", field);
+  for (const l of document.querySelectorAll(".modelbl")) l.textContent = field ? "Indoor mode" : "Field mode";
+  for (const b of document.querySelectorAll(".modebtn")) b.setAttribute("aria-label", field ? "Switch to Indoor mode" : "Switch to Field mode");
+  const tc = document.querySelector('meta[name="theme-color"]'); if (tc) tc.content = field ? "#000000" : "#0b6e4f";
+}
+try { setMode(localStorage.getItem("gps.mode") || "indoor"); } catch { setMode("indoor"); }
+document.addEventListener("DOMContentLoaded", () => { try { setMode(localStorage.getItem("gps.mode") || "indoor"); } catch {} });
+document.addEventListener("click", e => {
+  if (!e.target.closest(".modebtn")) return;
+  const m = document.documentElement.classList.contains("field") ? "indoor" : "field";
+  setMode(m); try { localStorage.setItem("gps.mode", m); } catch {}
+  try { if (!$("tab-print").hidden) drawPrint(); } catch {}
+});
 /* ---------- storage helpers ---------- */
 const LS = {
   get(k, d) { try { const v = localStorage.getItem("gps." + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
@@ -968,7 +1122,7 @@ function render() {
   // a type with no points has no button (projects, and page 4 system points too: Steven 2026-10-03)
   const shownTypes = types().filter(t => t === cat || items.some(i => inCat(i, t)) || (!isR && t === "Building" && groups.some(isBldg)));
   shownTypesNow = shownTypes;
-  $("cats").innerHTML = shownTypes.map(t => `<button class="btn" data-cat="${esc(t)}" aria-pressed="${t === cat}">${esc(t)}</button>`).join("")
+  $("cats").innerHTML = shownTypes.map(t => `<button class="btn" data-cat="${esc(t)}" aria-pressed="${t === cat}">${symbol(typeKind(t))}<span>${esc(t)}</span></button>`).join("")
     + (current === RANDOM ? `<button class="btn" data-act="add-loctype" style="grid-column:1/-1">Add Location Type</button>` : (cat ? `<button class="btn" data-act="add-loc" style="grid-column:1/-1">+ Add new location</button>` : `<button class="btn" data-act="add-ltype" style="grid-column:1/-1">Add new location</button><button class="btn" data-act="map-conduit" style="grid-column:1/-1">Map conduit and Trench</button>` + (jobs.some(j => j.slug === current) ? "" : `<button class="btn" data-act="up-print" style="grid-column:1/-1">${(custom.find(c => c.slug === current) || {}).print ? "Change print" : "Upload print"}</button>`)));   // page 2: opens the add new type page (Steven 2026-10-03)   // + Add type lives on page 2-5 now
   const bGroups = groups.filter(isBldg);
   const list = group ? items.filter(i => i.group === group) : cat ? items.filter(i => inCat(i, cat)).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true })) : [];
@@ -2101,7 +2255,7 @@ const PAGE_NO = { main: "1", newproject: "1-1", lists: "1-2", status: "1-3", set
   project: "2", vaultlist: "2-1", addtype: "2-2", capture: "2-3", clean: "2-4", addloc: "2-5",
   print: "3", placing: "3-1", random: "4", editproject: "2-6" };
 function pageNo() { let sn = "main"; try { sn = screenNow(); } catch {} const n = PAGE_NO[sn] || "?"; return shot.running ? n + "a" : n; }
-$("ver-no").textContent = "V " + APP_VERSION.slice(8);   // day.build, e.g. V 03.12
+$("ver-no").textContent = " · V " + APP_VERSION.slice(8);   // day.build, e.g. V 03.12
 setInterval(() => {
   const t = "Page " + pageNo(); if ($("page-no").textContent !== t) $("page-no").textContent = t;
   if (!$("ask").hidden) { const a = "Page " + pageNo().replace(/a$/, "") + (shot.running ? "b" : "a"); if ($("ask-page").textContent !== a) $("ask-page").textContent = a; }
@@ -2146,12 +2300,14 @@ function applyDesign() {
   const sr = selected && data.items && data.items[selected];
   $("shot-map").hidden = !(sn === "capture" && sr && sr.lat != null && !shot.running);
   if (sr) $("shot-map").href = `map.html?p=${encodeURIComponent(current)}&n=${encodeURIComponent(selected)}`;
-  const sb = ((d.screens || {})[sn] || {}).bg || SCREEN_BG[sn];
+  // Mockup v3 look (Steven 2026-10-05): colors and sizes picked before it are set aside (kept in design.json); ones picked since (v3) still apply
+  const scr = (d.screens || {})[sn] || {}, sb = scr.v3 ? scr.bg : null;
   if (sb) css += `body{background:${sb}!important;color:${autoInk(sb) || "inherit"}}.pick-title,h2,h3,.muted,.work-proj{color:${autoInk(sb) || "inherit"}}.btn,.item,input,select,.list{color:var(--ink)}`;
-  const vars = Object.entries(th).filter(([k, v]) => THEME_VARS[k] && v).map(([k, v]) => `${THEME_VARS[k]}:${v}!important;`).join("");
+  const vars = !th.v3 ? "" : Object.entries(th).filter(([k, v]) => THEME_VARS[k] && v).map(([k, v]) => `${THEME_VARS[k]}:${v}!important;`).join("");
   if (vars) css += `:root{${vars}}`;
   for (const [sel, o] of Object.entries(d.els || {})) {
     let r = "";
+    if (!o.v3) { if (o.hide) css += `${sel}{display:none!important;}`; continue; }
     if (o.bg) r += `background:${o.bg}!important;border-color:${o.bg}!important;`;
     // no text colour picked: black on a light box, white on a dark one
     const tc = o.color || (o.bg && autoInk(o.bg));
@@ -2800,7 +2956,7 @@ let editTg = null, editPick = {};
 function editSheet(tg) {
   editTg = tg; const box = tg.el.matches("input,textarea"), o = (((design || {}).els || {})[tg.sel]) || {};
   const orig = tg.sel === "#addloc-name" ? "enter name" : tg.el.dataset.orig != null ? tg.el.dataset.orig : (box ? tg.el.placeholder : tg.el.textContent.trim());
-  tg.orig = orig; editPick = { bg: o.bg || "", size: o.size || "" };
+  tg.orig = orig; editPick = { bg: o.v3 && o.bg || "", size: o.v3 && o.size || "" };
   $("es-title").textContent = tg.locked ? "Change this button's color and size" : box ? "Edit the example in this box" : "Edit this button";
   $("es-words").hidden = !!tg.locked; $("es-locked").hidden = !tg.locked;
   $("es-text").value = o.text || (tg.sel === "#addloc-name" ? "enter name" : box ? tg.el.placeholder : tg.el.textContent.trim());
@@ -2830,6 +2986,7 @@ async function saveEdit(reset) {
     if (!reset && !box && editPick.bg) { o.bg = editPick.bg; delete o.color; } else delete o.bg;
     if (!reset && !box && editPick.size) o.size = editPick.size; else delete o.size;
     if (reset) delete o.color;
+    if (o.bg || o.size || o.color) o.v3 = true; else delete o.v3;
     if (!o.label) o.label = tg.orig.slice(0, 40) + " (page " + pageNo() + ")";
     if (!Object.keys(o).some(k => k !== "label")) delete fresh.els[tg.sel];
     fresh.updated = new Date().toISOString();
@@ -2840,7 +2997,7 @@ async function saveEdit(reset) {
 }
 document.addEventListener("click", e => {
   if (!editing || e.target.closest("#edit-sheet, #edit-bar, #ask, #settings-sheet")) return;
-  const t = e.target.closest("button, a, input, textarea, select"); if (!t || t.id === "edit-words") return;
+  const t = e.target.closest("button, a, input, textarea, select"); if (!t || t.id === "edit-words" || t.classList.contains("modebtn")) return;
   e.preventDefault(); e.stopImmediatePropagation(); if (t.matches("input,textarea")) t.blur();
   const tg = editTarget(t);
   if (!tg || tg.fixed) { toast("That one's words come from your job (names, types, statuses), so they can't be changed here."); return; }
@@ -2902,7 +3059,7 @@ render();
   <input id="lname-in" type="text" autocomplete="off" enterkeyhint="done"><button class="btn primary" id="lname-ok">OK</button><button class="btn" id="lname-cancel">Cancel</button></div></div>
 <div class="ask" id="ltype" hidden><div><span class="ask-no-label">Page 2-9b · Type of location</span><div id="ltype-msg"></div>
   <div class="list loc-list" id="ltype-list" style="max-height:55vh;overflow:auto"></div><button class="btn" id="ltype-cancel">Cancel</button></div></div>
-<div id="trk" hidden style="position:fixed;inset:0;z-index:59;background:#fff;color:#111;display:grid;grid-template-rows:auto 1fr auto;padding:16px;gap:10px">
+<div id="trk" hidden style="position:fixed;inset:0;z-index:59;background:#fff;color:#111;display:grid;grid-template-rows:auto 1fr auto;padding:16px;gap:10px"><button class="modebtn modefloat" type="button"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><g class="ic-sun"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2"/></g><g class="ic-house"><path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/></g></svg><span class="modelbl">Field mode</span></button>
   <div><span class="ask-no-label" id="trk-title" style="color:#111"></span><div id="trk-sub" style="font-size:22px;font-weight:700;line-height:1.3"></div></div>
   <canvas id="trk-cv" style="width:100%;height:100%;min-height:0;border:1px solid #ccc;border-radius:8px"></canvas>
   <button class="btn big" id="trk-stop" style="background:#e0201a;color:#fff;border-color:#e0201a">Stop</button>
