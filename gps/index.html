@@ -460,7 +460,7 @@ summary { font-weight: 600; cursor: pointer; }
 </div></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-05.54";
+const APP_VERSION = "2026-10-05.55";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -2149,6 +2149,22 @@ const CONDUIT_SIZES = ['1"', '1¼"', '1½"', '2"', '3"', '4"'];
 const SIZE_COLORS = { '1"': "#8a8f98", '2"': "#ff8c1a" };   // Steven: 1" gray, 2" orange; others not chosen yet
 function runColor(ru) { return (ru && ru.size && SIZE_COLORS[ru.size]) || "#ff8c1a"; }
 function runLabel(rn, ru, ft) { return `${rn}${ru && ru.size ? ` · ${ru.size} conduit` : ru && ru.kind === "Trench" ? " · trench" : ""} · ${Math.round(ft).toLocaleString()} ft`; }
+function verifySize(cur) {   // top button = the size now (tap to confirm), list underneath to change it
+  return new Promise(res => {
+    const done = v => { $("vsize").hidden = true; res(v); };
+    $("vsize-now").textContent = cur ? `${cur} conduit · tap to confirm` : "No size yet · pick one below";
+    $("vsize-now").disabled = !cur; $("vsize-now").onclick = () => done(cur);
+    $("vsize-list").innerHTML = [...CONDUIT_SIZES, "Other"].map((z, i) => `<button class="item" data-i="${i}" aria-current="${z === cur}"><span></span><span class="nm">${esc(z)}</span><span></span></button>`).join("");
+    $("vsize-list").onclick = async e => {
+      const b = e.target.closest("[data-i]"); if (!b) return;
+      const i = +b.dataset.i; if (i < CONDUIT_SIZES.length) { done(CONDUIT_SIZES[i]); return; }
+      $("vsize").hidden = true; const t = await askText("Enter the conduit size", 'e.g. 6"', "Page 2-9d · Conduit size");
+      if (t) done(t); else $("vsize").hidden = false;
+    };
+    $("vsize-cancel").onclick = () => done(null);
+    $("vsize").hidden = false;
+  });
+}
 async function pickSize() {
   const k = await choose("Select the conduit size", [...CONDUIT_SIZES, "Other"], "Cancel", "Page 2-9d · Conduit size");
   if (k < 0) return null;
@@ -2211,8 +2227,8 @@ $("cmap-next").onclick = async () => {
   if (norm(cm.start.name) === norm(cm.stop.name)) { toast("Start and stop must be different locations"); return; }
   $("cmap").hidden = true;
   cm.kind = await ask("Conduit or Trench?", "Conduit", "Trench", true) ? "Conduit" : "Trench";
-  if (cm.kind === "Conduit" && !cm.size) {   // asks the size only if it wasn't picked yet (Steven 2026-10-05)
-    const z = await pickSize(); if (!z) { $("cmap").hidden = false; return; }
+  if (cm.kind === "Conduit") {   // always verify the size first (Steven 2026-10-05)
+    const z = await verifySize(cm.size); if (!z) { $("cmap").hidden = false; return; }
     cm.size = z; drawCmap();
   }
   if (!await ask("Start mapping", "OK", "Cancel", true)) { $("cmap").hidden = false; return; }
@@ -2665,6 +2681,10 @@ render();
   <canvas id="trk-cv" style="width:100%;height:100%;min-height:0;border:1px solid #ccc;border-radius:8px"></canvas>
   <button class="btn big" id="trk-stop" style="background:#e0201a;color:#fff;border-color:#e0201a">Stop</button>
 </div>
+<div class="ask big" id="vsize" hidden><div><span class="ask-no-label">Page 2-9e · Verify size</span><div>Verify conduit size</div>
+  <button class="btn primary" id="vsize-now"></button>
+  <div style="font-size:18px;font-weight:600">Or pick a different size:</div>
+  <div class="list loc-list" id="vsize-list" style="max-height:40vh;overflow:auto;font-size:18px"></div><button class="btn" id="vsize-cancel">Cancel</button></div></div>
 <div class="ask" id="choose" hidden><div><span class="ask-no-label" id="choose-page">Page 2-7 · Connect</span><div id="choose-msg"></div><div class="list loc-list" id="choose-list" style="max-height:45vh;overflow:auto"></div><button class="btn" id="choose-none"></button></div></div>
 <div class="ask" id="newend" hidden><div><span class="ask-no-label">Page 2-8 · New location here</span><div>What is it?</div><div class="cats" id="newend-types"></div><label class="field"><span>Name</span><input id="newend-name" type="text" autocomplete="off" placeholder="enter name"></label><button class="btn primary" id="newend-save">Save</button><button class="btn" id="newend-cancel">Cancel</button></div></div>
 <div class="ask" id="ask" hidden><div><span class="ask-no-label" id="ask-page"></span><div id="ask-msg"></div><button class="btn primary" id="ask-yes"></button><button class="btn" id="ask-no"></button></div></div>
