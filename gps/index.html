@@ -73,8 +73,8 @@ p { margin: 6px 0; }
 .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
 .row > * { min-width: 0; }
 input::placeholder, textarea::placeholder { color: color-mix(in srgb, var(--ink) 62%, transparent); opacity: 1; }
-input[type=text], input[type=password], input[type=number] { font-size: 19px; }
-input[type=text], input[type=password], input[type=number], select {
+input[type=text], input[type=password], input[type=number], input[type=tel] { font-size: 19px; }
+input[type=text], input[type=password], input[type=number], input[type=tel], select {
   width: 100%; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); min-height: 48px;
 }
 label.field { display: grid; gap: 4px; font-weight: 600; }
@@ -233,6 +233,13 @@ summary { font-weight: 600; cursor: pointer; }
   <div id="new-project-box" class="stack" hidden>
     <h2>New project</h2>
     <label class="field"><span>Project name</span><input id="np-name" type="text" placeholder="e.g. Palisade Ave Townhomes" autocomplete="off"></label>
+    <label class="field"><span>Project address line 1</span><input id="np-addr1" type="text" placeholder="e.g. 800 Sylvan Ave" autocomplete="off"></label>
+    <label class="field"><span>Project address line 2</span><input id="np-addr2" type="text" placeholder="e.g. Englewood Cliffs, NJ 07632" autocomplete="off"></label>
+    <label class="field"><span>Contact name</span><input id="np-contact" type="text" placeholder="e.g. John Smith" autocomplete="off"></label>
+    <label class="field"><span>Contact phone number</span><input id="np-phone" type="tel" placeholder="e.g. 201-555-0123" autocomplete="off"></label>
+    <label class="field"><span>PID number</span><input id="np-pid" type="text" placeholder="e.g. 245-543" autocomplete="off"></label>
+    <button class="btn big" id="np-print">Upload print (PDF or DXF)</button>
+    <input id="np-print-file" type="file" accept=".pdf,.dxf,application/pdf" hidden>
     <button class="btn big primary" id="np-make">Create project</button>
     <button class="btn big cancel" id="np-cancel">Cancel</button>
   </div>
@@ -461,7 +468,7 @@ summary { font-weight: 600; cursor: pointer; }
 </div></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-05.57";
+const APP_VERSION = "2026-10-05.58";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -536,7 +543,7 @@ function decodeB64(s) { const bin = atob(s.replace(/\n/g, "")); return new TextD
 function allProjects() {
   const seen = new Set(), out = [];
   for (const j of jobs) { seen.add(j.slug); out.push({ name: j.name, slug: j.slug, job: true }); }
-  for (const c of custom) if (!seen.has(c.slug)) { seen.add(c.slug); out.push({ name: c.name, slug: c.slug, job: false }); }
+  for (const c of custom) if (!seen.has(c.slug)) { seen.add(c.slug); out.push({ name: c.name, slug: c.slug, job: false, info: c.info, print: c.print }); }
   return out;
 }
 function renderProjects() {
@@ -608,6 +615,9 @@ function addCustom(list) {
     const have = custom.find(c => c.slug === p.slug);
     if (!have) { custom.push({ name: p.name || p.slug, slug: p.slug }); changed = true; }
     else if (p.name && have.name !== p.name && have.name === p.slug.replace(/-/g, " ")) { have.name = p.name; changed = true; }   // real name over a file-name guess
+    const c = have || custom.find(x => x.slug === p.slug);   // project details and uploaded print travel with the project
+    if (p.info && JSON.stringify(c.info) !== JSON.stringify(p.info)) { c.info = p.info; changed = true; }
+    if (p.print && (!c.print || c.print.t !== p.print.t)) { c.print = p.print; changed = true; if (p.slug === current) loadPrint(p.slug); }
   }
   if (changed) { LS.set("custom", custom); renderProjects(); }
   return changed;
@@ -651,8 +661,12 @@ async function pushStatus(slug, st) {
   statuses[slug] = st; LS.set("status", statuses);
   if (gh.on() && !(await editProjects(d => { d.status[slug] = st; }, `GPS Shots: ${slug} is ${st}`))) toast("Status saved on this phone only");
 }
-async function pushProject(name, s) {
-  if (gh.on() && !(await editProjects(d => { if (d.removed) delete d.removed[s]; if (!d.projects.some(p => p.slug === s)) d.projects.push({ name, slug: s, t: Date.now() }); }, `GPS Shots: new project ${name}`))) toast("Project saved on this phone only for now");
+async function pushProject(name, s, info) {
+  if (gh.on() && !(await editProjects(d => {
+    if (d.removed) delete d.removed[s];
+    let p = d.projects.find(x => x.slug === s); if (!p) { p = { name, slug: s, t: Date.now() }; d.projects.push(p); }
+    if (info) p.info = info;
+  }, `GPS Shots: new project ${name}`))) toast("Project saved on this phone only for now");
 }
 function showLists(which) {
   look = which; homePanel("lists");
@@ -709,7 +723,8 @@ function goHome() {
   if (shot.running) { stopShot(true); $("hold").hidden = true; }
   try { if (placing) endPlacing(); } catch {}
   $("ask").hidden = true; $("gmap").hidden = true; $("type-box").hidden = true; adding = null;
-  for (const id of ["loc", "np-name", "proj-search", "type-name"]) $(id).value = "";
+  for (const id of ["loc", "np-name", "np-addr1", "np-addr2", "np-contact", "np-phone", "np-pid", "proj-search", "type-name"]) $(id).value = "";
+  setNpFile(null);
   projList(); locOpen = false;
   home = true; selected = group = cat = null; finding = false;
   showNewProject(false); renderProjects(); showTab("collect"); render(); window.scrollTo(0, 0);
@@ -717,13 +732,129 @@ function goHome() {
 }
 document.addEventListener("click", e => { if (e.target.closest("[data-home]")) goHome(); });
 $("np-cancel").onclick = goHome;
-$("np-make").onclick = () => {
-  const name = $("np-name").value.trim(); if (!name) { toast("Type a project name first"); return; }
-  const s = slug(name);
-  if (!allProjects().some(p => p.slug === s)) { custom.push({ name, slug: s }); LS.set("custom", custom); }
-  pushProject(name, s);
-  $("np-name").value = ""; showNewProject(false); home = false; finding = true; current = s; renderProjects(); openProject(s);
+/* new project details (Steven 2026-10-05): name, address 1 and 2, contact, phone, PID, plus the print. Kept in gps/projects.json; to be linked to BMS by PID later */
+const NP_INFO = { addr1: "np-addr1", addr2: "np-addr2", contact: "np-contact", phone: "np-phone", pid: "np-pid" };
+let npFile = null;
+function setNpFile(f) { npFile = f; $("np-print").textContent = f ? `Print: ${f.name} · tap to change` : "Upload print (PDF or DXF)"; }
+$("np-print").onclick = () => $("np-print-file").click();
+$("np-print-file").onchange = e => {
+  const f = e.target.files[0] || null; e.target.value = "";
+  if (f && !/\.(pdf|dxf)$/i.test(f.name)) { toast(/\.dwg$/i.test(f.name) ? "A DWG can't open on a phone. Save it as PDF or DXF first." : "Pick a PDF or DXF file"); return; }
+  setNpFile(f);
 };
+$("np-make").onclick = async () => {
+  const name = $("np-name").value.trim(); if (!name) { toast("Type a project name first"); return; }
+  const s = slug(name), info = {}, file = npFile;
+  for (const [k, id] of Object.entries(NP_INFO)) { const v = $(id).value.trim(); if (v) info[k] = v; }
+  let c = custom.find(x => x.slug === s);
+  if (!allProjects().some(p => p.slug === s)) { c = { name, slug: s }; custom.push(c); }
+  if (c && Object.keys(info).length) c.info = info;
+  LS.set("custom", custom);
+  for (const id of ["np-name", ...Object.values(NP_INFO)]) $(id).value = "";
+  setNpFile(null); showNewProject(false); home = false; finding = true; current = s; renderProjects(); openProject(s);
+  await pushProject(name, s, Object.keys(info).length ? info : null);
+  if (file) uploadPrint(s, file);
+};
+
+/* ---------- uploaded print (PDF page 1 as a picture, or DXF lines) in ASBUILT_MAKER gps/prints/ ---------- */
+const PDFJS = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/";
+const idb = (() => {   // the print picture is too big for localStorage, so it is kept here for working offline
+  let dbp; const open = () => dbp || (dbp = new Promise((ok, no) => { const r = indexedDB.open("gps", 1); r.onupgradeneeded = () => r.result.createObjectStore("kv"); r.onsuccess = () => ok(r.result); r.onerror = () => no(r.error); }));
+  return {
+    async get(k) { try { const db = await open(); return await new Promise(ok => { const q = db.transaction("kv").objectStore("kv").get(k); q.onsuccess = () => ok(q.result || null); q.onerror = () => ok(null); }); } catch { return null; } },
+    async set(k, v) { try { const db = await open(); db.transaction("kv", "readwrite").objectStore("kv").put(v, k); } catch {} },
+  };
+})();
+function blobB64(blob) { return new Promise((ok, no) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(",")[1]); r.onerror = () => no(r.error); r.readAsDataURL(blob); }); }
+async function ghPutFile(path, content64, message) {
+  const m = await gh.meta(path).catch(() => null), body = { message, branch: cfg.branch, content: content64 };
+  if (m && m.sha) body.sha = m.sha;
+  const r = await fetch(gh.url(path), { method: "PUT", headers: gh.headers(false), body: JSON.stringify(body) });
+  if (!r.ok) throw new Error(await errText(r));
+}
+async function pdfToJpeg(file) {
+  if (!window.pdfjsLib) await loadScript(PDFJS + "pdf.min.js");
+  pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS + "pdf.worker.min.js";
+  const pdf = await pdfjsLib.getDocument({ data: await file.arrayBuffer() }).promise, pg = await pdf.getPage(1);
+  const v1 = pg.getViewport({ scale: 1 }), k = Math.min(5000 / Math.max(v1.width, v1.height), Math.sqrt(15e6 / (v1.width * v1.height)));   // phones can't hold a bigger picture
+  const v = pg.getViewport({ scale: k }), c = document.createElement("canvas"); c.width = Math.round(v.width); c.height = Math.round(v.height);
+  const x = c.getContext("2d"); x.fillStyle = "#fff"; x.fillRect(0, 0, c.width, c.height);
+  await pg.render({ canvasContext: x, viewport: v }).promise;
+  const blob = await new Promise(ok => c.toBlob(ok, "image/jpeg", 0.85));
+  return { blob, w: c.width, h: c.height, pages: pdf.numPages };
+}
+async function dxfToPlan(text) {
+  if (!window.DxfParser) await loadScript("https://cdn.jsdelivr.net/npm/dxf-parser@1.1.2/dist/dxf-parser.js");
+  const P = window.DxfParser.default || window.DxfParser, dxf = new P().parseSync(text), blocks = dxf.blocks || {};
+  const segs = [], texts = [];
+  const clean = t => String(t).replace(/\\P/g, " ").replace(/\\[A-Za-z][^;\\]*;/g, "").replace(/[{}]/g, "").trim();
+  function walk(ents, tf, sc, depth) {
+    for (const e of ents || []) {
+      if (e.type === "LINE" && e.vertices) segs.push(e.vertices.map(tf));
+      else if ((e.type === "LWPOLYLINE" || e.type === "POLYLINE") && e.vertices && e.vertices.length > 1) { const v = e.vertices.map(tf); if (e.shape || e.closed) v.push(v[0]); segs.push(v); }
+      else if ((e.type === "CIRCLE" || e.type === "ARC") && e.center) {
+        const a0 = e.type === "CIRCLE" ? 0 : e.startAngle; let span = e.type === "CIRCLE" ? 2 * Math.PI : e.endAngle - e.startAngle; if (span <= 0) span += 2 * Math.PI;
+        const n = Math.max(8, Math.ceil(span / (Math.PI / 18))), v = [];
+        for (let i = 0; i <= n; i++) { const a = a0 + span * i / n; v.push(tf({ x: e.center.x + e.radius * Math.cos(a), y: e.center.y + e.radius * Math.sin(a) })); }
+        segs.push(v);
+      }
+      else if ((e.type === "TEXT" || e.type === "MTEXT") && e.text) { const p = e.startPoint || e.position; if (p) texts.push([tf(p), clean(e.text), (e.textHeight || e.height || 1) * sc]); }
+      else if (e.type === "INSERT" && depth < 6 && blocks[e.name]) {
+        const b = blocks[e.name], bp = b.position || { x: 0, y: 0 }, at = e.position || { x: 0, y: 0 }, xs = e.xScale || 1, ys = e.yScale || 1, r = (e.rotation || 0) * Math.PI / 180, cs = Math.cos(r), sn = Math.sin(r);
+        walk(b.entities, p => { const x = (p.x - bp.x) * xs, y = (p.y - bp.y) * ys; return tf({ x: at.x + x * cs - y * sn, y: at.y + x * sn + y * cs }); }, sc * Math.abs(xs), depth + 1);
+      }
+    }
+  }
+  walk(dxf.entities, p => ({ x: p.x, y: p.y }), 1, 0);
+  const all = segs.flat().concat(texts.map(t => t[0])); if (!all.length) throw new Error("no drawing found in this DXF");
+  const xs = all.map(p => p.x), ys = all.map(p => p.y), x0 = Math.min(...xs), y1 = Math.max(...ys), w = Math.max(...xs) - x0 || 1, h = y1 - Math.min(...ys) || 1;
+  const k = 4000 / Math.max(w, h), pad = 40, X = p => Math.round(((p.x - x0) * k + pad) * 10) / 10, Y = p => Math.round(((y1 - p.y) * k + pad) * 10) / 10;   // north (DXF up) stays up
+  return { size: [Math.round(w * k + 2 * pad), Math.round(h * k + 2 * pad)], lines: segs.map(v => ["#000000", 1, v.flatMap(p => [X(p), Y(p)])]), texts: texts.filter(t => t[1]).map(([p, t, z]) => [X(p), Y(p), t, Math.max(4, Math.round(z * k))]) };
+}
+async function uploadPrint(s, file) {
+  if (!gh.on()) { toast("Needs the GitHub key to upload a print (open from the Home Screen icon)"); return; }
+  toast("Reading the print…");
+  try {
+    const dxf = /\.dxf$/i.test(file.name), t = Date.now(), path = `gps/prints/${s}.${dxf ? "json" : "jpg"}`;
+    let rec, cache;
+    if (dxf) {
+      const plan = await dxfToPlan(await file.text());
+      toast("Uploading the print…"); await ghPutFile(path, b64(JSON.stringify(plan)), `GPS Shots: print for ${s} (${file.name})`);
+      rec = { kind: "dxf", path, size: plan.size, file: file.name, t }; cache = { t, plan };
+    } else {
+      const { blob, w, h, pages } = await pdfToJpeg(file);
+      toast("Uploading the print…"); await ghPutFile(path, await blobB64(blob), `GPS Shots: print for ${s} (${file.name})`);
+      rec = { kind: "pdf", path, size: [w, h], file: file.name, t, pages }; cache = { t, blob };
+    }
+    await idb.set("print." + s, cache);
+    const c = custom.find(x => x.slug === s); if (c) { c.print = rec; LS.set("custom", custom); }
+    await editProjects(d => { const p = d.projects.find(x => x.slug === s); if (p) p.print = rec; }, `GPS Shots: print for ${s}`);
+    if (current === s) await loadPrint(s);
+    toast(rec.pages > 1 ? `Print uploaded. The PDF has ${rec.pages} pages; page 1 is the print.` : "Print uploaded");
+  } catch (e) { toast("Couldn't upload the print: " + e.message); }
+}
+async function loadPrint(s) {   // an uploaded print turns a plain project into one with a print to plot on
+  const c = custom.find(x => x.slug === s), pr = c && c.print; if (!pr || jobs.some(j => j.slug === s)) return;
+  let got = await idb.get("print." + s);
+  if (!got || got.t !== pr.t) {
+    if (!gh.on()) return;
+    try {
+      const r = await fetch(gh.url(pr.path) + "?ref=" + encodeURIComponent(cfg.branch) + "&t=" + pr.t, { headers: gh.headers(true) });
+      if (!r.ok) return;
+      got = pr.kind === "dxf" ? { t: pr.t, plan: await r.json() } : { t: pr.t, blob: await r.blob() };
+      idb.set("print." + s, got);
+    } catch { return; }
+  }
+  let plan = got.plan;
+  if (!plan) {
+    const img = new Image(), url = URL.createObjectURL(got.blob);
+    await new Promise(ok => { img.onload = ok; img.onerror = ok; img.src = url; });
+    plan = { size: pr.size, lines: [], texts: [], img };
+  }
+  if (current !== s) return;
+  job = { items: [], buildings: [], plan, uploaded: true }; view.fitted = false;
+  render(); if (!$("tab-print").hidden) drawPrint();
+}
 
 async function openProject(s) {
   current = s; LS.set("current", s); group = null; selected = null; cat = null; stopShot(true);
@@ -735,6 +866,7 @@ async function openProject(s) {
     try { const j = await gh.raw(`gps/jobs/${s}.json`); if (j) { job = j; LS.set("job." + s, j) || null; render(); } }
     catch (e) { setSync("err", "Offline"); }
   }
+  if (p && !p.job && p.print) loadPrint(s);
   pull(); loadPool();
 }
 
@@ -1556,6 +1688,7 @@ function drawPrint() {
   }
   ctx.save(); ctx.translate(view.x, view.y); ctx.scale(view.s, view.s);
   const c1 = css("--plan"), c2 = css("--plan2");
+  if (job.plan.img) ctx.drawImage(job.plan.img, 0, 0, job.plan.size[0], job.plan.size[1]);   // uploaded PDF print
   ctx.lineCap = "round"; ctx.lineJoin = "round";
   const full = $("cbox").classList.contains("full");
   for (const [col, w, pts] of job.plan.lines) {
