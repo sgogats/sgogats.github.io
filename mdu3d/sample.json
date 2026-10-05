@@ -1,0 +1,670 @@
+{
+ "project": {
+  "id": "PRJ-000021",
+  "name": "Riverside Foods HQ - Low Voltage Riser",
+  "address": "14 Mill Road"
+ },
+ "customer": {
+  "id": "CUS-000007",
+  "name": "Riverside Foods"
+ },
+ "sheet": {
+  "title": "Low Voltage Riser Diagram - As-Built",
+  "number": "AB-101"
+ },
+ "floors": [
+  {
+   "id": "L4",
+   "name": "Level 4"
+  },
+  {
+   "id": "L3",
+   "name": "Level 3"
+  },
+  {
+   "id": "L2",
+   "name": "Level 2"
+  },
+  {
+   "id": "L1",
+   "name": "Level 1"
+  },
+  {
+   "id": "B1",
+   "name": "Basement"
+  }
+ ],
+ "rooms": [
+  {
+   "id": "MDF",
+   "floor": "B1",
+   "label": "MDF B-01 (Main Dist.)",
+   "planned": {
+    "Rack": "42U",
+    "Core switch": "2x 48p 10G",
+    "Fiber panel": "48 strand",
+    "UPS": "3 kVA"
+   },
+   "actual": {
+    "Rack": "42U",
+    "Core switch": "2x 48p 10G",
+    "Fiber panel": "48 strand",
+    "UPS": "5 kVA"
+   },
+   "location": {
+    "id": "LOC-000101",
+    "planned": "Bsmt Rm B-01",
+    "actual": "Bsmt Rm B-01",
+    "verified": true
+   }
+  },
+  {
+   "id": "IDF1",
+   "floor": "L1",
+   "label": "IDF 1-01",
+   "planned": {
+    "Access switch": "48p PoE",
+    "Data drops": 44,
+    "Wi-Fi APs": 4,
+    "Cameras": 6,
+    "Card readers": 4
+   },
+   "actual": {
+    "Access switch": "48p PoE",
+    "Data drops": 44,
+    "Wi-Fi APs": 4,
+    "Cameras": 6,
+    "Card readers": 4
+   },
+   "location": {
+    "id": "LOC-000111",
+    "planned": "Rm 1-14",
+    "actual": "Rm 1-14",
+    "verified": true
+   }
+  },
+  {
+   "id": "IDF2",
+   "floor": "L2",
+   "label": "IDF 2-01",
+   "planned": {
+    "Access switch": "48p PoE",
+    "Data drops": 40,
+    "Wi-Fi APs": 4,
+    "Cameras": 3,
+    "Card readers": 2
+   },
+   "actual": {
+    "Access switch": "48p PoE",
+    "Data drops": 46,
+    "Wi-Fi APs": 5,
+    "Cameras": 3,
+    "Card readers": 2
+   },
+   "location": {
+    "id": "LOC-000121",
+    "planned": "Rm 2-14",
+    "actual": "Rm 2-16",
+    "verified": true
+   }
+  },
+  {
+   "id": "IDF3",
+   "floor": "L3",
+   "label": "IDF 3-01",
+   "planned": {
+    "Access switch": "24p PoE",
+    "Data drops": 30,
+    "Wi-Fi APs": 3,
+    "Cameras": 2,
+    "Card readers": 2
+   },
+   "actual": {
+    "Access switch": "48p PoE",
+    "Data drops": 30,
+    "Wi-Fi APs": 3,
+    "Cameras": 2,
+    "Card readers": 2
+   },
+   "location": {
+    "id": "LOC-000131",
+    "planned": "Rm 3-14",
+    "actual": "Rm 3-14",
+    "verified": true
+   }
+  },
+  {
+   "id": "IDF4",
+   "floor": "L4",
+   "label": "IDF 4-01",
+   "planned": {
+    "Access switch": "24p PoE",
+    "Data drops": 28,
+    "Wi-Fi APs": 3,
+    "Cameras": 2,
+    "Card readers": 1
+   },
+   "actual": null,
+   "location": {
+    "id": "LOC-000141",
+    "planned": "Rm 4-14",
+    "actual": "Rm 4-14",
+    "verified": true
+   }
+  },
+  {
+   "id": "IDF4A",
+   "floor": "L4",
+   "label": "IDF 4-02 (North wing)",
+   "planned": null,
+   "actual": {
+    "Access switch": "24p PoE",
+    "Data drops": 28,
+    "Wi-Fi APs": 3,
+    "Cameras": 2,
+    "Card readers": 1
+   },
+   "location": {
+    "actual": "closet by north stairs",
+    "verified": false
+   }
+  }
+ ],
+ "backbones": [
+  {
+   "id": "BB1",
+   "from": "MDF",
+   "to": "IDF1",
+   "planned": {
+    "Cable": "SM fiber 12-strand",
+    "Length ft": 90
+   },
+   "actual": {
+    "Cable": "SM fiber 12-strand",
+    "Length ft": 96
+   }
+  },
+  {
+   "id": "BB2",
+   "from": "IDF1",
+   "to": "IDF2",
+   "planned": {
+    "Cable": "SM fiber 12-strand",
+    "Length ft": 55
+   },
+   "actual": {
+    "Cable": "SM fiber 12-strand",
+    "Length ft": 55
+   }
+  },
+  {
+   "id": "BB3",
+   "from": "IDF2",
+   "to": "IDF3",
+   "planned": {
+    "Cable": "SM fiber 12-strand",
+    "Length ft": 55
+   },
+   "actual": {
+    "Cable": "SM fiber 24-strand",
+    "Length ft": 58
+   }
+  },
+  {
+   "id": "BB4",
+   "from": "IDF3",
+   "to": "IDF4",
+   "planned": {
+    "Cable": "SM fiber 12-strand",
+    "Length ft": 55
+   },
+   "actual": null
+  },
+  {
+   "id": "BB5",
+   "from": "IDF3",
+   "to": "IDF4A",
+   "planned": null,
+   "actual": {
+    "Cable": "SM fiber 12-strand",
+    "Length ft": 72
+   }
+  },
+  {
+   "id": "CU1",
+   "from": "MDF",
+   "to": "IDF3",
+   "planned": {
+    "Cable": "Cat6A voice tie",
+    "Length ft": 210
+   },
+   "actual": {
+    "Cable": "Cat6A voice tie",
+    "Length ft": 210
+   }
+  }
+ ],
+ "revision": {
+  "number": 1,
+  "date": "2026-09-29",
+  "prepared_by": "auto (BMS As-Builts)",
+  "source": "Work Order WO-000112 field report"
+ },
+ "nids": [
+  {
+   "id": "NID-1-01",
+   "floor": "L1",
+   "planned": {
+    "unit": "101",
+    "location": "1st closet",
+    "x": 0.13,
+    "y": 0.2
+   },
+   "actual": null
+  },
+  {
+   "id": "NID-1-02",
+   "floor": "L1",
+   "planned": {
+    "unit": "102",
+    "location": "1st closet",
+    "x": 0.5,
+    "y": 0.2
+   },
+   "actual": null
+  },
+  {
+   "id": "NID-1-03",
+   "floor": "L1",
+   "planned": {
+    "unit": "103",
+    "location": "1st closet",
+    "x": 0.88,
+    "y": 0.2
+   },
+   "actual": null
+  },
+  {
+   "id": "NID-2-01",
+   "floor": "L2",
+   "planned": {
+    "unit": "201",
+    "location": "1st closet",
+    "x": 0.17,
+    "y": 0.22
+   },
+   "actual": null
+  },
+  {
+   "id": "NID-2-02",
+   "floor": "L2",
+   "planned": {
+    "unit": "202",
+    "location": "1st closet",
+    "x": 0.5,
+    "y": 0.2
+   },
+   "actual": null
+  },
+  {
+   "id": "NID-2-03",
+   "floor": "L2",
+   "planned": {
+    "unit": "203",
+    "location": "1st closet",
+    "x": 0.87,
+    "y": 0.23
+   },
+   "actual": null
+  },
+  {
+   "id": "NID-2-04",
+   "floor": "L2",
+   "planned": {
+    "unit": "204",
+    "location": "1st closet",
+    "x": 0.17,
+    "y": 0.72
+   },
+   "actual": null
+  },
+  {
+   "id": "NID-2-05",
+   "floor": "L2",
+   "planned": {
+    "unit": "205",
+    "location": "1st closet",
+    "x": 0.52,
+    "y": 0.72
+   },
+   "actual": null
+  },
+  {
+   "id": "NID-3-01",
+   "floor": "L3",
+   "planned": {
+    "unit": "301",
+    "location": "1st closet",
+    "x": 0.17,
+    "y": 0.22
+   },
+   "actual": null
+  },
+  {
+   "id": "NID-3-02",
+   "floor": "L3",
+   "planned": {
+    "unit": "302",
+    "location": "1st closet",
+    "x": 0.5,
+    "y": 0.2
+   },
+   "actual": null
+  },
+  {
+   "id": "NID-3-03",
+   "floor": "L3",
+   "planned": {
+    "unit": "303",
+    "location": "1st closet",
+    "x": 0.87,
+    "y": 0.23
+   },
+   "actual": null
+  },
+  {
+   "id": "NID-3-04",
+   "floor": "L3",
+   "planned": {
+    "unit": "304",
+    "location": "1st closet",
+    "x": 0.17,
+    "y": 0.72
+   },
+   "actual": null
+  },
+  {
+   "id": "NID-3-05",
+   "floor": "L3",
+   "planned": {
+    "unit": "305",
+    "location": "1st closet",
+    "x": 0.52,
+    "y": 0.72
+   },
+   "actual": null
+  },
+  {
+   "id": "NID-4-01",
+   "floor": "L4",
+   "planned": {
+    "unit": "401",
+    "location": "1st closet",
+    "x": 0.17,
+    "y": 0.22
+   },
+   "actual": null
+  },
+  {
+   "id": "NID-4-02",
+   "floor": "L4",
+   "planned": {
+    "unit": "402",
+    "location": "1st closet",
+    "x": 0.5,
+    "y": 0.2
+   },
+   "actual": null
+  },
+  {
+   "id": "NID-4-03",
+   "floor": "L4",
+   "planned": {
+    "unit": "403",
+    "location": "1st closet",
+    "x": 0.87,
+    "y": 0.23
+   },
+   "actual": null
+  }
+ ],
+ "plans": {
+  "L1": {
+   "ft_per_page_width": 180,
+   "idf": {
+    "x": 0.03,
+    "y": 0.5
+   },
+   "hallway": [
+    [
+     0.03,
+     0.5
+    ],
+    [
+     0.97,
+     0.5
+    ]
+   ],
+   "closets": {
+    "101": [
+     [
+      0.13,
+      0.2
+     ],
+     [
+      0.19,
+      0.3
+     ]
+    ],
+    "102": [
+     [
+      0.5,
+      0.2
+     ],
+     [
+      0.56,
+      0.3
+     ]
+    ],
+    "103": [
+     [
+      0.88,
+      0.2
+     ],
+     [
+      0.94,
+      0.3
+     ]
+    ]
+   }
+  },
+  "L2": {
+   "ft_per_page_width": 180,
+   "idf": {
+    "x": 0.03,
+    "y": 0.5
+   },
+   "hallway": [
+    [
+     0.03,
+     0.5
+    ],
+    [
+     0.97,
+     0.5
+    ]
+   ],
+   "closets": {
+    "201": [
+     [
+      0.17,
+      0.22
+     ],
+     [
+      0.23,
+      0.32
+     ]
+    ],
+    "202": [
+     [
+      0.5,
+      0.2
+     ],
+     [
+      0.56,
+      0.3
+     ]
+    ],
+    "203": [
+     [
+      0.87,
+      0.23
+     ],
+     [
+      0.93,
+      0.33
+     ]
+    ],
+    "204": [
+     [
+      0.17,
+      0.72
+     ],
+     [
+      0.23,
+      0.82
+     ]
+    ],
+    "205": [
+     [
+      0.52,
+      0.72
+     ],
+     [
+      0.58,
+      0.82
+     ]
+    ]
+   }
+  },
+  "L3": {
+   "ft_per_page_width": 180,
+   "idf": {
+    "x": 0.03,
+    "y": 0.5
+   },
+   "hallway": [
+    [
+     0.03,
+     0.5
+    ],
+    [
+     0.97,
+     0.5
+    ]
+   ],
+   "closets": {
+    "301": [
+     [
+      0.17,
+      0.22
+     ],
+     [
+      0.23,
+      0.32
+     ]
+    ],
+    "302": [
+     [
+      0.5,
+      0.2
+     ],
+     [
+      0.56,
+      0.3
+     ]
+    ],
+    "303": [
+     [
+      0.87,
+      0.23
+     ],
+     [
+      0.93,
+      0.33
+     ]
+    ],
+    "304": [
+     [
+      0.17,
+      0.72
+     ],
+     [
+      0.23,
+      0.82
+     ]
+    ],
+    "305": [
+     [
+      0.52,
+      0.72
+     ],
+     [
+      0.58,
+      0.82
+     ]
+    ]
+   }
+  },
+  "L4": {
+   "ft_per_page_width": 180,
+   "idf": {
+    "x": 0.03,
+    "y": 0.5
+   },
+   "hallway": [
+    [
+     0.03,
+     0.5
+    ],
+    [
+     0.97,
+     0.5
+    ]
+   ],
+   "closets": {
+    "401": [
+     [
+      0.17,
+      0.22
+     ],
+     [
+      0.23,
+      0.32
+     ]
+    ],
+    "402": [
+     [
+      0.5,
+      0.2
+     ],
+     [
+      0.56,
+      0.3
+     ]
+    ],
+    "403": [
+     [
+      0.87,
+      0.23
+     ],
+     [
+      0.93,
+      0.33
+     ]
+    ]
+   }
+  }
+ },
+ "floor_height_ft": 10
+}

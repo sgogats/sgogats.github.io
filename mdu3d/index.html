@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>3D Building</title>
+<style>
+  :root { --bg:#eef1f4; --bar:#ffffff; --ink:#1d2733; --muted:#5b6876; --btn:#1f6feb; --btn-ink:#fff; --line:#d6dce3; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { --bg:#12161b; --bar:#1b2128; --ink:#e6edf3; --muted:#9aa7b4; --btn:#2f81f7; --btn-ink:#fff; --line:#2c343d; }
+  }
+  * { box-sizing:border-box; }
+  html, body { margin:0; height:100%; background:var(--bg); color:var(--ink); font:16px/1.3 -apple-system, system-ui, sans-serif; overflow:hidden; }
+  #bar { position:fixed; top:0; left:0; right:0; z-index:5; background:var(--bar); border-bottom:1px solid var(--line);
+         padding:8px 12px; display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+  #bar h1 { font-size:17px; margin:0 8px 0 0; }
+  #bar .ver { color:var(--muted); font-size:13px; }
+  button, label.btn { background:var(--btn); color:var(--btn-ink); border:0; border-radius:8px; padding:9px 12px; font-size:15px; cursor:pointer; }
+  button.plain { background:transparent; color:var(--btn); border:1px solid var(--line); }
+  .count { display:flex; align-items:center; gap:6px; }
+  .count b { min-width:22px; text-align:center; }
+  #view { position:fixed; inset:0; touch-action:none; }
+  #msg { position:fixed; left:12px; right:12px; bottom:12px; z-index:5; background:var(--bar); border:1px solid var(--line);
+         border-radius:10px; padding:10px 12px; font-size:15px; }
+  #page { position:fixed; right:10px; bottom:10px; z-index:6; color:var(--muted); font-size:12px; }
+  input[type=file] { display:none; }
+</style>
+</head>
+<body>
+<div id="bar">
+  <h1>3D Building</h1><span class="ver" id="ver"></span>
+  <label class="btn">Open my print<input id="printFile" type="file" accept="application/pdf,image/*"></label>
+  <label class="btn">Open job file<input id="jobFile" type="file" accept=".json,application/json"></label>
+  <span class="count">Floors <button class="plain" id="less">−</button><b id="nFloors">4</b><button class="plain" id="more">+</button></span>
+  <span class="count">Spread floors <button class="plain" id="sless">−</button><b id="spread">3x</b><button class="plain" id="smore">+</button></span>
+  <button class="plain" id="reset">Reset view</button>
+</div>
+<div id="view"></div>
+<div id="msg">Loading…</div>
+<div id="page">Page 3D-1</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+<script type="module">
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+
+const APP_VERSION = "V 01.00";
+document.getElementById("ver").textContent = APP_VERSION;
+pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+
+const $ = id => document.getElementById(id);
+const say = t => { $("msg").textContent = t; $("msg").style.display = t ? "" : "none"; };
+
+// ---------------------------------------------------------------- scene
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+$("view").appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+const dark = matchMedia("(prefers-color-scheme: dark)").matches;
+scene.background = new THREE.Color(dark ? 0x12161b : 0xeef1f4);
+const camera = new THREE.PerspectiveCamera(45, 1, 1, 5000);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
+scene.add(new THREE.AmbientLight(0xffffff, 0.9));
+const sun = new THREE.DirectionalLight(0xffffff, 0.6); sun.position.set(200, 400, 150); scene.add(sun);
+let building = new THREE.Group(); scene.add(building);
+
+function resize() {
+  const w = innerWidth, h = innerHeight;
+  renderer.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix();
+}
+addEventListener("resize", resize); resize();
+(function loop() { requestAnimationFrame(loop); controls.update(); renderer.render(scene, camera); })();
+
+// ---------------------------------------------------------------- data
+let job = null;          // the building app's job file (same shape as its "export to json")
+let printCanvas = null;  // the print as a picture
+let nFloors = 4;
+let spread = 3;          // floors drawn this many times further apart than real, so the fiber on each floor is easy to see
+
+async function pdfToCanvas(data) {
+  const pdf = await pdfjsLib.getDocument({ data }).promise;
+  const page = await pdf.getPage(1);
+  const base = page.getViewport({ scale: 1 });
+  const scale = Math.min(4, 3000 / Math.max(base.width, base.height));   // sharp but small enough for an iPad
+  const vp = page.getViewport({ scale });
+  const c = document.createElement("canvas"); c.width = vp.width; c.height = vp.height;
+  const ctx = c.getContext("2d"); ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, c.width, c.height);
+  await page.render({ canvasContext: ctx, viewport: vp }).promise;
+  return c;
+}
+async function imageToCanvas(file) {
+  const img = await createImageBitmap(file);
+  const s = Math.min(1, 3000 / Math.max(img.width, img.height));
+  const c = document.createElement("canvas"); c.width = img.width * s; c.height = img.height * s;
+  c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+  return c;
+}
+
+// Floors that hold apartments, bottom first (the basement is left out)
+function aptFloors() {
+  const fl = (job.floors || []).filter(f => /^L\d+$/.test(f.id));
+  return fl.sort((a, b) => +a.id.slice(1) - +b.id.slice(1));
+}
+const pos = n => (n.actual && n.actual.x != null) ? n.actual : n.planned;
+
+// Same idea as the building app's hallway route: out to the hallway, along it, off to the NID
+function nearestOnLine(p, line) {
+  let best = null, acc = 0;
+  for (let i = 0; i < line.length - 1; i++) {
+    const [ax, ay] = line[i], [bx, by] = line[i + 1];
+    const L = Math.hypot(bx - ax, by - ay) || 1e-9;
+    const t = Math.max(0, Math.min(1, ((p[0] - ax) * (bx - ax) + (p[1] - ay) * (by - ay)) / L / L));
+    const q = [ax + t * (bx - ax), ay + t * (by - ay)];
+    const d = Math.hypot(p[0] - q[0], p[1] - q[1]);
+    if (!best || d < best.d) best = { d, s: acc + t * L, q };
+    acc += L;
+  }
+  return best;
+}
+function hallwayRoute(a, b, hall) {
+  if (!hall || hall.length < 2) return [a, b];
+  const A = nearestOnLine(a, hall), B = nearestOnLine(b, hall);
+  const lo = Math.min(A.s, B.s), hi = Math.max(A.s, B.s), mid = []; let acc = 0;
+  for (let i = 0; i < hall.length - 1; i++) {
+    acc += Math.hypot(hall[i + 1][0] - hall[i][0], hall[i + 1][1] - hall[i][1]);
+    if (acc > lo && acc < hi) mid.push(hall[i + 1]);
+  }
+  if (A.s > B.s) mid.reverse();
+  return [a, A.q, ...mid, B.q, b];
+}
+
+let labelH = 4;
+function label(text, color = "#1d2733", size = 40) {
+  const c = document.createElement("canvas"), ctx = c.getContext("2d");
+  ctx.font = `bold ${size}px sans-serif`;
+  c.width = Math.ceil(ctx.measureText(text).width) + 24; c.height = size + 20;
+  ctx.font = `bold ${size}px sans-serif`;
+  ctx.fillStyle = "rgba(255,255,255,0.9)"; ctx.fillRect(0, 0, c.width, c.height);
+  ctx.fillStyle = color; ctx.textBaseline = "middle"; ctx.fillText(text, 12, c.height / 2);
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), depthTest: false }));
+  sp.scale.set(c.width / c.height * labelH, labelH, 1); sp.renderOrder = 10;
+  return sp;
+}
+
+// ---------------------------------------------------------------- build the 3D building
+function build() {
+  scene.remove(building); building = new THREE.Group(); scene.add(building);
+  const floors = aptFloors();
+  const plan0 = (job.plans || {})[floors[0]?.id] || {};
+  const W = plan0.ft_per_page_width || 180;                       // print width in feet
+  const H = printCanvas ? W * printCanvas.height / printCanvas.width : W * 0.7;
+  const realFH = job.floor_height_ft || 10, FH = realFH * spread;
+  labelH = Math.max(3, W / 45);
+  const at = (x, y, level) => new THREE.Vector3((x - 0.5) * W, level * FH + 0.3, (y - 0.5) * H);
+
+  const tex = printCanvas ? new THREE.CanvasTexture(printCanvas) : null;
+  if (tex) { tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = renderer.capabilities.getMaxAnisotropy(); }
+  const slabMat = new THREE.MeshBasicMaterial({ map: tex, color: tex ? 0xffffff : 0xdfe5ea, side: THREE.DoubleSide, transparent: true, opacity: 0.65, depthWrite: false });
+  const nidMat = new THREE.MeshLambertMaterial({ color: 0x1f6feb });
+  const fiberMat = new THREE.MeshLambertMaterial({ color: 0xf08c00 });
+  const riserMat = new THREE.MeshLambertMaterial({ color: 0xd62828 });
+
+  const shown = [];
+  for (let i = 0; i < nFloors; i++) shown.push(floors[i] || { id: "L" + (i + 1), name: "Level " + (i + 1), extra: true });
+
+  let riserSpot = null;
+  shown.forEach((fl, level) => {
+    const plan = (job.plans || {})[fl.id] || plan0;
+    // the floor: the print laid flat, with a thin edge so it reads as a slab
+    const slab = new THREE.Mesh(new THREE.PlaneGeometry(W, H), slabMat);
+    slab.rotation.x = -Math.PI / 2; slab.position.y = level * FH; building.add(slab);
+    const edge = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(W, 0.01, H)),
+                                        new THREE.LineBasicMaterial({ color: 0x5b6876 }));
+    edge.position.y = level * FH; building.add(edge);
+    const fl_lab = label(fl.name || fl.id, "#1d2733", 48); fl_lab.position.set(-W / 2 - labelH * 3, level * FH + labelH * 0.5, H / 2); building.add(fl_lab);
+
+    // where the fiber starts on this floor: its lockbox if one is placed, else the IDF / closet spot
+    const lb = (job.lockboxes || []).find(l => l.floor === fl.id && l.actual && l.actual.x != null);
+    const idf = plan.idf || plan0.idf || { x: 0.03, y: 0.5 };
+    const origin = lb ? [lb.actual.x, lb.actual.y] : [idf.x, idf.y];
+    if (!riserSpot) riserSpot = origin;
+
+    const nids = (job.nids || []).filter(n => n.floor === fl.id && pos(n) && pos(n).x != null);
+    const box = new THREE.BoxGeometry(labelH * 0.6, labelH * 0.6, labelH * 0.6);
+    nids.forEach(n => {
+      const p = pos(n);
+      const m = new THREE.Mesh(box, nidMat); m.position.copy(at(p.x, p.y, level)).add(new THREE.Vector3(0, labelH * 0.3, 0)); building.add(m);
+      const t = label(String(p.unit || n.id), "#1f6feb", 36); t.position.copy(m.position).add(new THREE.Vector3(0, labelH * 1.2, 0)); building.add(t);
+      const route = hallwayRoute(origin, [p.x, p.y], plan.hallway || plan0.hallway);
+      const pts = route.map(([x, y]) => at(x, y, level));
+      for (let k = 0; k < pts.length - 1; k++) building.add(tube(pts[k], pts[k + 1], labelH * 0.1, fiberMat));
+    });
+  });
+
+  // riser: straight up through every floor at the starting spot
+  if (riserSpot && shown.length > 1) {
+    building.add(tube(at(riserSpot[0], riserSpot[1], 0), at(riserSpot[0], riserSpot[1], shown.length - 1), labelH * 0.16, riserMat));
+  }
+
+  const missing = shown.filter(f => f.extra).length;
+  say((printCanvas ? "" : "No print yet: tap Open my print. ") +
+      `${shown.length} floors, ${realFH} ft apart` + (spread > 1 ? ` (drawn ${spread}x taller so you can see each floor).` : ".") + ` Orange = fiber, red = riser, blue = NIDs.` +
+      (missing ? ` ${missing} floor(s) have no NIDs in the job file.` : "") +
+      " One finger spins, two fingers zoom and move.");
+  frame(W, H, FH * Math.max(1, shown.length - 1));
+}
+
+function tube(a, b, r, mat) {
+  const len = a.distanceTo(b); if (len < 0.01) return new THREE.Group();
+  const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, len, 8), mat);
+  m.position.copy(a).add(b).multiplyScalar(0.5);
+  m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.clone().sub(a).normalize());
+  return m;
+}
+
+function frame(W, H, tall) {
+  const size = Math.max(W, H, tall);
+  controls.target.set(0, tall / 2, 0);
+  const v = THREE.MathUtils.degToRad(camera.fov) / 2, h = Math.atan(Math.tan(v) * camera.aspect);
+  const dist = size * 0.6 / Math.tan(Math.min(v, h));          // back far enough that the whole building fits, portrait or landscape
+  const dir = new THREE.Vector3(0.55, 0.45, 0.75).normalize();
+  camera.position.copy(controls.target).addScaledVector(dir, dist);
+  camera.far = size * 20; camera.updateProjectionMatrix(); controls.update();
+}
+
+// ---------------------------------------------------------------- buttons
+$("printFile").onchange = async e => {
+  const f = e.target.files[0]; if (!f) return;
+  say("Reading your print…");
+  try {
+    printCanvas = /pdf$/i.test(f.type) || /\.pdf$/i.test(f.name) ? await pdfToCanvas(new Uint8Array(await f.arrayBuffer())) : await imageToCanvas(f);
+    build();
+  } catch (err) { say("Could not read that print: " + err.message); }
+  e.target.value = "";
+};
+$("jobFile").onchange = async e => {
+  const f = e.target.files[0]; if (!f) return;
+  try { job = JSON.parse(await f.text()); nFloors = Math.max(1, aptFloors().length || 4); $("nFloors").textContent = nFloors; build(); }
+  catch (err) { say("Could not read that job file: " + err.message); }
+  e.target.value = "";
+};
+$("less").onclick = () => { if (nFloors > 1) { nFloors--; $("nFloors").textContent = nFloors; build(); } };
+$("more").onclick = () => { if (nFloors < 30) { nFloors++; $("nFloors").textContent = nFloors; build(); } };
+const setSpread = d => { spread = Math.max(1, Math.min(8, spread + d)); $("spread").textContent = spread + "x"; build(); };
+$("sless").onclick = () => setSpread(-1);
+$("smore").onclick = () => setSpread(1);
+$("reset").onclick = () => build();
+
+// start with the sample job and sample print so there is something to spin right away
+(async () => {
+  try {
+    job = await (await fetch("sample.json")).json();
+    nFloors = Math.max(1, aptFloors().length || 4); $("nFloors").textContent = nFloors;
+    printCanvas = await pdfToCanvas(new Uint8Array(await (await fetch("sample_print.pdf")).arrayBuffer()));
+  } catch (err) { console.warn(err); job = job || { floors: [], nids: [], plans: {} }; }
+  build();
+})();
+</script>
+</body>
+</html>
