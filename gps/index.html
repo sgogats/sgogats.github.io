@@ -86,7 +86,7 @@ label.field span { font: 600 14px/1 var(--display); letter-spacing: .08em; text-
 .btn:disabled { opacity: .5; }
 .btn.st-now, .btn.st-now:disabled { background: #b9f0c4; border-color: #7bd68f; color: #0b3d17; opacity: 1; }
 .btn.st-now { position: relative; overflow: hidden; pointer-events: none; }
-.btn.st-now::after { content: "CURRENT STATUS"; position: absolute; inset: 0; display: grid; place-items: center; background: #e0201a; color: #fff; font: 800 26px/1 var(--display); letter-spacing: .04em; animation: st-flash 1.6s steps(1) infinite; }
+.btn.st-now::after { content: "CURRENT STATUS"; }
 @keyframes st-flash { 0% { opacity: 1; } 50% { opacity: 0; } }
 .btn.st-pick { background: var(--accent) !important; color: #fff !important; border-color: var(--accent) !important; }
 .btn:focus-visible, .tabs button:focus-visible, .item:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
@@ -334,6 +334,70 @@ html.field .seg button[aria-pressed="true"] { background: var(--accent); color: 
 .chips button[aria-pressed="true"] { border-color: var(--accent); background: var(--brand-lt); color: var(--brand-dk); }
 html.field .chips button { min-height: 48px; border-radius: 8px; border-width: 2px; background: var(--card2); font-weight: 800; font-size: 16px; }
 html.field .chips button[aria-pressed="true"] { border-color: var(--accent); background: var(--brand-lt); color: var(--accent); }
+
+/* icons on buttons, like Mockup v3 (drawn with CSS so saved words never remove them) */
+#random-btn, #addloc-make { --ic: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2024%2024%22%3E%3Cpath%20fill%3D%22none%22%20stroke%3D%22%23000%22%20stroke-width%3D%222%22%20d%3D%22M12%2022s7-6.2%207-12a7%207%200%201%200-14%200c0%205.8%207%2012%207%2012Z%22/%3E%3Ccircle%20cx%3D%2212%22%20cy%3D%2210%22%20r%3D%222.5%22%20fill%3D%22none%22%20stroke%3D%22%23000%22%20stroke-width%3D%222%22/%3E%3C/svg%3E"); }
+#np-print, [data-act="up-print"] { --ic: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2024%2024%22%3E%3Cpath%20fill%3D%22none%22%20stroke%3D%22%23000%22%20stroke-width%3D%222%22%20stroke-linejoin%3D%22round%22%20d%3D%22M14%203H6v18h12V7l-4-4Zm0%200v4h4M12%2011v6m-3-3%203-3%203%203%22/%3E%3C/svg%3E"); }
+[data-act="add-ltype"], [data-act="add-loctype"] { --ic: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2024%2024%22%3E%3Cpath%20stroke%3D%22%23000%22%20stroke-width%3D%222.5%22%20stroke-linecap%3D%22round%22%20d%3D%22M12%205v14M5%2012h14%22/%3E%3C/svg%3E"); }
+[data-act="map-conduit"] { --ic: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2024%2024%22%3E%3Ccircle%20cx%3D%226%22%20cy%3D%2219%22%20r%3D%222.5%22%20fill%3D%22none%22%20stroke%3D%22%23000%22%20stroke-width%3D%222%22/%3E%3Ccircle%20cx%3D%2218%22%20cy%3D%225%22%20r%3D%222.5%22%20fill%3D%22none%22%20stroke%3D%22%23000%22%20stroke-width%3D%222%22/%3E%3Cpath%20fill%3D%22none%22%20stroke%3D%22%23000%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20d%3D%22M8.5%2019H15a3.5%203.5%200%200%200%200-7H9a3.5%203.5%200%200%201%200-7h6.5%22/%3E%3C/svg%3E"); }
+#proj-map, #shot-map { --ic: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2024%2024%22%3E%3Cpath%20fill%3D%22none%22%20stroke%3D%22%23000%22%20stroke-width%3D%222%22%20stroke-linejoin%3D%22round%22%20d%3D%22m9%204-6%202v14l6-2%206%202%206-2V4l-6%202-6-2Zm0%200v14m6-12v14%22/%3E%3C/svg%3E"); }
+#proj-3d { --ic: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2024%2024%22%3E%3Cpath%20fill%3D%22none%22%20stroke%3D%22%23000%22%20stroke-width%3D%222%22%20stroke-linejoin%3D%22round%22%20d%3D%22m12%203%208%204.5v9L12%2021l-8-4.5v-9L12%203Zm0%200v18m8-13.5-8%204.5-8-4.5%22/%3E%3C/svg%3E"); }
+#proj-status-btn { --ic: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2024%2024%22%3E%3Cpath%20fill%3D%22none%22%20stroke%3D%22%23000%22%20stroke-width%3D%222%22%20stroke-linejoin%3D%22round%22%20d%3D%22M5%2021V4m0%200h11l-2%204%202%204H5%22/%3E%3C/svg%3E"); }
+#open-types { --ic: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2024%2024%22%3E%3Cpath%20stroke%3D%22%23000%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20d%3D%22M8%206h13M8%2012h13M8%2018h13M3%206h.01M3%2012h.01M3%2018h.01%22/%3E%3C/svg%3E"); }
+#open-setup { --ic: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2024%2024%22%3E%3Ccircle%20cx%3D%2212%22%20cy%3D%2212%22%20r%3D%223%22%20fill%3D%22none%22%20stroke%3D%22%23000%22%20stroke-width%3D%222%22/%3E%3Cpath%20fill%3D%22none%22%20stroke%3D%22%23000%22%20stroke-width%3D%222%22%20d%3D%22M19.4%2015a1.7%201.7%200%200%200%20.3%201.8l.1.1a2%202%200%201%201-2.8%202.8l-.1-.1a1.7%201.7%200%200%200-1.8-.3%201.7%201.7%200%200%200-1%201.5V21a2%202%200%201%201-4%200v-.1a1.7%201.7%200%200%200-1.1-1.5%201.7%201.7%200%200%200-1.8.3l-.1.1a2%202%200%201%201-2.8-2.8l.1-.1a1.7%201.7%200%200%200%20.3-1.8%201.7%201.7%200%200%200-1.5-1H3a2%202%200%201%201%200-4h.1a1.7%201.7%200%200%200%201.5-1.1%201.7%201.7%200%200%200-.3-1.8l-.1-.1a2%202%200%201%201%202.8-2.8l.1.1a1.7%201.7%200%200%200%201.8.3H9a1.7%201.7%200%200%200%201-1.5V3a2%202%200%201%201%204%200v.1a1.7%201.7%200%200%200%201%201.5%201.7%201.7%200%200%200%201.8-.3l.1-.1a2%202%200%201%201%202.8%202.8l-.1.1a1.7%201.7%200%200%200-.3%201.8V9a1.7%201.7%200%200%200%201.5%201H21a2%202%200%201%201%200%204h-.1a1.7%201.7%200%200%200-1.5%201Z%22/%3E%3C/svg%3E"); }
+#editloc-btn { --ic: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2024%2024%22%3E%3Cpath%20fill%3D%22none%22%20stroke%3D%22%23000%22%20stroke-width%3D%222%22%20stroke-linejoin%3D%22round%22%20d%3D%22M4%2020h4L19%209l-4-4L4%2016v4Z%22/%3E%3C/svg%3E"); }
+#store { --ic: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2024%2024%22%3E%3Cpath%20fill%3D%22none%22%20stroke%3D%22%23000%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20d%3D%22M20%2012a8%208%200%201%201-2.3-5.7M20%204v5h-5%22/%3E%3C/svg%3E"); }
+#random-btn::before, #addloc-make::before, #np-print::before, [data-act="up-print"]::before, [data-act="add-ltype"]::before, [data-act="add-loctype"]::before, [data-act="map-conduit"]::before, #proj-map::before, #shot-map::before, #proj-3d::before, #proj-status-btn::before, #open-types::before, #open-setup::before, #editloc-btn::before, #store::before { content: ""; width: 20px; height: 20px; flex: none; background: currentColor; -webkit-mask: var(--ic) center / contain no-repeat; mask: var(--ic) center / contain no-repeat; }
+html.field :is(#random-btn, #addloc-make, #np-print, [data-act="up-print"], [data-act="add-ltype"], [data-act="add-loctype"], [data-act="map-conduit"], #proj-map, #shot-map, #proj-3d, #proj-status-btn, #open-types, #open-setup, #editloc-btn, #store)::before { width: 24px; height: 24px; }
+#store::before { display: none; }
+/* home: + Create new project is the green button; the four project lists sit in one list with a colored dot and an arrow */
+#project-box #np-open { background: var(--accent); border-color: var(--accent); color: var(--accent-ink) !important; }
+.pick-cap { width: 100%; margin: 6px 2px 0; }
+.pick-btns { gap: 0; margin-top: 0; background: var(--panel); border: var(--bb) solid var(--line); border-radius: var(--r); overflow: hidden; }
+.pick-btns .btn { justify-content: flex-start; text-align: left; border: 0; border-top: var(--bb) solid var(--line); border-radius: 0; min-height: 56px; background: transparent; gap: 12px; }
+.pick-btns .btn:first-child { border-top: 0; }
+.pick-btns .btn::before { content: ""; width: 26px; height: 26px; flex: none; border-radius: 50%; background: radial-gradient(circle, var(--dot) 0 3px, var(--dotbg) 3.5px); }
+.pick-btns .btn::after { content: "›"; margin-left: auto; color: #9aa7a1; font-size: 22px; font-weight: 700; }
+.pick-btns [data-look="active"] { --dot: var(--brand-dk); --dotbg: var(--brand-lt); }
+.pick-btns [data-look="complete"] { --dot: var(--good); --dotbg: #e6f4ea; }
+.pick-btns [data-look="canceled"] { --dot: var(--red); --dotbg: #fdecea; }
+.pick-btns [data-look="all"] { --dot: var(--muted); --dotbg: #eef1ef; }
+html.field .pick-btns .btn { min-height: 66px; }
+html.field .pick-btns .btn::before { border-radius: 6px; background: radial-gradient(circle, var(--dot) 0 3px, transparent 3.5px); border: 2px solid var(--dot); width: 28px; height: 28px; }
+html.field .pick-btns [data-look="active"] { --dot: var(--accent); } html.field .pick-btns [data-look="complete"] { --dot: var(--good); } html.field .pick-btns [data-look="canceled"] { --dot: var(--red); } html.field .pick-btns [data-look="all"] { --dot: var(--muted); }
+html.field .pick-btns .btn::after { color: var(--accent); }
+/* page 1-3: the current status shows a check and a CURRENT STATUS tag instead of covering the button */
+.btn.st-now { justify-content: space-between; }
+.btn.st-now::before { content: ""; width: 22px; height: 22px; background: currentColor; -webkit-mask: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2024%2024%22%3E%3Cpath%20fill%3D%22none%22%20stroke%3D%22%23000%22%20stroke-width%3D%223%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%20d%3D%22m5%2012%205%205L20%207%22/%3E%3C/svg%3E") center / contain no-repeat; mask: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2024%2024%22%3E%3Cpath%20fill%3D%22none%22%20stroke%3D%22%23000%22%20stroke-width%3D%223%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%20d%3D%22m5%2012%205%205L20%207%22/%3E%3C/svg%3E") center / contain no-repeat; order: -1; }
+.btn.st-now::after { position: static; inset: auto; order: 2; margin-left: auto; background: #fff; color: var(--brand-dk); font: 700 12px/1 var(--display); padding: 7px 9px; border-radius: 999px; letter-spacing: .02em; }
+html.field .btn.st-now::after { background: transparent; color: var(--accent); border: 2px solid var(--accent); border-radius: 4px; }
+#status-name { background: var(--panel); border: var(--bb) solid var(--line); border-radius: var(--r); padding: 12px; text-align: left !important; font-size: 20px !important; }
+#status-name::before { content: "Project"; display: block; font: 700 11px/1 var(--display); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-bottom: 4px; }
+html.field #status-name::before { color: var(--accent); }
+#status-box [data-setst="canceled"]:not(.st-now) { border-color: var(--red); color: var(--red) !important; }
+/* page 2: project card with the address under the name; Edit and Cancel stacked on the right */
+.work-head { position: relative; padding-right: 110px; min-height: 108px; }
+html.field .work-head { min-height: 116px; }
+#change-proj { position: absolute; right: 12px; top: 12px; min-height: 40px; width: 84px; }
+#proj-edit { position: absolute; right: 12px; top: 58px; width: 84px !important; }
+.work-addr { font-size: 13px; color: var(--muted); margin-top: 2px; }
+.cats .cap-row { grid-column: 1 / -1; margin: 8px 2px 0; }
+#collect-main .cats ~ * {}
+/* page 2-9: start and stop show an A and B tag */
+#cmap-start, #cmap-stop { justify-content: flex-start; text-align: left; gap: 12px; border-style: dashed; }
+#cmap-start.primary, #cmap-stop.primary { border-style: solid; background: var(--panel); color: var(--ink) !important; border-color: var(--accent); }
+#cmap-start::before, #cmap-stop::before { content: "A"; width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; flex: none; background: #1e9e4a; color: #fff; font: 800 14px/1 var(--display); }
+#cmap-stop::before { content: "B"; background: #1f6fd1; }
+#cmap-start:not(.primary)::before, #cmap-stop:not(.primary)::before { background: #9aa7a1; }
+/* hold-still screen: a ring that fills over the reading */
+.hring { width: 150px; height: 150px; border-radius: 50%; margin: 0 auto; background: conic-gradient(#3dbe8b 0 var(--p, 0%), rgba(255,255,255,.12) var(--p, 0%) 100%); display: grid; place-items: center; }
+.hring div { width: 124px; height: 124px; border-radius: 50%; background: #0f1a15; display: grid; place-items: center; font: 800 34px/1 var(--display); color: #fff; }
+.hring small { display: block; font-size: 13px; font-weight: 600; color: #b7c6bf; margin-top: 4px; }
+html.field .hring { width: 170px; height: 170px; background: conic-gradient(var(--accent) 0 var(--p, 0%), #2a2f35 var(--p, 0%) 100%); }
+html.field .hring div { width: 136px; height: 136px; background: #000; font-size: 44px; }
+/* walk screen: a "saved as you walk" tag on the drawing */
+#trk-saved { position: absolute; margin: 8px; padding: 7px 10px; border-radius: 10px; background: rgba(255,255,255,.95); color: #1e7d3c; font: 700 13px/1 var(--display); box-shadow: 0 1px 3px rgba(0,0,0,.15); pointer-events: none; }
+html.field #trk-saved { background: #000; color: var(--good); border: 2px solid var(--good); box-shadow: none; }
 @media (prefers-reduced-motion: reduce) { .prog i { transition: none; } }
 </style>
 </head>
@@ -360,13 +424,15 @@ html.field .chips button[aria-pressed="true"] { border-color: var(--accent); bac
     <div class="proj-wrap" hidden><div class="list proj-list" id="proj-list" role="listbox" aria-label="Projects"></div><div class="slide" id="proj-slide" hidden><div id="proj-thumb"></div></div></div>
     <select id="project" aria-label="Pick project" hidden></select>
     <button class="btn big" id="np-open">+ Create new project</button>
+    <h3 class="pick-cap">Projects</h3>
     <div class="pick-btns">
       <button class="btn" data-look="active">Active projects</button>
       <button class="btn" data-look="complete">Finished projects</button>
       <button class="btn" data-look="canceled">Canceled projects</button>
       <button class="btn" data-look="all">All projects</button>
     </div>
-    <button class="btn big" id="random-btn" style="margin-top:8px">System point</button>
+    <h3 class="pick-cap">No project</h3>
+    <button class="btn big" id="random-btn">System point</button>
   </div>
   <div id="lists-box" class="stack" hidden>
     <h2 class="pick-title" id="lists-title">Active projects</h2>
@@ -402,7 +468,7 @@ html.field .chips button[aria-pressed="true"] { border-color: var(--accent); bac
 
   <div id="collect-main">
     <div class="work-head">
-      <div><div class="muted small">Current project</div><div class="work-proj" id="work-proj"></div><button class="btn" id="proj-edit" style="min-height:34px;padding:4px 16px;font-size:15px;width:auto;margin-top:6px" hidden>Edit</button></div>
+      <div><div class="muted small">Current project</div><div class="work-proj" id="work-proj"></div><div class="work-addr" id="work-addr"></div><button class="btn" id="proj-edit" style="min-height:34px;padding:4px 16px;font-size:15px;width:auto;margin-top:6px" hidden>Edit</button></div>
       <button class="btn cancel" id="change-proj">Cancel</button>
     </div>
     <button class="btn big primary" id="next-btn">Next location</button>
@@ -561,6 +627,7 @@ html.field .chips button[aria-pressed="true"] { border-color: var(--accent); bac
 <div class="hold" id="hold" hidden><button class="modebtn modefloat" type="button"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><g class="ic-sun"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2"/></g><g class="ic-house"><path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/></g></svg><span class="modelbl">Field mode</span></button><div>
   <div class="big-warn">Do not move.<br>Hold phone or iPad steady</div>
   <div id="hold-name" style="font-size:20px;font-weight:700"></div>
+  <div class="hring" id="h-ring"><div><span><span id="h-ring-s">0 s</span><small id="h-ring-of">of 10</small></span></div></div>
   <div class="meter"><div><span>Accuracy</span><b id="h-acc">…</b></div><div><span>Readings</span><b id="h-n">0</b></div><div><span>Time</span><b id="h-t">0 s</b></div></div>
   <button class="btn cancel" id="hold-cancel">Cancel</button>
 </div></div>
@@ -624,7 +691,7 @@ html.field .chips button[aria-pressed="true"] { border-color: var(--accent); bac
 </div></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-05.66";
+const APP_VERSION = "2026-10-05.67";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -1106,6 +1173,8 @@ function render() {
   if (homeView) slideBar();
   tabBar();
   $("work-proj").textContent = current === RANDOM ? "System locations" : (allProjects().find(p => p.slug === current) || {}).name || "";
+  { const pp = allProjects().find(p => p.slug === current), inf = (pp && (pp.job ? (typeof jobInfo !== "undefined" && jobInfo[pp.slug]) : pp.info)) || {};
+    $("work-addr").textContent = [inf.addr1, inf.addr2, inf.city].filter(Boolean).join(" · "); }
   const isR = current === RANDOM;
   $("loc-h").textContent = isR ? "Name of this point" : "Which location?";
   $("cats-h").hidden = $("newtype-h").hidden = !isR;
@@ -1135,7 +1204,7 @@ function render() {
   const shownTypes = types().filter(t => t === cat || items.some(i => inCat(i, t)) || (!isR && t === "Building" && groups.some(isBldg)));
   shownTypesNow = shownTypes;
   $("cats").innerHTML = shownTypes.map(t => `<button class="btn" data-cat="${esc(t)}" aria-pressed="${t === cat}">${symbol(typeKind(t))}<span>${esc(t)}</span></button>`).join("")
-    + (current === RANDOM ? `<button class="btn" data-act="add-loctype" style="grid-column:1/-1">Add Location Type</button>` : (cat ? `<button class="btn" data-act="add-loc" style="grid-column:1/-1">+ Add new location</button>` : `<button class="btn" data-act="add-ltype" style="grid-column:1/-1">Add new location</button><button class="btn" data-act="map-conduit" style="grid-column:1/-1">Map conduit and Trench</button>` + (jobs.some(j => j.slug === current) ? "" : `<button class="btn" data-act="up-print" style="grid-column:1/-1">${(custom.find(c => c.slug === current) || {}).print ? "Change print" : "Upload print"}</button>`)));   // page 2: opens the add new type page (Steven 2026-10-03)   // + Add type lives on page 2-5 now
+    + (current === RANDOM ? `<button class="btn" data-act="add-loctype" style="grid-column:1/-1">Add Location Type</button>` : (cat ? `<button class="btn" data-act="add-loc" style="grid-column:1/-1">+ Add new location</button>` : `<button class="btn" data-act="add-ltype" style="grid-column:1/-1">Add new location</button><button class="btn" data-act="map-conduit" style="grid-column:1/-1">Map conduit and Trench</button>` + `<h3 class="cap-row">This project</h3>` + (jobs.some(j => j.slug === current) ? "" : `<button class="btn" data-act="up-print" style="grid-column:1/-1">${(custom.find(c => c.slug === current) || {}).print ? "Change print" : "Upload print"}</button>`)));   // page 2: opens the add new type page (Steven 2026-10-03)   // + Add type lives on page 2-5 now
   const bGroups = groups.filter(isBldg);
   const list = group ? items.filter(i => i.group === group) : cat ? items.filter(i => inCat(i, cat)).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true })) : [];
   const showGroups = !group && cat === "Building" && bGroups.length;
@@ -1583,6 +1652,7 @@ function tick() {
   $("m-t").textContent = $("h-t").textContent = Math.floor(secs) + " s";
   $("h-acc").textContent = $("m-acc").textContent; $("h-n").textContent = $("m-n").textContent;
   $("m-prog").style.width = Math.min(100, secs / need * 100) + "%";
+  $("h-ring").style.setProperty("--p", Math.min(100, secs / need * 100) + "%"); $("h-ring-s").textContent = Math.floor(secs) + " s"; $("h-ring-of").textContent = "of " + need;
   if (secs >= need && shot.samples.length >= 1) finishShot();
   if (secs > need + 50 && shot.samples.length === 0) onGpsError({ code: 3 }, true);
 }
@@ -2607,7 +2677,7 @@ function holdReading(title, sub) {   // 10 second fixed reading; resolves the av
   return new Promise(res => {
     const need = +cfg.secs || 10, samples = [], t0 = Date.now(); let id = null, tm = null;
     const end = v => { if (id != null) navigator.geolocation.clearWatch(id); clearInterval(tm); res(v); };
-    trkScreen(title, sub + " Getting a fix…", "Cancel"); $("trk-cv").style.visibility = "hidden";
+    trkScreen(title, sub + " Getting a fix…", "Cancel"); $("trk-cv").style.visibility = "hidden"; $("trk-saved").hidden = true;
     $("trk-stop").onclick = () => end(null);
     id = navigator.geolocation.watchPosition(p => samples.push({ lat: p.coords.latitude, lon: p.coords.longitude, acc: p.coords.accuracy, alt: p.coords.altitude, t: p.timestamp }),
       e => { if (e.code === 1) { toast("Location is blocked. Allow location for this site."); end(null); } }, { enableHighAccuracy: true, maximumAge: 0, timeout: 30000 });
@@ -2630,7 +2700,7 @@ function walkTrack(startPt, pts) {   // a dot every half second until Stop; reso
   pts = pts || [];
   return new Promise(res => {
     let last = null, id = null, tm = null, tick = 0;
-    trkScreen("Start walking trench", "Walk the trench. Tap Stop at the end.", "Stop"); $("trk-cv").style.visibility = "visible";
+    trkScreen("Start walking trench", "Walk the trench. Tap Stop at the end.", "Stop"); $("trk-cv").style.visibility = "visible"; $("trk-saved").hidden = false;
     const end = () => { if (id != null) navigator.geolocation.clearWatch(id); clearInterval(tm); saveWalk(); res(pts); };
     $("trk-stop").onclick = end;
     id = navigator.geolocation.watchPosition(p => { last = p; }, () => {}, { enableHighAccuracy: true, maximumAge: 0, timeout: 30000 });
@@ -3083,7 +3153,7 @@ render();
   <div class="list loc-list" id="ltype-list" style="max-height:55vh;overflow:auto"></div><button class="btn" id="ltype-cancel">Cancel</button></div></div>
 <div id="trk" hidden style="position:fixed;inset:0;z-index:59;background:#fff;color:#111;display:grid;grid-template-rows:auto 1fr auto;padding:16px;gap:10px"><button class="modebtn modefloat" type="button"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><g class="ic-sun"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2"/></g><g class="ic-house"><path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/></g></svg><span class="modelbl">Field mode</span></button>
   <div><span class="ask-no-label" id="trk-title" style="color:#111"></span><div id="trk-sub" style="font-size:22px;font-weight:700;line-height:1.3"></div></div>
-  <canvas id="trk-cv" style="width:100%;height:100%;min-height:0;border:1px solid #ccc;border-radius:8px"></canvas>
+  <div style="position:relative;min-height:0"><span id="trk-saved" hidden>✓ Saved as you walk</span><canvas id="trk-cv" style="width:100%;height:100%;min-height:0;border:1px solid #ccc;border-radius:8px"></canvas></div>
   <button class="btn big" id="trk-stop" style="background:#e0201a;color:#fff;border-color:#e0201a">Stop</button>
 </div>
 <div class="ask" id="pedit" hidden><div style="max-height:92vh;overflow:auto"><span class="ask-no-label">Page 2-6 · Edit project</span>
