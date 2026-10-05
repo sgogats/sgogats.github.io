@@ -36,6 +36,7 @@
   <button class="plain on" id="under">See underground</button>
   <span class="count">Stretch heights <button class="plain" id="sless">−</button><b id="spread">3x</b><button class="plain" id="smore">+</button></span>
   <button class="plain" id="reset">Reset view</button>
+  <button id="dl">Download 3D file</button>
 </div>
 <div id="view"></div>
 <div id="msg">Loading…</div>
@@ -50,8 +51,9 @@
 <script type="module">
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { GLTFExporter } from "three/addons/exporters/GLTFExporter.js";
 
-const APP_VERSION = "V 01.00";
+const APP_VERSION = "V 01.01";
 const $ = id => document.getElementById(id);
 $("ver").textContent = APP_VERSION;
 const say = html => { $("msg").innerHTML = html; };
@@ -157,7 +159,7 @@ function build() {
     const [x0, y0, x1, y1] = box, w = Math.abs(x1 - x0) / ppf, d = Math.abs(y1 - y0) / ppf;
     const c = at((x0 + x1) / 2, (y0 + y1) / 2); c.y = bh / 2;
     const g = new THREE.BoxGeometry(w, bh, d);
-    const m = new THREE.Mesh(g, bMat); m.position.copy(c); site.add(m);
+    const m = new THREE.Mesh(g, bMat); m.position.copy(c); m.name = "Bldg " + b.name; site.add(m);
     const e = new THREE.LineSegments(new THREE.EdgesGeometry(g), eMat); e.position.copy(c); site.add(e);
     const t = label("Bldg " + b.name, "#6b4e16"); t.position.set(c.x, bh + labelH, c.z); site.add(t);
   }
@@ -172,9 +174,10 @@ function build() {
     if (!a || !b) { missing++; continue; }
     const pts = [[a.x, a.y], ...(cd.bends || []), [b.x, b.y]].filter((p, i, arr) => i === 0 || p[0] !== arr[i - 1][0] || p[1] !== arr[i - 1][1]);
     const v = pts.map(([x, y]) => at(x, y, H.fiber));
-    for (let i = 0; i < v.length - 1; i++) site.add(tube(v[i], v[i + 1], r, fMat));
-    site.add(tube(at(a.x, a.y, 0), v[0], r * 0.8, dropMat));
-    site.add(tube(at(b.x, b.y, 0), v[v.length - 1], r * 0.8, dropMat));
+    const run = new THREE.Group(); run.name = `Fiber ${cd.a} to ${cd.b}`; site.add(run);
+    for (let i = 0; i < v.length - 1; i++) run.add(tube(v[i], v[i + 1], r, fMat));
+    run.add(tube(at(a.x, a.y, 0), v[0], r * 0.8, dropMat));
+    run.add(tube(at(b.x, b.y, 0), v[v.length - 1], r * 0.8, dropMat));
     runs++;
   }
 
@@ -232,6 +235,29 @@ const setStretch = d => { stretch = Math.max(1, Math.min(10, stretch + d)); $("s
 $("sless").onclick = () => setStretch(-1);
 $("smore").onclick = () => setStretch(1);
 $("reset").onclick = frame;
+
+// one .glb file of what is on screen: opens on a computer in Windows "3D Viewer" or Blender, no key needed
+$("dl").onclick = () => {
+  if (!job) return;
+  say("Making the 3D file…");
+  const out = new THREE.Group(); out.name = job.name || "Site";
+  for (const o of site.children) {
+    if (o.isSprite) {            // labels: 3D files have no "always face me" labels, so lay each one flat, readable from above
+      const sx = o.scale.x, sy = o.scale.y;
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(sx, sy), new THREE.MeshBasicMaterial({ map: o.material.map, transparent: true, side: THREE.DoubleSide }));
+      m.rotation.x = -Math.PI / 2; m.position.copy(o.position); m.name = "Label";
+      out.add(m);
+    } else out.add(o.clone());
+  }
+  new GLTFExporter().parse(out, glb => {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([glb], { type: "model/gltf-binary" }));
+    a.download = `${job.name || "site"} 3D.glb`.replace(/[\\/:*?"<>|]/g, "");
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+    say("Saved the 3D file. On a computer, open it with 3D Viewer or Blender.");
+  }, err => say("Could not make the 3D file: " + err.message), { binary: true });
+};
 
 // ---------------------------------------------------------------- start
 (async () => {
