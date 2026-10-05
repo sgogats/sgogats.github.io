@@ -322,6 +322,18 @@ html.field .canvas-tools .btn { min-height: 52px; min-width: 52px; background: #
 .placing .btn { width: auto; flex: 1; min-height: 44px; }
 .es-sz, .es-sw { border-radius: 10px; }
 #empty-flash-msg { text-transform: none; }
+.seg { display: grid; grid-template-columns: 1fr 1fr; background: #e4e9e6; border-radius: 12px; padding: 4px; gap: 4px; }
+.seg button { min-height: 46px; border: 0; border-radius: 9px; background: transparent; font: 700 16px/1 var(--display); color: var(--muted); cursor: pointer; }
+.seg button[aria-pressed="true"] { background: #fff; color: var(--brand-dk); box-shadow: 0 1px 3px rgba(0,0,0,.12); }
+html.field .seg { background: #000; border: 2px solid var(--line); border-radius: var(--r); }
+html.field .seg button { min-height: 56px; font-weight: 800; font-size: 18px; }
+html.field .seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); box-shadow: none; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chips button { display: flex; align-items: center; gap: 6px; padding: 10px 13px; border-radius: 999px; border: 1.5px solid var(--line); background: var(--panel); color: var(--ink); font: 700 15px/1 var(--display); cursor: pointer; }
+.chips button i { width: 12px; height: 12px; border-radius: 50%; display: inline-block; }
+.chips button[aria-pressed="true"] { border-color: var(--accent); background: var(--brand-lt); color: var(--brand-dk); }
+html.field .chips button { min-height: 48px; border-radius: 8px; border-width: 2px; background: var(--card2); font-weight: 800; font-size: 16px; }
+html.field .chips button[aria-pressed="true"] { border-color: var(--accent); background: var(--brand-lt); color: var(--accent); }
 @media (prefers-reduced-motion: reduce) { .prog i { transition: none; } }
 </style>
 </head>
@@ -612,7 +624,7 @@ html.field .canvas-tools .btn { min-height: 52px; min-width: 52px; background: #
 </div></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-05.65";
+const APP_VERSION = "2026-10-05.66";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -2482,12 +2494,19 @@ function drawCmap() {
   $("cmap-start").classList.toggle("primary", !!cm.start); $("cmap-stop").classList.toggle("primary", !!cm.stop);
   $("cmap-next").disabled = !(cm.start && cm.stop);
   $("cmap-size").textContent = cm.size ? `${cm.size} conduit` : "Tap to pick the size (or it asks later)";
+  cm.kind = cm.kind || "Conduit"; const tr = cm.kind === "Trench";   // change 3: Conduit or Trench on this page; a trench has no size
+  for (const b of $("cmap-kind").children) b.setAttribute("aria-pressed", b.dataset.kind === cm.kind);
+  $("cmap-size-h").hidden = $("cmap-size").hidden = tr; $("cmap-util-h").hidden = $("cmap-util").hidden = !tr;
+  cm.util = cm.util || "Our conduit";
+  $("cmap-util").innerHTML = Object.keys(UTIL_COLORS).map(u => `<button type="button" data-util="${esc(u)}" aria-pressed="${u === cm.util}"><i style="background:${UTIL_COLORS[u]}"></i>${esc(u)}</button>`).join("");
 }
+// change 15 (Steven 2026-10-05): a trench can hold another utility's line (e.g. the gas main), drawn in its own color
+const UTIL_COLORS = { "Our conduit": "#ff8c1a", "Gas": "#f2c200", "Water": "#1f6fd1", "Electric": "#e0201a", "Other": "#8a8f98" };
 // conduit size: pick from a list (Steven 2026-10-05); each size has its own line color
 const CONDUIT_SIZES = ['1"', '1¼"', '1½"', '2"', '3"', '4"'];
 const SIZE_COLORS = { '1"': "#8a8f98", '1¼"': "#b39a6e", '1½"': "#d99447", '2"': "#ff8c1a", '3"': "#e03a1e", '4"': "#8e3fbf" };   // Steven: 1" gray, 2" orange; 1¼" 1½" 3" 4" are defaults until he picks
-function runColor(ru) { return (ru && ru.size && SIZE_COLORS[ru.size]) || "#ff8c1a"; }
-function runLabel(rn, ru, ft) { return `${rn}${ru && ru.size ? ` · ${ru.size} conduit` : ru && ru.kind === "Trench" ? " · trench" : ""} · ${Math.round(ft).toLocaleString()} ft`; }
+function runColor(ru) { return (ru && ru.kind === "Trench" && ru.util && UTIL_COLORS[ru.util]) || (ru && ru.size && SIZE_COLORS[ru.size]) || "#ff8c1a"; }
+function runLabel(rn, ru, ft) { return `${rn}${ru && ru.size ? ` · ${ru.size} conduit` : ru && ru.kind === "Trench" ? (ru.util && ru.util !== "Our conduit" ? ` · ${ru.util.toLowerCase()} trench` : " · trench") : ""} · ${Math.round(ft).toLocaleString()} ft`; }
 function verifySize(cur) {   // top button = the size now (tap to confirm), list underneath to change it
   return new Promise(res => {
     const done = v => { $("vsize").hidden = true; res(v); };
@@ -2561,11 +2580,12 @@ $("cmap-start").onclick = () => enterEnd("start");
 $("cmap-stop").onclick = () => enterEnd("stop");
 $("cmap-cancel").onclick = () => { $("cmap").hidden = true; cm = null; };
 $("cmap-size").onclick = async () => { $("cmap").hidden = true; const z = await pickSize(); if (z) cm.size = z; drawCmap(); $("cmap").hidden = false; };
+$("cmap-kind").onclick = e => { const b = e.target.closest("[data-kind]"); if (b && cm) { cm.kind = b.dataset.kind; drawCmap(); } };
+$("cmap-util").onclick = e => { const b = e.target.closest("[data-util]"); if (b && cm) { cm.util = b.dataset.util; drawCmap(); } };
 $("cmap-next").onclick = async () => {
   if (!(cm && cm.start && cm.stop)) return;
   if (norm(cm.start.name) === norm(cm.stop.name)) { toast("Start and stop must be different locations"); return; }
   $("cmap").hidden = true;
-  cm.kind = await ask("Conduit or Trench?", "Conduit", "Trench", true) ? "Conduit" : "Trench";
   if (cm.kind === "Conduit") {   // always verify the size first (Steven 2026-10-05)
     const z = await verifySize(cm.size); if (!z) { $("cmap").hidden = false; return; }
     cm.size = z; drawCmap();
@@ -2692,7 +2712,7 @@ async function mapTrench(sel) {
 async function endWalk(w) {   // after Stop (or "Finish it here" on a saved walk): keep the dots, then the stop reading
   const r = w.r, sel = w.sel, pts = w.pts;
   data.tracks = data.tracks || {}; data.tracks[r] = pts;   // keep the walk even if the end reading is cancelled
-  data.runs = data.runs || {}; data.runs[r] = Object.assign({ from: sel.start.name, track: true, kind: sel.kind || "Conduit", t: Date.now(), toOpen: true }, sel.size && sel.kind !== "Trench" ? { size: sel.size } : {});
+  data.runs = data.runs || {}; data.runs[r] = Object.assign({ from: sel.start.name, track: true, kind: sel.kind || "Conduit", t: Date.now(), toOpen: true }, sel.size && sel.kind !== "Trench" ? { size: sel.size } : {}, sel.kind === "Trench" && sel.util ? { util: sel.util } : {});
   saveLocal(); clearWalk();
   const go = await ask(`Place your phone or iPad on the stop location: ${sel.stop.name}. Hold it steady, then tap OK.`, "OK", "Skip", true);
   const b = go && await holdReading(`Position over ${sel.stop.name}`, "Hold the phone steady.");
@@ -3051,9 +3071,11 @@ document.addEventListener("visibilitychange", () => { if (document.visibilitySta
 render();
 </script>
 <div class="ask" id="cmap" hidden><div><span class="ask-no-label">Page 2-9 · Start and stop</span>
+  <div class="seg" id="cmap-kind"><button type="button" data-kind="Conduit">Conduit</button><button type="button" data-kind="Trench">Trench</button></div>
   <div>Start position</div><button class="btn big gray" id="cmap-start"></button>
   <div>Stop position</div><button class="btn big gray" id="cmap-stop"></button>
-  <div>Conduit size</div><button class="btn gray" id="cmap-size"></button>
+  <div id="cmap-size-h">Conduit size</div><button class="btn gray" id="cmap-size"></button>
+  <div id="cmap-util-h" hidden>What's in it?</div><div class="chips" id="cmap-util" hidden></div>
   <button class="btn primary" id="cmap-next" disabled>Next</button><button class="btn" id="cmap-cancel">Cancel</button></div></div>
 <div class="ask" id="lname" hidden><div><span class="ask-no-label" id="lname-page">Page 2-9a · Location name</span><div id="lname-msg"></div>
   <input id="lname-in" type="text" autocomplete="off" enterkeyhint="done"><button class="btn primary" id="lname-ok">OK</button><button class="btn" id="lname-cancel">Cancel</button></div></div>
