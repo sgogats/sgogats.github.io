@@ -460,7 +460,7 @@ summary { font-weight: 600; cursor: pointer; }
 </div></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-04.51";
+const APP_VERSION = "2026-10-05.52";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -2290,6 +2290,8 @@ async function joinNear(x, pt) {
 async function mapTrench(sel) {
   const n = Math.max(0, ...runNames().map(k => parseInt(k.replace(/\D+/g, "")) || 0)) + 1, r = `Conduit run ${n}`;
   trkWakeOn();
+  // pause first, every time (Steven 2026-10-05): tell them where to put the phone, wait for OK
+  if (!await ask(`Place your phone or iPad on the start location: ${sel.start.name}. Hold it steady, then tap OK.`, "OK", "Cancel", true)) { trkWakeOff(); toast("Stopped. Nothing was saved."); return; }
   const a = await holdReading(`Position phone on ${sel.start.name}`, "Hold the phone steady.");
   if (!a) { $("trk").hidden = true; trkWakeOff(); toast("Stopped. Nothing was saved."); return; }
   await joinNear(sel.start, a);
@@ -2301,7 +2303,8 @@ async function mapTrench(sel) {
   data.tracks = data.tracks || {}; data.tracks[r] = pts;   // keep the walk even if the end reading is cancelled
   data.runs = data.runs || {}; data.runs[r] = { from: sel.start.name, track: true, t: Date.now() };
   saveLocal();
-  const b = await holdReading(`Position over ${sel.stop.name}`, "Hold the phone steady.");
+  const go = await ask(`Place your phone or iPad on the stop location: ${sel.stop.name}. Hold it steady, then tap OK.`, "OK", "Skip", true);
+  const b = go && await holdReading(`Position over ${sel.stop.name}`, "Hold the phone steady.");
   if (b) {
     await joinNear(sel.stop, b);
     ensureLoc(sel.stop);
