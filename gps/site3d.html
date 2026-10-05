@@ -31,7 +31,7 @@
 </head>
 <body>
 <div id="bar">
-  <a class="back" href="./">Back</a>
+  <a class="back" href="./" onclick="if (history.length > 1) { history.back(); return false; }">Back</a>
   <h1 id="title">3D Site</h1><span class="ver" id="ver"></span>
   <button class="plain on" id="under">See underground</button>
   <span class="count">Stretch heights <button class="plain" id="sless">−</button><b id="spread">3x</b><button class="plain" id="smore">+</button></span>
@@ -53,7 +53,7 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { GLTFExporter } from "three/addons/exporters/GLTFExporter.js";
 
-const APP_VERSION = "V 01.01";
+const APP_VERSION = "V 01.02";
 const $ = id => document.getElementById(id);
 $("ver").textContent = APP_VERSION;
 const say = html => { $("msg").innerHTML = html; };
