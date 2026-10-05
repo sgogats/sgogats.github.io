@@ -473,7 +473,7 @@ summary { font-weight: 600; cursor: pointer; }
 </div></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-05.63";
+const APP_VERSION = "2026-10-05.64";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -2443,11 +2443,19 @@ function holdReading(title, sub) {   // 10 second fixed reading; resolves the av
     }, 250);
   });
 }
-function walkTrack(startPt) {   // a dot every half second until Stop; resolves the dots
+/* ---------- the walk in progress is saved on the phone every 3 seconds (Steven 2026-10-05, review change 1):
+   a phone call, a screen lock or Safari closing no longer loses it; opening the app offers to keep going ---------- */
+let walkRec = null;   // {proj, r, sel, a, pts, t}
+function saveWalk() { if (walkRec) { walkRec.t = Date.now(); LS.set("walk", walkRec); } }
+function clearWalk() { walkRec = null; try { localStorage.removeItem("gps.walk"); } catch {} }
+window.addEventListener("pagehide", saveWalk);
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") saveWalk(); });
+function walkTrack(startPt, pts) {   // a dot every half second until Stop; resolves the dots (a resumed walk adds to its saved dots)
+  pts = pts || [];
   return new Promise(res => {
-    const pts = []; let last = null, id = null, tm = null;
+    let last = null, id = null, tm = null, tick = 0;
     trkScreen("Start walking trench", "Walk the trench. Tap Stop at the end.", "Stop"); $("trk-cv").style.visibility = "visible";
-    const end = () => { if (id != null) navigator.geolocation.clearWatch(id); clearInterval(tm); res(pts); };
+    const end = () => { if (id != null) navigator.geolocation.clearWatch(id); clearInterval(tm); saveWalk(); res(pts); };
     $("trk-stop").onclick = end;
     id = navigator.geolocation.watchPosition(p => { last = p; }, () => {}, { enableHighAccuracy: true, maximumAge: 0, timeout: 30000 });
     let lastT = 0;
@@ -2456,6 +2464,7 @@ function walkTrack(startPt) {   // a dot every half second until Stop; resolves 
       const ft = runFeet([startPt, ...pts.map(q => ({ lat: q[0], lon: q[1] }))]);
       $("trk-sub").textContent = `Walk the trench. Tap Stop at the end. ${pts.length} dots · ${Math.round(ft)} ft` + (last ? ` · ±${Math.round(last.coords.accuracy * FT)} ft` : "");
       drawTrk(startPt, pts);
+      if (++tick % 6 === 0) saveWalk();
     }, 500);
   });
 }
@@ -2520,10 +2529,15 @@ async function mapTrench(sel) {
   if (data.deleted) delete data.deleted[sel.start.name];
   saveLocal();
   await ask(`${sel.start.name} is recorded. Tap OK, then start walking the trench.`, "OK", "", true);   // walk starts only on OK (Steven 2026-10-05)
-  const pts = await walkTrack(data.items[sel.start.name]);
+  walkRec = { proj: current, r, sel: JSON.parse(JSON.stringify(sel)), a: JSON.parse(JSON.stringify(data.items[sel.start.name])), pts: [] }; saveWalk();
+  await walkTrack(data.items[sel.start.name], walkRec.pts);
+  await endWalk(walkRec);
+}
+async function endWalk(w) {   // after Stop (or "Finish it here" on a saved walk): keep the dots, then the stop reading
+  const r = w.r, sel = w.sel, pts = w.pts;
   data.tracks = data.tracks || {}; data.tracks[r] = pts;   // keep the walk even if the end reading is cancelled
-  data.runs = data.runs || {}; data.runs[r] = Object.assign({ from: sel.start.name, track: true, kind: sel.kind || "Conduit", t: Date.now() }, sel.size && sel.kind !== "Trench" ? { size: sel.size } : {});
-  saveLocal();
+  data.runs = data.runs || {}; data.runs[r] = Object.assign({ from: sel.start.name, track: true, kind: sel.kind || "Conduit", t: Date.now(), toOpen: true }, sel.size && sel.kind !== "Trench" ? { size: sel.size } : {});
+  saveLocal(); clearWalk();
   const go = await ask(`Place your phone or iPad on the stop location: ${sel.stop.name}. Hold it steady, then tap OK.`, "OK", "Skip", true);
   const b = go && await holdReading(`Position over ${sel.stop.name}`, "Hold the phone steady.");
   if (b) {
@@ -2531,13 +2545,34 @@ async function mapTrench(sel) {
     ensureLoc(sel.stop);
     data.items[sel.stop.name] = Object.assign(b, { t: Date.now(), group: (itemsList().find(i => i.name === sel.stop.name) || {}).group || typeGroup(sel.stop.type) || "Added in field" });
     if (data.deleted) delete data.deleted[sel.stop.name];
-    data.runs[r].to = sel.stop.name;
-  } else data.runs[r].toOpen = true;
+    data.runs[r].to = sel.stop.name; delete data.runs[r].toOpen;
+  }
   data.runs[r].t = Date.now();
   $("trk").hidden = true; trkWakeOff(); cm = null;
   saveLocal(); push(`Conduit ${r}: ${sel.start.name} to ${sel.stop.name}, ${pts.length} dots`);
   render(); showTab("print"); toast(`${r} saved: ${pts.length} dots, ${Math.round(runFeet(runPath(r)))} ft`);
 }
+async function checkWalk() {   // the app opened and found a walk that never got its Stop
+  const w = LS.get("walk", null); if (!w || !w.r || !w.sel || !Array.isArray(w.pts)) return;
+  const p = allProjects().find(x => x.slug === w.proj); if (!p) return;   // its project isn't on this phone yet; ask next time
+  const k = await choose(`Keep going on ${w.r}? (${p.name}, from ${w.sel.start.name}, ${w.pts.length} dots so far)`, ["Keep going", "Finish it here"], "Throw it away", "Page 2-9f · Unfinished walk");
+  if (k < 0) {
+    if (await ask(`Throw away the walk of ${w.r}? The ${w.sel.start.name} reading stays.`, "Yes, throw it away", "No, go back")) { clearWalk(); toast("Walk thrown away."); }
+    else checkWalk();
+    return;
+  }
+  if (current !== w.proj || home) pickProject(w.proj);
+  if ((data.runs || {})[w.r]) {   // that run number got used meanwhile (another phone): take the next one
+    const n = Math.max(0, ...runNames().map(x => parseInt(x.replace(/\D+/g, "")) || 0)) + 1; w.r = `Conduit run ${n}`;
+  }
+  walkRec = w; cm = w.sel; trkWakeOn(); saveWalk();
+  if (k === 0) {
+    await ask(`Tap OK, then keep walking ${w.r}. The gap since you stopped gets a straight line.`, "OK", "", true);
+    await walkTrack(data.items[w.sel.start.name] || w.a, w.pts);
+  }
+  await endWalk(w);
+}
+document.addEventListener("DOMContentLoaded", () => setTimeout(checkWalk, 600));
 /* ---------- conduit mapping (Steven 2026-10-03): walk the run, capture the start, every bend, the end.
    Points save as "Conduit run 1 point 1", "... point 2"; each end can join a Vault, Lockbox or Riser pole, and the wall it enters is kept for the vault conduit sheet. ---------- */
 var runFor = null;
