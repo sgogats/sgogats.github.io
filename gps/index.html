@@ -424,8 +424,18 @@ html.field .tc-k { color: var(--accent); }
 #device-pick .dp-q { font: 800 30px/1.2 var(--display); text-align: center; }
 html.big .wrap, html.big .bar-in, html.big .tabs-in { max-width: none; }
 html.big .canvas-box:not(.full) { height: calc(100vh - 170px); }
-html.dev-desk { zoom: 1.3; }
-html.dev-desk .canvas-box:not(.full) { height: calc(100vh / 1.3 - 170px); }
+/* Steven 2026-10-06: iPad / Desktop should fit a page on the screen without scrolling, not be a bigger phone.
+   Normal size, tighter buttons, and lists and button stacks laid out in columns. */
+html.big .btn.big, html.big #project-box .btn.big { min-height: 50px; font-size: 18px; }
+html.big .btn { min-height: 42px; }
+html.big .cats .btn { min-height: 46px; }
+html.big .item { min-height: 46px; padding-block: 8px; }
+html.big h2 { margin: 10px 0 6px; } html.big h3 { margin: 10px 0 6px; }
+html.big .cats, html.big #addloc-types { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+html.big .pick-btns { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
+html.big #items, html.big .loc-list:not(#lname-list):not(#type-sugg) { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); align-content: start; }
+html.big #items .item, html.big .loc-list .item { border-right: var(--bb) solid var(--line); }
+html.big .wrap { padding-bottom: 24px; }
 .run-acts .btn { flex: 1 1 0; min-width: 0; white-space: nowrap; padding: 4px 4px !important; }
 #z-full { display: none; }
 html.big #z-full { display: block; }
@@ -759,7 +769,7 @@ html.big #z-full { display: block; }
 </div></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-06.98";
+const APP_VERSION = "2026-10-06.99";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -795,13 +805,13 @@ const $ = id => document.getElementById(id);
 /* ---------- page 0: Phone / iPad / Desktop, remembered on this device; change it in Settings ---------- */
 function deviceNow() { try { return localStorage.getItem("gps.device") || ""; } catch { return ""; } }
 function bigScreen() { const d = deviceNow(); return d === "ipad" || d === "desktop"; }
-const IPAD_SCALE = 1.35;
+const IPAD_SCALE = 1;   // V 06.99: normal size (1.35 made it a bigger phone and pages scrolled)
 function applyDevice() {
   const d = deviceNow(), h = document.documentElement, vp = document.querySelector('meta[name="viewport"]');
   h.classList.toggle("big", d === "ipad" || d === "desktop");
   h.classList.toggle("dev-desk", d === "desktop");
   let want = "width=device-width,initial-scale=1,viewport-fit=cover";
-  if (d === "ipad") {
+  if (d === "ipad" && IPAD_SCALE !== 1) {
     const land = matchMedia("(orientation: landscape)").matches, a = Math.max(screen.width, screen.height), b = Math.min(screen.width, screen.height);
     want = "width=" + Math.round((land ? a : b) / IPAD_SCALE) + ",viewport-fit=cover";
   }
