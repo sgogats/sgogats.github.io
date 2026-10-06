@@ -714,7 +714,7 @@ html.field .tc-k { color: var(--accent); }
 </div></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-06.74";
+const APP_VERSION = "2026-10-06.75";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -1645,11 +1645,38 @@ async function renderPics() {
   const n = selected, list = picsFor(n);
   $("pic-count").textContent = list.length ? `${list.length} picture${list.length > 1 ? "s" : ""} saved for this point` : "";
   const box = $("pic-thumbs"); box.innerHTML = "";
-  for (const [id] of list.slice(-6)) {
-    const b = await idb.get("pic:" + id); if (!b || selected !== n) continue;
-    const im = document.createElement("img"); im.src = URL.createObjectURL(b); im.style.cssText = "width:64px;height:64px;object-fit:cover;border-radius:6px";
-    im.onclick = () => window.open(im.src); box.appendChild(im);
+  for (const [id, p] of list.slice(-6)) {
+    const b = await idb.get("pic:" + id); if (selected !== n) return;
+    const card = document.createElement("div"); card.className = "small mono muted"; card.style.cssText = "display:flex;gap:8px;align-items:center;width:100%";
+    if (b) { const im = document.createElement("img"); im.src = URL.createObjectURL(b); im.style.cssText = "width:64px;height:64px;object-fit:cover;border-radius:6px;flex:none"; im.onclick = () => window.open(im.src); card.appendChild(im); }
+    const g = p.lat != null ? `${p.lat.toFixed(7)}, ${p.lon.toFixed(7)} ±${p.acc_ft} ft` : "no GPS";
+    const tx = document.createElement("div"); tx.textContent = `${new Date(p.t).toLocaleString()} · ${g}` + (p.exif_lat != null ? ` · photo GPS ${p.exif_lat.toFixed(7)}, ${p.exif_lon.toFixed(7)}` : "");
+    card.appendChild(tx); box.appendChild(card);
   }
+}
+function picExif(buf) {   // the photo's own time and GPS, when the phone left them in (iPhone web pages often strip GPS)
+  const v = new DataView(buf), out = {};
+  try {
+    if (v.getUint16(0) !== 0xFFD8) return out;
+    let o = 2;
+    while (o + 4 < v.byteLength) {
+      const mk = v.getUint16(o), len = v.getUint16(o + 2);
+      if (mk === 0xFFE1 && v.getUint32(o + 4) === 0x45786966) {
+        const t = o + 10, le = v.getUint16(t) === 0x4949, u16 = x => v.getUint16(t + x, le), u32 = x => v.getUint32(t + x, le);
+        const ifd = (at, f) => { const n = u16(at); for (let i = 0; i < n; i++) { const e = at + 2 + i * 12; f(u16(e), u32(e + 4), e + 8, u16(e + 2)); } };
+        const str = (off, cnt) => { let r = ""; for (let i = 0; i < cnt - 1; i++) r += String.fromCharCode(v.getUint8(t + off + i)); return r; };
+        const rat3 = off => [0, 1, 2].reduce((a, i) => a + u32(off + i * 8) / u32(off + i * 8 + 4) / [1, 60, 3600][i], 0);
+        let exifAt = 0, gpsAt = 0;
+        ifd(u32(4), (tag, cnt, e) => { if (tag === 0x8769) exifAt = u32(e); if (tag === 0x8825) gpsAt = u32(e); });
+        if (exifAt) ifd(exifAt, (tag, cnt, e) => { if (tag === 0x9003) out.time = str(u32(e), cnt); });
+        if (gpsAt) { const gp = {}; ifd(gpsAt, (tag, cnt, e) => { gp[tag] = tag === 1 || tag === 3 ? String.fromCharCode(v.getUint8(t + e)) : u32(e); });
+          if (gp[2] && gp[4]) { out.lat = rat3(gp[2]) * (gp[1] === "S" ? -1 : 1); out.lon = rat3(gp[4]) * (gp[3] === "W" ? -1 : 1); } }
+        return out;
+      }
+      if ((mk & 0xFF00) !== 0xFF00) break; o += 2 + len;
+    }
+  } catch {}
+  return out;
 }
 function picShrink(file) {   // phone pictures are 3-12 MB; 1600 px JPEG keeps them small enough for GitHub
   return new Promise((ok, no) => {
@@ -1666,12 +1693,12 @@ $("pic-in").onchange = async () => {
   const f = $("pic-in").files[0], n = selected, s = current; if (!f || !n) return;
   toast("Saving picture…");
   try {
-    const [blob, c] = await Promise.all([picShrink(f), picHere()]);
+    const [blob, c, ex] = await Promise.all([picShrink(f), picHere(), f.arrayBuffer().then(picExif).catch(() => ({}))]);
     const t = Date.now(), id = n.replace(/[^\w.-]+/g, "_") + "-" + t, file = `gps/photos/${s}/${id}.jpg`;
     await idb.set("pic:" + id, blob);
     if (s !== current) return;
     data.photos = data.photos || {};
-    data.photos[id] = { name: n, t, file, lat: c ? c.latitude : null, lon: c ? c.longitude : null, acc_ft: c ? Math.round(c.accuracy * 3.28084) : null, up: false };
+    data.photos[id] = { name: n, t, file, lat: c ? c.latitude : null, lon: c ? c.longitude : null, acc_ft: c ? Math.round(c.accuracy * 3.28084) : null, exif_time: ex.time || null, exif_lat: ex.lat ?? null, exif_lon: ex.lon ?? null, up: false };
     saveLocal(); renderPics(); toast(`Picture saved for ${n}`);
     picUpload(s);
   } catch (e) { toast(e.message); }
