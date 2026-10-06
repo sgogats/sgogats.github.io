@@ -386,6 +386,10 @@ $("dl").onclick = () => {
     say("Loading the site…");
     [job, readings] = await Promise.all([gh(`gps/jobs/${slug}.json`), gh(`gps/readings/${slug}.json`).catch(() => null)]);
     if (!job) { say("This project has no print or buildings yet, so there is nothing to show in 3D."); return; }
+    if (readings && Array.isArray(job.items)) {   // boxes renamed or deleted on the phone (same as GPS Shots applyPrintEdits)
+      const ren = readings.printRen || {}, del = readings.printDel || {};
+      job.items = job.items.filter(i => !(del[i.name] && del[i.name].on)).map(i => ren[i.name] && ren[i.name].to ? Object.assign({}, i, { name: ren[i.name].to }) : i);
+    }
     if (SEEDS[slug]) seed = await gh(SEEDS[slug]).catch(() => null);
     $("title").textContent = "3D " + (job.name || "Site");
     build(); frame();
