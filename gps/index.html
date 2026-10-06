@@ -728,7 +728,7 @@ html.field .tc-k { color: var(--accent); }
 </div></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-06.85";
+const APP_VERSION = "2026-10-06.86";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -2849,10 +2849,27 @@ async function pickSize() {
   const t = await askText("Enter the conduit size", 'e.g. 6"', "Page 2-9d · Conduit size");
   return t || null;
 }
-function askText(msg, ph, page) {
+/* Steven 2026-10-06: typing a name shows the matching locations right away. Typing only a number matches that number:
+   "18" shows V18, LB-18, V-18 but not V-180. Letters match anywhere in the name, dashes and spaces ignored. */
+function nameMatches(q, names) {
+  q = String(q || "").trim(); if (!q) return [];
+  const flat = s => String(s).toLowerCase().replace(/[\s\-_.]/g, "");
+  if (/^\d+$/.test(q)) return names.filter(n => (String(n).match(/\d+/g) || []).some(d => +d === +q));
+  return names.filter(n => flat(n).includes(flat(q)));
+}
+function askText(msg, ph, page, sugg) {   // sugg: [{name, d}] to show as you type
   return new Promise(res => {
+    const box = $("lname-list"); box.hidden = true; box.innerHTML = ""; $("lname-in").oninput = null;
+    if (sugg && sugg.length) {
+      $("lname-in").oninput = () => {
+        const hit = nameMatches($("lname-in").value, sugg.map(o => o.name)).slice(0, 40), byN = Object.fromEntries(sugg.map(o => [o.name, o]));
+        box.innerHTML = hit.map(n => `<button class="item" data-n="${esc(n)}"><span></span><span class="nm">${esc(n)}</span><span class="sub">${byN[n].d != null ? Math.round(byN[n].d) + " ft" : ""}</span></button>`).join("");
+        box.hidden = !hit.length;
+      };
+      box.onclick = e => { const b = e.target.closest("[data-n]"); if (b) done(b.dataset.n); };
+    }
     $("lname-msg").textContent = msg; $("lname-in").value = ""; $("lname-in").placeholder = ph || ""; $("lname-page").textContent = page || "Page 2-9a · Location name";
-    const done = v => { $("lname").hidden = true; res(v); };
+    function done(v) { $("lname").hidden = true; box.hidden = true; res(v); }
     $("lname-ok").onclick = () => { const v = $("lname-in").value.trim(); if (!v) { toast("Type it in first"); return; } done(v); };
     $("lname-in").onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); $("lname-ok").click(); } };
     $("lname-cancel").onclick = () => done(null);
@@ -2926,7 +2943,7 @@ async function enterEnd(which) {
     const k = await choose(`Pick the ${which} location${here ? ". Closest to you are at the top." : "."}`, list.map(o => o.d != null ? `${o.name} (${Math.round(o.d)} ft)` : o.name), "Type a name instead", `Page 2-9a · ${which === "start" ? "Start" : "Stop"} location`);
     if (k >= 0) name = list[k].name;
   }
-  if (!name) name = await askText(`Enter the ${which} location name`, which === "start" ? "e.g. LB-3" : "e.g. V-12");
+  if (!name) name = await askText(`Enter the ${which} location name`, which === "start" ? "e.g. LB-3" : "e.g. V-12", null, list.length ? list : endChoices(null, other && other.name));
   if (name) {
     const it = itemsList().find(i => norm(i.name) === norm(name));
     const type = it ? typeOf(it) : await pickLocType(name);   // a location already in the project keeps its type
@@ -3641,7 +3658,7 @@ render();
   <div class="list loc-list" id="delruns-list" style="max-height:48vh;overflow:auto"></div>
   <button class="btn" id="delruns-done">Back</button></div></div>
 <div class="ask" id="lname" hidden><div><span class="ask-no-label" id="lname-page">Page 2-9a · Location name</span><div id="lname-msg"></div>
-  <input id="lname-in" type="text" autocomplete="off" enterkeyhint="done"><button class="btn primary" id="lname-ok">OK</button><button class="btn" id="lname-cancel">Cancel</button></div></div>
+  <input id="lname-in" type="text" autocomplete="off" enterkeyhint="done"><div class="list loc-list" id="lname-list" hidden style="max-height:40vh;overflow:auto"></div><button class="btn primary" id="lname-ok">OK</button><button class="btn" id="lname-cancel">Cancel</button></div></div>
 <div class="ask" id="ltype" hidden><div><span class="ask-no-label">Page 2-9b · Type of location</span><div id="ltype-msg"></div>
   <div class="list loc-list" id="ltype-list" style="max-height:55vh;overflow:auto"></div><button class="btn" id="ltype-cancel">Cancel</button></div></div>
 <div id="trk" hidden style="position:fixed;inset:0;z-index:59;background:#fff;color:#111;display:grid;grid-template-rows:auto 1fr auto;padding:16px;gap:10px"><button class="modebtn modefloat" type="button"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><g class="ic-sun"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2"/></g><g class="ic-house"><path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/></g></svg><span class="modelbl">Field mode</span></button>
