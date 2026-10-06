@@ -728,7 +728,7 @@ html.field .tc-k { color: var(--accent); }
 </div></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-06.86";
+const APP_VERSION = "2026-10-06.87";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -1246,7 +1246,7 @@ function render() {
   const shownTypes = types().filter(t => t === cat || items.some(i => inCat(i, t)) || (!isR && t === "Building" && groups.some(isBldg)));
   shownTypesNow = shownTypes;
   $("cats").innerHTML = shownTypes.map(t => `<button class="btn" data-cat="${esc(t)}" aria-pressed="${t === cat}">${symbol(typeKind(t))}<span>${esc(t)}</span></button>`).join("")
-    + (current === RANDOM ? `<button class="btn" data-act="add-loctype" style="grid-column:1/-1">Add Location Type</button>` : (cat ? `<button class="btn" data-act="add-loc" style="grid-column:1/-1">+ Add new location</button>` : `<button class="btn" data-act="add-ltype" style="grid-column:1/-1">Add new location</button><button class="btn" data-act="map-conduit" style="grid-column:1/-1">Map conduit and Trench</button>${runNames().length || Object.values(data.delRuns || {}).some(v => !v.back && !v.cleared) ? `<button class="btn" data-act="runs" style="grid-column:1/-1">Conduit and trench runs</button>` : ""}` + `<h3 class="cap-row">This project</h3>` + (jobs.some(j => j.slug === current) ? "" : `<button class="btn" data-act="up-print" style="grid-column:1/-1">${(custom.find(c => c.slug === current) || {}).print ? "Change print" : "Upload print"}</button>`)));   // page 2: opens the add new type page (Steven 2026-10-03)   // + Add type lives on page 2-5 now
+    + (current === RANDOM ? `<button class="btn" data-act="add-loctype" style="grid-column:1/-1">Add Location Type</button>` : (cat ? `<button class="btn" data-act="add-loc" style="grid-column:1/-1">+ Add new location</button>` : `<button class="btn" data-act="add-ltype" style="grid-column:1/-1">Add new location</button><button class="btn" data-act="map-conduit">Map conduit and Trench</button><button class="btn" data-act="runs">Show list of conduit paths</button>` + `<h3 class="cap-row">This project</h3>` + (jobs.some(j => j.slug === current) ? "" : `<button class="btn" data-act="up-print" style="grid-column:1/-1">${(custom.find(c => c.slug === current) || {}).print ? "Change print" : "Upload print"}</button>`)));   // page 2: opens the add new type page (Steven 2026-10-03)   // + Add type lives on page 2-5 now
   const bGroups = groups.filter(isBldg);
   const list = group ? items.filter(i => i.group === group) : cat ? items.filter(i => inCat(i, cat)).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true })) : [];
   const showGroups = !group && cat === "Building" && bGroups.length;
@@ -3319,8 +3319,8 @@ async function finishRun(r) {
 function delRunsList() { return Object.entries(data.delRuns || {}).filter(([, v]) => !v.back && !v.cleared).sort((a, b) => b[1].t - a[1].t); }
 function runRow(r, ru, acts) {
   const ft = Math.round(runFeet(runPath(r))), ends = [ru.from, ru.to].filter(Boolean).join(" to ");
-  const sub = [ru.kind === "Trench" ? (ru.util && ru.util !== "Our conduit" ? `${ru.util.toLowerCase()} trench` : "trench") : (ru.size ? `${ru.size} conduit` : "conduit"), ft ? `${ft.toLocaleString()} ft` : "", ends].filter(Boolean).join(" · ");
-  return `<div class="item" style="cursor:default;grid-template-columns:1fr auto"><span><span class="nm">${esc(r)}</span><br><span class="sub">${esc(sub)}</span></span><span class="row" style="gap:6px;flex-wrap:nowrap">${acts}</span></div>`;
+  const sub = [ends ? r : "", ru.kind === "Trench" ? (ru.util && ru.util !== "Our conduit" ? `${ru.util.toLowerCase()} trench` : "trench") : (ru.size ? `${ru.size} conduit` : "conduit"), ft ? `${ft.toLocaleString()} ft` : ""].filter(Boolean).join(" · ");
+  return `<div class="item" style="cursor:default;grid-template-columns:1fr auto"><span><span class="nm">${esc(ends || r)}</span><br><span class="sub">${esc(sub)}</span></span><span class="row" style="gap:6px;flex-wrap:nowrap">${acts}</span></div>`;
 }
 const RUN_BTN = 'style="min-height:36px;padding:4px 12px;width:auto"';
 const RUN_SUB = "white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block";
