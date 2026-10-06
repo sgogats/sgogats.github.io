@@ -416,6 +416,19 @@ html.field .tc-k { color: var(--accent); }
 #addloc-more::before { content: ""; width: 20px; height: 20px; flex: none; background: currentColor; -webkit-mask: var(--ic) center / contain no-repeat; mask: var(--ic) center / contain no-repeat; }
 #addloc-make { background: var(--accent) !important; border-color: var(--accent) !important; color: var(--accent-ink) !important; }
 @media (prefers-reduced-motion: reduce) { .prog i { transition: none; } }
+/* opening page 0: Phone / iPad / Desktop (Steven 2026-10-06). Phone is the normal look; iPad and Desktop use the whole width and a taller print.
+   iPad gets bigger through the page's viewport width, Desktop through zoom (see applyDevice). */
+#device-pick { position: fixed; inset: 0; z-index: 80; background: var(--bg); color: var(--ink); display: grid; place-items: center; padding: 24px 16px; overflow-y: auto; }
+#device-pick > div { display: grid; gap: 22px; width: 100%; max-width: 460px; }
+#device-pick .btn { min-height: 84px; font-size: 28px; font-weight: 800; }
+#device-pick .dp-q { font: 800 30px/1.2 var(--display); text-align: center; }
+html.big .wrap, html.big .bar-in, html.big .tabs-in { max-width: none; }
+html.big .canvas-box:not(.full) { height: calc(100vh - 170px); }
+html.dev-desk { zoom: 1.3; }
+html.dev-desk .canvas-box:not(.full) { height: calc(100vh / 1.3 - 170px); }
+#z-full { display: none; }
+html.big #z-full { display: block; }
+#z-full .fs-exit, .canvas-box.full #z-full .fs-go { display: none; } .canvas-box.full #z-full .fs-exit { display: inline; }
 </style>
 </head>
 <body>
@@ -603,6 +616,7 @@ html.field .tc-k { color: var(--accent); }
       <button class="btn" id="z-in" aria-label="Zoom in">+</button>
       <button class="btn" id="z-out" aria-label="Zoom out">−</button>
       <button class="btn" id="z-fit" aria-label="Fit print">Fit</button>
+      <button class="btn" id="z-full" aria-label="Full screen"><span class="fs-go">Full</span><span class="fs-exit">Exit</span></button>
     </div>
   </div>
   <div id="fit-note" class="note" style="margin-top:12px"></div>
@@ -716,7 +730,16 @@ html.field .tc-k { color: var(--accent); }
   <button class="btn big gray" id="open-types">Edit location type list</button>
   <button class="btn big gray" id="open-testdata">Delete test data</button>
   <button class="btn big gray" id="open-setup">Setup</button>
+  <button class="btn big gray" id="open-device">Phone / iPad / Desktop</button>
   <button class="btn cancel" id="settings-cancel">Cancel</button>
+</div></div>
+<div id="device-pick" hidden><div>
+  <span class="ask-no-label">Page 0</span>
+  <div class="dp-q">What are you using?</div>
+  <button class="btn primary" data-dev="phone">Phone</button>
+  <button class="btn primary" data-dev="ipad">iPad</button>
+  <button class="btn primary" data-dev="desktop">Desktop</button>
+  <button class="btn cancel" id="device-cancel" hidden>Cancel</button>
 </div></div>
 <div class="ask" id="edit-sheet" hidden><div>
   <span class="ask-no-label" id="es-title">Edit this button</span>
@@ -733,7 +756,7 @@ html.field .tc-k { color: var(--accent); }
 </div></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-06.93";
+const APP_VERSION = "2026-10-06.94";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -766,6 +789,34 @@ const LS = {
   set(k, v) { if (DESIGN_MODE) return true; try { localStorage.setItem("gps." + k, JSON.stringify(v)); return true; } catch { return false; } },
 };
 const $ = id => document.getElementById(id);
+/* ---------- page 0: Phone / iPad / Desktop, remembered on this device; change it in Settings ---------- */
+function deviceNow() { try { return localStorage.getItem("gps.device") || ""; } catch { return ""; } }
+function bigScreen() { const d = deviceNow(); return d === "ipad" || d === "desktop"; }
+const IPAD_SCALE = 1.35;
+function applyDevice() {
+  const d = deviceNow(), h = document.documentElement, vp = document.querySelector('meta[name="viewport"]');
+  h.classList.toggle("big", d === "ipad" || d === "desktop");
+  h.classList.toggle("dev-desk", d === "desktop");
+  let want = "width=device-width,initial-scale=1,viewport-fit=cover";
+  if (d === "ipad") {
+    const land = matchMedia("(orientation: landscape)").matches, a = Math.max(screen.width, screen.height), b = Math.min(screen.width, screen.height);
+    want = "width=" + Math.round((land ? a : b) / IPAD_SCALE) + ",viewport-fit=cover";
+  }
+  if (vp && vp.content !== want) vp.content = want;
+  setTimeout(() => { try { if (!$("tab-print").hidden) { view.fitted = false; drawPrint(); } } catch {} }, 350);
+}
+if (!DESIGN_MODE) applyDevice();
+window.addEventListener("orientationchange", () => { if (deviceNow() === "ipad") setTimeout(applyDevice, 300); });
+function showDevicePick(canCancel) { $("device-cancel").hidden = !canCancel; $("device-pick").hidden = false; }
+document.addEventListener("DOMContentLoaded", () => {
+  for (const b of document.querySelectorAll("#device-pick [data-dev]")) b.onclick = () => {
+    try { localStorage.setItem("gps.device", b.dataset.dev); } catch {}
+    $("device-pick").hidden = true; applyDevice(); window.scrollTo(0, 0);
+  };
+  $("device-cancel").onclick = () => { $("device-pick").hidden = true; };
+  $("open-device").onclick = () => { $("settings-sheet").hidden = true; showDevicePick(true); };
+  if (!DESIGN_MODE && !deviceNow()) showDevicePick(false);
+});
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const slug = s => (s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "job");
 const FT = 3.28084;
@@ -2544,6 +2595,7 @@ function zoomAt(sx, sy, k) {
 $("z-in").onclick = () => { const r = cv.getBoundingClientRect(); zoomAt(r.width / 2, r.height / 2, 1.5); };
 $("z-out").onclick = () => { const r = cv.getBoundingClientRect(); zoomAt(r.width / 2, r.height / 2, 1 / 1.5); };
 $("z-fit").onclick = () => { fitView(); drawPrint(); };
+$("z-full").onclick = () => { const on = !$("cbox").classList.contains("full"); $("cbox").classList.toggle("full", on); document.body.style.overflow = on ? "hidden" : ""; view.fitted = false; drawPrint(); };
 window.addEventListener("resize", () => { if (!$("tab-print").hidden) drawPrint(); });
 matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { if (!$("tab-print").hidden) drawPrint(); });
 
@@ -2625,8 +2677,9 @@ function showTab(name) {
   const b = document.querySelector(`[data-tab="${name}"]`);
   for (const x of document.querySelectorAll("[data-tab]")) x.setAttribute("aria-selected", x === b);
   for (const t of ["collect", "print", "setup"]) $("tab-" + t).hidden = t !== b.dataset.tab;
+  if (b.dataset.tab !== "print" && $("cbox").classList.contains("full")) { $("cbox").classList.remove("full"); document.body.style.overflow = ""; }
   try { sessionStorage.setItem("gps.tab", b.dataset.tab); } catch {}
-  if (b.dataset.tab === "print") { $("print-proj").textContent = (allProjects().find(p => p.slug === current) || {}).name || ""; $("lock-scale").checked = data.lockScale !== false; view.fitted = false; drawPrint(); setTimeout(checkOffSpots, 400); }
+  if (b.dataset.tab === "print") { $("print-proj").textContent = (allProjects().find(p => p.slug === current) || {}).name || ""; $("lock-scale").checked = data.lockScale !== false; view.fitted = false; if (bigScreen()) { $("cbox").classList.add("full"); document.body.style.overflow = "hidden"; } drawPrint(); setTimeout(checkOffSpots, 400); }
   if (b.dataset.tab === "setup") fillSetup();
   tabBar();
   applyDesign();
@@ -2661,7 +2714,7 @@ async function checkOffSpots() {
 // 1 = home and its pages, 2 = inside a project, 3 = the print, 4 = system points; a pop-up on a page adds a letter (2-3a)
 const PAGE_NO = { main: "1", newproject: "1-1", lists: "1-2", status: "1-3", setup: "1-5",
   project: "2", vaultlist: "2-1", addtype: "2-2", capture: "2-3", clean: "2-4", addloc: "2-5",
-  print: "3", placing: "3-1", random: "4", editproject: "2-6", runs: "2-10", delruns: "2-10a", locmenu: "2-1a", dellocs: "2-1b" };   // picture viewer: 2c / 2-3c
+  print: "3", placing: "3-1", random: "4", editproject: "2-6", runs: "2-10", delruns: "2-10a", locmenu: "2-1a", dellocs: "2-1b", device: "0" };   // picture viewer: 2c / 2-3c
 function pageNo() { let sn = "main"; try { sn = screenNow(); } catch {} const n = PAGE_NO[sn] || "?"; return shot.running ? n + "a" : n; }
 $("ver-no").textContent = " · V " + APP_VERSION.slice(8);   // day.build, e.g. V 03.12
 setInterval(() => {
@@ -2681,6 +2734,7 @@ let forcedScreen = null;
 const SCREEN_BG = { main: "#e3f2ff", addtype: "#e2e4e7" };   // Steven's screen notes; the designer can change them
 function screenNow() {
   if (DESIGN_MODE && forcedScreen) return forcedScreen;
+  if ($("device-pick") && !$("device-pick").hidden) return "device";
   if ($("delruns") && !$("delruns").hidden) return "delruns";
   if ($("dellocs") && !$("dellocs").hidden) return "dellocs";
   if ($("locmenu") && !$("locmenu").hidden) return "locmenu";
