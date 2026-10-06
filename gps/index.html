@@ -724,7 +724,7 @@ html.field .tc-k { color: var(--accent); }
 </div></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-06.81";
+const APP_VERSION = "2026-10-06.82";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -1177,6 +1177,7 @@ async function openProject(s) {
   const p = s === RANDOM ? { name: "System locations", slug: RANDOM, job: false } : allProjects().find(x => x.slug === s);
   job = p && p.job ? LS.get("job." + s, null) : null;
   data = LS.get("data." + s, null) || { project: p ? p.name : s, slug: s, items: {}, extra: [], controls: {}, lockScale: true };
+  try { dropOldRuns(); } catch {}
   render();
   if (p && p.job && gh.on()) {
     try { const j = await gh.raw(`gps/jobs/${s}.json`); if (j) { job = j; LS.set("job." + s, j) || null; render(); } }
@@ -1908,7 +1909,7 @@ async function pull() {
     setSync("", "Syncing");
     const m = await gh.meta(`gps/readings/${s}.json`);
     if (s !== current) return;
-    if (m) { data = merge(data, JSON.parse(decodeB64(m.content))); LS.set("data." + s, data); render(); }
+    if (m) { data = merge(data, JSON.parse(decodeB64(m.content))); LS.set("data." + s, data); if (dropOldRuns().length) toast("Older copies of re-walked runs moved to Deleted runs"); render(); }
     setSync("ok", "Saved to GitHub"); picUpload(s);
     if (!m && (Object.keys(data.items).length || (data.extra || []).length)) push("Upload shots");
   } catch (e) { setSync("err", "Not synced"); }
@@ -3040,6 +3041,11 @@ async function endWalk(w) {   // after Stop (or "Finish it here" on a saved walk
   }
   data.runs[r].t = Date.now();
   $("trk").hidden = true; trkWakeOff(); cm = null;
+  const old = sameRuns(r);
+  if (old.length) {   // always confirm before a new walk replaces an old one (change 14)
+    if (await ask(`${old.join(", ")} also goes from ${data.runs[r].from} to ${data.runs[r].to}. Replace it with this new walk? The old one goes to Deleted runs.`, "Yes, replace it", "No, keep both")) old.forEach(cutRun);
+    else for (const x of [r, ...old]) data.runs[x].twin = true;
+  }
   saveLocal(); push(`Conduit ${r}: ${sel.start.name} to ${sel.stop.name}, ${pts.length} dots`);
   render(); showTab("print"); toast(`${r} saved: ${pts.length} dots, ${Math.round(runFeet(runPath(r)))} ft`);
   // Steven 2026-10-06: put both ends on the print right away; an end already placed on the print is skipped
@@ -3223,6 +3229,20 @@ function cutRun(r) {   // take the run off the job and keep one copy in Deleted 
   if (data.runs) delete data.runs[r];
   if (data.tracks) delete data.tracks[r];
   smoothCache.clear(); saveLocal(); push(`Delete ${r}`);
+}
+/* Steven 2026-10-06: re-walking a run keeps only the newest path. Runs with the same two ends, kind and size are the same run;
+   the older one goes to Deleted runs (so it can be put back). Runs marked twin (two conduits side by side) are left alone. */
+function runKey(ru) { return ru && ru.from && ru.to && !ru.twin ? [[ru.from, ru.to].sort().join("|"), ru.kind || "Conduit", ru.size || "", ru.util || ""].join("|") : null; }
+function sameRuns(r) {   // older runs with the same ends as run r
+  const ru = (data.runs || {})[r], k = runKey(ru); if (!k) return [];
+  return Object.keys(data.runs).filter(x => x !== r && runKey(data.runs[x]) === k && (data.runs[x].t || 0) <= (ru.t || 0));
+}
+function dropOldRuns() {   // tidy up repeats already saved: keep the newest of each, older ones to Deleted runs
+  const best = {}, cut = [];
+  for (const [x, ru] of Object.entries(data.runs || {})) { const k = runKey(ru); if (!k) continue; if (!best[k] || (ru.t || 0) > (data.runs[best[k]].t || 0)) best[k] = x; }
+  for (const [x, ru] of Object.entries(data.runs || {})) { const k = runKey(ru); if (k && best[k] !== x) cut.push(x); }
+  for (const x of cut) cutRun(x);
+  return cut;
 }
 function putRunBack(r) {
   const v = (data.delRuns || {})[r]; if (!v) return r;
