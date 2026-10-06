@@ -724,7 +724,7 @@ html.field .tc-k { color: var(--accent); }
 </div></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-06.78";
+const APP_VERSION = "2026-10-06.79";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -2270,7 +2270,7 @@ $("ctrl-rows").addEventListener("click", e => {
   if (focusPos(n)) findOnPrint(n, true); else $("cbox").scrollIntoView({ behavior: "smooth", block: "center" });
   startPlacing(n, false);
 });
-let pending = null, placeReturn = false;
+let pending = null, placeReturn = false, placeQueue = [];   // placeQueue: more spots to set after this one (both ends of a run)
 function startPlacing(n, fromShot) {
   placing = n; focusName = n; pending = null; placeReturn = fromShot;
   $("placing").hidden = false; $("place-save").disabled = true;
@@ -2297,9 +2297,10 @@ $("place-save").onclick = async () => {
   data.controls[n] = Object.assign({}, data.controls[n], { x: Math.round(pending.x * 10) / 10, y: Math.round(pending.y * 10) / 10, use: true });
   saveLocal(); push(`Spot for ${n}`); toast(`Saved ${n} on the print`);
   const back = placeReturn; endPlacing();
+  if (placeQueue.length) { sol = solve(); startPlacing(placeQueue.shift(), false); return; }
   if (back) { showTab("collect"); selected = null; group = null; finding = false; home = false; render(); }
 };
-$("place-skip").onclick = () => { const back = placeReturn; endPlacing(); if (back) { showTab("collect"); selected = null; group = null; finding = false; home = false; render(); } };
+$("place-skip").onclick = () => { const back = placeReturn; endPlacing(); if (placeQueue.length) { startPlacing(placeQueue.shift(), false); return; } if (back) { showTab("collect"); selected = null; group = null; finding = false; home = false; render(); } };
 function focusPos(n) {
   const c = controlPos(n); if (c) return c;
   if (sol && sol.ok && data.items[n]) return sol.map(sol.local(data.items[n]));
@@ -2802,9 +2803,41 @@ function pickLocType(name) {   // the big list of types; not there? the green Ot
     $("ltype").hidden = false;
   });
 }
+/* Steven 2026-10-06: tapping Start or Stop lists the project's locations, closest to where you stand first; typing is still there for a new name */
+function quickFix() {
+  return new Promise(res => {
+    if (!navigator.geolocation) { res(null); return; }
+    let done = false; const end = v => { if (!done) { done = true; res(v); } };
+    setTimeout(() => end(null), 7000);
+    navigator.geolocation.getCurrentPosition(p => end({ lat: p.coords.latitude, lon: p.coords.longitude }), () => end(null), { enableHighAccuracy: true, timeout: 6500, maximumAge: 60000 });
+  });
+}
+function printFeet(here, n) {   // feet from here to a location that is only on the print (no GPS yet)
+  if (!sol) sol = solve();
+  const p = controlPos(n); if (!sol || !sol.ok || !p) return null;
+  const o = sol.map({ x: 0, y: 0 }), e = sol.map({ x: 1, y: 0 }), a = e.x - o.x, b = e.y - o.y, d = a * a + b * b, dx = p.x - o.x, dy = p.y - o.y;
+  const u = { x: (a * dx + b * dy) / d, y: (-b * dx + a * dy) / d }, h = sol.local(here);
+  return Math.hypot(u.x - h.x, u.y - h.y);
+}
+function endChoices(here, skip) {
+  const out = itemsList().filter(i => !skip || norm(i.name) !== norm(skip)).map(i => {
+    const g = data.items[i.name];
+    const d = !here ? null : g && g.lat != null ? feetApart(here, g) : printFeet(here, i.name);
+    return { name: i.name, d };
+  });
+  return out.sort((a, b) => (a.d == null) - (b.d == null) || (a.d != null ? a.d - b.d : 0) || a.name.localeCompare(b.name, undefined, { numeric: true }));
+}
 async function enterEnd(which) {
   $("cmap").hidden = true;
-  const name = await askText(`Enter the ${which} location name`, which === "start" ? "e.g. LB-3" : "e.g. V-12");
+  const other = cm[which === "start" ? "stop" : "start"];
+  toast("Finding the locations closest to you…");
+  const here = await quickFix(), list = endChoices(here, other && other.name);
+  let name = null;
+  if (list.length) {
+    const k = await choose(`Pick the ${which} location${here ? ". Closest to you are at the top." : "."}`, list.map(o => o.d != null ? `${o.name} (${Math.round(o.d)} ft)` : o.name), "Type a name instead", `Page 2-9a · ${which === "start" ? "Start" : "Stop"} location`);
+    if (k >= 0) name = list[k].name;
+  }
+  if (!name) name = await askText(`Enter the ${which} location name`, which === "start" ? "e.g. LB-3" : "e.g. V-12");
   if (name) {
     const it = itemsList().find(i => norm(i.name) === norm(name));
     const type = it ? typeOf(it) : await pickLocType(name);   // a location already in the project keeps its type
@@ -2949,9 +2982,22 @@ async function verifyEnd(x, pt) {
   }
   return false;
 }
+const hasGps = x => { const g = x && data.items[x.name]; return !!(g && g.lat != null); };
 async function mapTrench(sel) {
   const n = Math.max(0, ...runNames().map(k => parseInt(k.replace(/\D+/g, "")) || 0)) + 1, r = `Conduit run ${n}`;
+  if (hasGps(sel.start) && hasGps(sel.stop)) {   // Steven 2026-10-06: both ends already located, so no readings; just pick where the walk begins
+    const k = await choose("Select start point", [sel.start.name, sel.stop.name], "Cancel", "Page 2-9h · Start point");
+    if (k < 0) { $("cmap").hidden = false; return; }
+    if (k === 1) { const t = sel.start; sel.start = sel.stop; sel.stop = t; drawCmap(); }
+  }
   trkWakeOn();
+  if (hasGps(sel.start)) {   // a start that already has its GPS spot needs no new reading (Steven 2026-10-06)
+    if (!await ask(`Go to ${sel.start.name}. It already has its GPS spot, so no reading is needed. Tap OK, then start walking the trench.`, "OK", "Cancel", true)) { trkWakeOff(); toast("Stopped. Nothing was saved."); return; }
+    walkRec = { proj: current, r, sel: JSON.parse(JSON.stringify(sel)), a: JSON.parse(JSON.stringify(data.items[sel.start.name])), pts: [] }; saveWalk();
+    await walkTrack(data.items[sel.start.name], walkRec.pts);
+    await endWalk(walkRec);
+    return;
+  }
   // pause first, every time (Steven 2026-10-05): tell them where to put the phone, wait for OK
   if (!await ask(`Place your phone or iPad on the start location: ${sel.start.name}. Hold it steady, then tap OK.`, "OK", "Cancel", true)) { trkWakeOff(); toast("Stopped. Nothing was saved."); return; }
   const a = await holdReading(`Position phone on ${sel.start.name}`, "Hold the phone steady.");
@@ -2972,7 +3018,9 @@ async function endWalk(w) {   // after Stop (or "Finish it here" on a saved walk
   data.tracks = data.tracks || {}; data.tracks[r] = pts;   // keep the walk even if the end reading is cancelled
   data.runs = data.runs || {}; data.runs[r] = Object.assign({ from: sel.start.name, track: true, kind: sel.kind || "Conduit", t: Date.now(), toOpen: true }, sel.size && sel.kind !== "Trench" ? { size: sel.size } : {}, sel.kind === "Trench" && sel.util ? { util: sel.util } : {});
   saveLocal(); clearWalk();
-  const go = await ask(`Place your phone or iPad on the stop location: ${sel.stop.name}. Hold it steady, then tap OK.`, "OK", "Skip", true);
+  const stopHad = hasGps(sel.stop);   // a stop that already has its GPS spot needs no new reading (Steven 2026-10-06)
+  if (stopHad) { data.runs[r].to = sel.stop.name; delete data.runs[r].toOpen; }
+  const go = !stopHad && await ask(`Place your phone or iPad on the stop location: ${sel.stop.name}. Hold it steady, then tap OK.`, "OK", "Skip", true);
   let b = go && await holdReading(`Position over ${sel.stop.name}`, "Hold the phone steady.");
   if (b && !await verifyEnd(sel.stop, b)) { b = null; toast(`The end of ${r} is left open. Pick the location you are at.`); }
   if (b) {
@@ -2986,6 +3034,11 @@ async function endWalk(w) {   // after Stop (or "Finish it here" on a saved walk
   $("trk").hidden = true; trkWakeOff(); cm = null;
   saveLocal(); push(`Conduit ${r}: ${sel.start.name} to ${sel.stop.name}, ${pts.length} dots`);
   render(); showTab("print"); toast(`${r} saved: ${pts.length} dots, ${Math.round(runFeet(runPath(r)))} ft`);
+  // Steven 2026-10-06: put both ends on the print right away; an end already placed on the print is skipped
+  if (job && job.plan) {
+    placeQueue = [sel.start.name, sel.stop.name].filter(n => data.items[n] && !(data.controls[n] && data.controls[n].x != null));
+    if (placeQueue.length) setTimeout(() => { sol = solve(); startPlacing(placeQueue.shift(), false); }, 300);
+  }
 }
 async function checkWalk() {   // the app opened and found a walk that never got its Stop
   const w = LS.get("walk", null); if (!w || !w.r || !w.sel || !Array.isArray(w.pts)) return;
