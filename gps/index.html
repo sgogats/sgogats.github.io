@@ -724,7 +724,7 @@ html.field .tc-k { color: var(--accent); }
 </div></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-06.79";
+const APP_VERSION = "2026-10-06.80";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -2833,6 +2833,14 @@ async function enterEnd(which) {
   toast("Finding the locations closest to you…");
   const here = await quickFix(), list = endChoices(here, other && other.name);
   let name = null;
+  // Steven 2026-10-06: a location within 15 ft fills in by itself; tap again to pick from the list instead
+  const near = list[0] && list[0].d != null && list[0].d <= RUN_WRONG_FT ? list[0] : null;
+  if (near && !cm[which]) {
+    const it = itemsList().find(i => i.name === near.name);
+    cm[which] = { name: near.name, type: it ? typeOf(it) : "Vault", had: !!it };
+    toast(`${which === "start" ? "Start" : "Stop"} is ${near.name}, ${Math.round(near.d)} ft from you. Tap it again to change it.`);
+    drawCmap(); $("cmap").hidden = false; return;
+  }
   if (list.length) {
     const k = await choose(`Pick the ${which} location${here ? ". Closest to you are at the top." : "."}`, list.map(o => o.d != null ? `${o.name} (${Math.round(o.d)} ft)` : o.name), "Type a name instead", `Page 2-9a · ${which === "start" ? "Start" : "Stop"} location`);
     if (k >= 0) name = list[k].name;
