@@ -571,6 +571,11 @@ html.field .tc-k { color: var(--accent); }
     <a class="btn big maplink" id="proj-map" href="map.html" style="margin-top:10px" hidden>Plot on Google Maps</a>
     <a class="btn big maplink" id="proj-3d" href="site3d.html" style="margin-top:10px" hidden>See it in 3D</a>
     <button class="btn big" id="proj-status-btn" style="margin-top:10px" hidden>Change project status</button>
+    <div id="proj-pics-box" hidden>
+      <button class="btn big gray" id="proj-pics" style="margin-top:10px">Take location pictures</button>
+      <div class="small muted" id="ppic-count"></div>
+      <div class="row" id="ppic-thumbs" style="flex-wrap:wrap;gap:6px"></div>
+    </div>
   </div>
 </section>
 
@@ -714,7 +719,7 @@ html.field .tc-k { color: var(--accent); }
 </div></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-06.76";
+const APP_VERSION = "2026-10-06.77";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -1640,13 +1645,15 @@ $("store").onclick = startShot;
 
 /* ---------- location pictures (Steven 2026-10-06): page 2-3 button opens the phone camera; each picture is saved with
    the point's name and GPS. The picture goes to ASBUILT_MAKER gps/photos/<project>/, the list to data.photos. ---------- */
+const PROJ_PIC = "Whole project";   // pictures taken on page 2 (Steven 2026-10-06), not tied to one point
+let picName = null;
 function picsFor(n) { return Object.entries(data.photos || {}).filter(([, p]) => p.name === n).sort((a, b) => a[1].t - b[1].t); }
-async function renderPics() {
-  const n = selected, list = picsFor(n);
-  $("pic-count").textContent = list.length ? `${list.length} picture${list.length > 1 ? "s" : ""} saved for this point` : "";
-  const box = $("pic-thumbs"); box.innerHTML = "";
+async function renderPics(proj) {
+  const n = proj ? PROJ_PIC : selected, list = picsFor(n), k = proj ? "ppic-" : "pic-";
+  $(k + "count").textContent = list.length ? `${list.length} picture${list.length > 1 ? "s" : ""} saved for this ${proj ? "project" : "point"}` : "";
+  const box = $(k + "thumbs"), mine = box.dataset.v = String(Date.now() + Math.random()); box.innerHTML = "";
   for (const [id, p] of list.slice(-6)) {
-    const b = await idb.get("pic:" + id); if (selected !== n) return;
+    const b = await idb.get("pic:" + id); if (box.dataset.v !== mine || (!proj && selected !== n)) return;
     const card = document.createElement("div"); card.className = "small mono muted"; card.style.cssText = "display:flex;gap:8px;align-items:center;width:100%";
     if (b) { const im = document.createElement("img"); im.src = URL.createObjectURL(b); im.style.cssText = "width:64px;height:64px;object-fit:cover;border-radius:6px;flex:none"; im.onclick = () => window.open(im.src); card.appendChild(im); }
     const g = p.lat != null ? `${p.lat.toFixed(7)}, ${p.lon.toFixed(7)} ±${p.acc_ft} ft` : "no GPS";
@@ -1688,9 +1695,10 @@ function picShrink(file) {   // phone pictures are 3-12 MB; 1600 px JPEG at qual
   });
 }
 function picHere() { return new Promise(ok => { if (!navigator.geolocation) return ok(null); navigator.geolocation.getCurrentPosition(p => ok(p.coords), () => ok(null), { enableHighAccuracy: true, timeout: 8000, maximumAge: 15000 }); }); }
-$("take-pics").onclick = () => { if (!selected) return; $("pic-in").value = ""; $("pic-in").click(); };
+$("take-pics").onclick = () => { if (!selected) return; picName = selected; $("pic-in").value = ""; $("pic-in").click(); };
+$("proj-pics").onclick = () => { if (!current) return; picName = PROJ_PIC; $("pic-in").value = ""; $("pic-in").click(); };
 $("pic-in").onchange = async () => {
-  const f = $("pic-in").files[0], n = selected, s = current; if (!f || !n) return;
+  const f = $("pic-in").files[0], n = picName, s = current; if (!f || !n) return;
   toast("Saving picture…");
   try {
     const [blob, c, ex] = await Promise.all([picShrink(f), picHere(), f.arrayBuffer().then(picExif).catch(() => ({}))]);
@@ -1699,7 +1707,7 @@ $("pic-in").onchange = async () => {
     if (s !== current) return;
     data.photos = data.photos || {};
     data.photos[id] = { name: n, t, file, lat: c ? c.latitude : null, lon: c ? c.longitude : null, acc_ft: c ? Math.round(c.accuracy * 3.28084) : null, exif_time: ex.time || null, exif_lat: ex.lat ?? null, exif_lon: ex.lon ?? null, up: false };
-    saveLocal(); renderPics(); toast(`Picture saved for ${n}`);
+    saveLocal(); renderPics(n === PROJ_PIC); toast(`Picture saved for ${n === PROJ_PIC ? "this project" : n}`);
     picUpload(s);
   } catch (e) { toast(e.message); }
 };
@@ -2500,6 +2508,7 @@ function applyDesign() {
   let css = "";
   const sn = screenNow();
   $("proj-status-btn").hidden = $("proj-map").hidden = $("proj-print").hidden = $("proj-3d").hidden = $("proj-edit").hidden = sn !== "project";
+  $("proj-pics-box").hidden = sn !== "project"; if (sn === "project") renderPics(true);
   if (sn === "project" && !(jobs.some(j => j.slug === current) || (custom.find(c => c.slug === current) || {}).print)) $("proj-3d").hidden = true;   // no print, no 3D button (Steven 2026-10-05)
   $("change-proj").hidden = sn === "addloc" || sn === "capture";   // a page with a big bottom Cancel gets no small top Cancel (Steven)
   $("proj-map").href = "map.html?p=" + encodeURIComponent(current || "");
