@@ -535,6 +535,10 @@ html.field .tc-k { color: var(--accent); }
       <div class="prog" aria-hidden="true"><i id="m-prog"></i></div>
       <p class="small muted" id="shot-msg">Stand right on the box, hold the phone flat and still, then press Store GPS.</p>
       <button class="btn big primary" id="store">Store GPS</button>
+      <button class="btn big gray" id="take-pics">Take location pictures</button>
+      <input type="file" id="pic-in" accept="image/*" capture="environment" hidden>
+      <div class="small muted" id="pic-count"></div>
+      <div class="row" id="pic-thumbs" style="flex-wrap:wrap;gap:6px"></div>
       <div class="row">
         <button class="btn" id="save-now" hidden>Save now</button>
         <button class="btn" id="cancel-shot" hidden>Cancel</button>
@@ -710,7 +714,7 @@ html.field .tc-k { color: var(--accent); }
 </div></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-06.72";
+const APP_VERSION = "2026-10-06.73";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -1628,8 +1632,65 @@ function renderShot() {
   $("save-now").hidden = !shot.running;
   $("cancel-shot").hidden = !shot.running;
   $("store").textContent = r ? "Re-shoot GPS" : "Store GPS";
+  $("take-pics").hidden = shot.running;
+  renderPics();
 }
 $("store").onclick = startShot;
+
+/* ---------- location pictures (Steven 2026-10-06): page 2-3 button opens the phone camera; each picture is saved with
+   the point's name and GPS. The picture goes to ASBUILT_MAKER gps/photos/<project>/, the list to data.photos. ---------- */
+function picsFor(n) { return Object.entries(data.photos || {}).filter(([, p]) => p.name === n).sort((a, b) => a[1].t - b[1].t); }
+async function renderPics() {
+  const n = selected, list = picsFor(n);
+  $("pic-count").textContent = list.length ? `${list.length} picture${list.length > 1 ? "s" : ""} saved for this point` : "";
+  const box = $("pic-thumbs"); box.innerHTML = "";
+  for (const [id] of list.slice(-6)) {
+    const b = await idb.get("pic:" + id); if (!b || selected !== n) continue;
+    const im = document.createElement("img"); im.src = URL.createObjectURL(b); im.style.cssText = "width:64px;height:64px;object-fit:cover;border-radius:6px";
+    im.onclick = () => window.open(im.src); box.appendChild(im);
+  }
+}
+function picShrink(file) {   // phone pictures are 3-12 MB; 1600 px JPEG keeps them small enough for GitHub
+  return new Promise((ok, no) => {
+    const u = URL.createObjectURL(file), im = new Image();
+    im.onload = () => { const k = Math.min(1, 1600 / Math.max(im.width, im.height)), c = document.createElement("canvas"); c.width = Math.round(im.width * k); c.height = Math.round(im.height * k);
+      c.getContext("2d").drawImage(im, 0, 0, c.width, c.height); URL.revokeObjectURL(u); c.toBlob(b => b ? ok(b) : no(new Error("Picture could not be read")), "image/jpeg", 0.85); };
+    im.onerror = () => { URL.revokeObjectURL(u); no(new Error("Picture could not be read")); };
+    im.src = u;
+  });
+}
+function picHere() { return new Promise(ok => { if (!navigator.geolocation) return ok(null); navigator.geolocation.getCurrentPosition(p => ok(p.coords), () => ok(null), { enableHighAccuracy: true, timeout: 8000, maximumAge: 15000 }); }); }
+$("take-pics").onclick = () => { if (!selected) return; $("pic-in").value = ""; $("pic-in").click(); };
+$("pic-in").onchange = async () => {
+  const f = $("pic-in").files[0], n = selected, s = current; if (!f || !n) return;
+  toast("Saving picture…");
+  try {
+    const [blob, c] = await Promise.all([picShrink(f), picHere()]);
+    const t = Date.now(), id = n.replace(/[^\w.-]+/g, "_") + "-" + t, file = `gps/photos/${s}/${id}.jpg`;
+    await idb.set("pic:" + id, blob);
+    if (s !== current) return;
+    data.photos = data.photos || {};
+    data.photos[id] = { name: n, t, file, lat: c ? c.latitude : null, lon: c ? c.longitude : null, acc_ft: c ? Math.round(c.accuracy * 3.28084) : null, up: false };
+    saveLocal(); renderPics(); toast(`Picture saved for ${n}`);
+    picUpload(s);
+  } catch (e) { toast(e.message); }
+};
+let picBusy = false;
+async function picUpload(s) {   // sends any pictures not yet on GitHub; tries again on the next one or when back online
+  if (picBusy || !gh.on() || DESIGN_MODE) return; picBusy = true;
+  try {
+    const d = s === current ? data : LS.get("data." + s, null); if (!d || !d.photos) return;
+    for (const [id, p] of Object.entries(d.photos)) {
+      if (p.up) continue;
+      const b = await idb.get("pic:" + id); if (!b) continue;
+      await ghPutFile(p.file, await blobB64(b), `GPS Shots: ${d.project || s}: picture of ${p.name}`);
+      p.up = true; if (s === current) { data.photos[id] = p; saveLocal(); } else LS.set("data." + s, d);
+    }
+    push("Pictures");
+  } catch (e) { toast("Picture not sent yet: " + e.message); }
+  finally { picBusy = false; }
+}
+window.addEventListener("online", () => { if (current) picUpload(current); });
 $("show-print").onclick = () => { const n = selected; showTab("print"); findOnPrint(n); };
 $("save-now").onclick = () => finishShot();
 $("cancel-shot").onclick = () => { stopShot(true); $("shot-msg").textContent = "Cancelled. Nothing was saved."; renderShot(); };
@@ -1768,6 +1829,8 @@ function merge(a, b) {
   out.labels = Object.assign({}, b.labels || {}, a.labels || {});
   out.runs = Object.assign({}, b.runs || {}, a.runs || {});
   out.tracks = Object.assign({}, b.tracks || {}, a.tracks || {});   // walked trench dots   // conduit runs: which vault each end joins
+  out.photos = Object.assign({}, b.photos || {}, a.photos || {});   // location pictures
+  for (const [k, v] of Object.entries(b.photos || {})) if (v.up) out.photos[k] = Object.assign({}, out.photos[k], { up: true });
   out.bldgs = [...new Set([...(a.bldgs || []), ...(b.bldgs || [])])];   // buildings added on page 2-5
   const ta = a.types ? a.typesT || 0 : -1, tb = b.types ? b.typesT || 0 : -1;    // newest button list wins
   if (tb > ta) { out.types = b.types; out.typesT = b.typesT; out.typesOwn = b.typesOwn; }
@@ -1782,7 +1845,7 @@ async function pull() {
     const m = await gh.meta(`gps/readings/${s}.json`);
     if (s !== current) return;
     if (m) { data = merge(data, JSON.parse(decodeB64(m.content))); LS.set("data." + s, data); render(); }
-    setSync("ok", "Saved to GitHub");
+    setSync("ok", "Saved to GitHub"); picUpload(s);
     if (!m && (Object.keys(data.items).length || (data.extra || []).length)) push("Upload shots");
   } catch (e) { setSync("err", "Not synced"); }
 }
