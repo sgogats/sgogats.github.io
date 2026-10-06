@@ -617,6 +617,7 @@ html.big #z-full { display: block; }
       <button class="btn" id="z-in" aria-label="Zoom in">+</button>
       <button class="btn" id="z-out" aria-label="Zoom out">−</button>
       <button class="btn" id="z-fit" aria-label="Fit print">Fit</button>
+      <button class="btn" id="z-edit" hidden>Edit</button>
       <button class="btn" id="z-full" aria-label="Full screen"><span class="fs-go">Full</span><span class="fs-exit">Exit</span></button>
     </div>
   </div>
@@ -758,7 +759,7 @@ html.big #z-full { display: block; }
 </div></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-06.97";
+const APP_VERSION = "2026-10-06.98";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -2202,6 +2203,7 @@ function drawPrint() {
   renderFitNote(); renderCtrlRows();
   $("save-pdf").hidden = !!(job && job.plan) || !gsheet();
   $("edit-draw").hidden = !(job && job.plan) || !!editPr || !!drawing || !!placing;
+  $("z-edit").hidden = $("edit-draw").hidden || !$("cbox").classList.contains("full");   // full-screen print: Edit drawing from the tool column (Steven 2026-10-06)
   if ((!job || !job.plan) && gsheet()) { drawSheet(gsheet()); return; }
   if (!job || !job.plan) {
     ctx.fillStyle = css("--muted"); ctx.font = "16px " + css("--body"); ctx.textAlign = "center";
@@ -2497,7 +2499,7 @@ function startEditing() {
 }
 function endEditing() {
   editPr = null; $("editPr").hidden = true;
-  $("cbox").classList.remove("full"); document.body.style.overflow = "";
+  if (!bigScreen()) { $("cbox").classList.remove("full"); document.body.style.overflow = ""; }
   view.fitted = false; drawPrint();
 }
 /* Steven 2026-10-06: in Edit drawing, tapping a conduit opens page 3-2 with Edit information (size, or the trench's utility) and Redraw route */
@@ -2538,6 +2540,7 @@ async function redrawRun(r, sure) {
 }
 var editBack = null;   // back to Edit drawing after a redraw is saved or skipped
 $("edit-draw").onclick = () => startEditing();
+$("z-edit").onclick = () => startEditing();
 $("edit-draw-done").onclick = () => endEditing();
 function focusPos(n) {
   const c = controlPos(n); if (c) return c;
