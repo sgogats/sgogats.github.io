@@ -733,7 +733,7 @@ html.field .tc-k { color: var(--accent); }
 </div></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-06.90";
+const APP_VERSION = "2026-10-06.91";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -2150,9 +2150,11 @@ function drawPrint() {
   for (const [x, y, t, size] of job.plan.texts) { ctx.font = `600 ${size}px ${css("--body")}`; ctx.fillText(t, x, y); }
   ctx.restore();
   // conduit runs: drawn under the boxes, so each line looks like it enters the vault or lockbox (Steven 2026-10-06)
-  if (sol && sol.ok && !drawing) {
+  if (sol && sol.ok) {
     const lanes = runLanes(), labs = [];
+    if (drawing) ctx.globalAlpha = 0.45;   // while drawing a path the other conduits show faded, so the new one can go beside them
     for (const r of runNames()) {
+    if (drawing && r === drawing.r) continue;
     const qs = offsetLine(pinnedRun(r).map(toScreen), lanes[r] || 0);
     if (qs.length < 2) continue;
     const col = runColor((data.runs || {})[r]);
@@ -2161,19 +2163,20 @@ function drawPrint() {
     const m = qs[Math.floor((qs.length - 1) / 2)], m2 = qs[Math.floor((qs.length - 1) / 2) + 1];
     ctx.font = "700 12px " + css("--body"); ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillStyle = css("--ink"); const lx = (m.x + m2.x) / 2; let ly = (m.y + m2.y) / 2 - 10;
     while (labs.some(l => Math.abs(l.x - lx) < 120 && Math.abs(l.y - ly) < 14)) ly += 15;   // labels of side-by-side runs stack, not overlap
-    labs.push({ x: lx, y: ly }); ctx.fillText(runLabel(r, (data.runs || {})[r], runFeet(runPath(r))), lx, ly);
+    labs.push({ x: lx, y: ly }); ctx.globalAlpha = 1; ctx.fillText(runLabel(r, (data.runs || {})[r], runFeet(runPath(r))), lx, ly); if (drawing) ctx.globalAlpha = 0.45;   // names stay dark, never light grey
     }
+    ctx.globalAlpha = 1;
   }
   // designed items
   const z = Math.max(5, Math.min(10, view.s * 6));
   for (const it of job.items) {
     if (it.x == null) continue;
-    if (drawing && !drawing.ends.includes(it.name)) continue;   // drawing a path: only its start and end show
+    const fa = drawing && !drawing.ends.includes(it.name) ? 0.4 : 1;   // drawing a path: other boxes show faded (Steven 2026-10-06)
     const c = data.controls[it.name], placed = c && c.x != null;  // verified: the icon moves to the spot set by hand
     const p = toScreen(placed ? c : it);
-    ctx.globalAlpha = placed || data.items[it.name] ? 0.9 : 0.45;
+    ctx.globalAlpha = (placed || data.items[it.name] ? 0.9 : 0.45) * fa;
     if (full) {  // outlines, filled plain so conduit lines end under the box (Steven 2026-10-06)
-      ctx.strokeStyle = css(it.kind === "Lockbox" ? "--lb" : /pole/i.test(it.kind) ? "--pole" : "--vault"); ctx.fillStyle = css("--panel"); ctx.lineWidth = 2; ctx.globalAlpha = 1;
+      ctx.strokeStyle = css(it.kind === "Lockbox" ? "--lb" : /pole/i.test(it.kind) ? "--pole" : "--vault"); ctx.fillStyle = css("--panel"); ctx.lineWidth = 2; ctx.globalAlpha = fa;
       if (it.kind === "Lockbox") { ctx.beginPath(); ctx.moveTo(p.x, p.y - z); ctx.lineTo(p.x + z, p.y + z * 0.8); ctx.lineTo(p.x - z, p.y + z * 0.8); ctx.closePath(); ctx.fill(); ctx.stroke(); }
       else if (/pole/i.test(it.kind)) { ctx.beginPath(); ctx.arc(p.x, p.y, z * 0.8, 0, 7); ctx.fill(); ctx.stroke(); }
       else { ctx.fillRect(p.x - z * 0.8, p.y - z * 0.8, z * 1.6, z * 1.6); ctx.strokeRect(p.x - z * 0.8, p.y - z * 0.8, z * 1.6, z * 1.6); }
@@ -2182,6 +2185,7 @@ function drawPrint() {
     else { ctx.fillStyle = css("--vault"); ctx.fillRect(p.x - z * 0.8, p.y - z * 0.8, z * 1.6, z * 1.6); }
     ctx.globalAlpha = 1;
     if (view.s >= 1.6) { ctx.fillStyle = css("--ink"); ctx.font = ($("cbox").classList.contains("full") ? "700 15px " : "600 11px ") + css("--body"); ctx.textAlign = "left"; ctx.textBaseline = "middle"; const b2 = name2(it.name); ctx.fillText(it.name, p.x + z + 3, b2 ? p.y - 8 : p.y); if (b2) ctx.fillText(b2, p.x + z + 3, p.y + 8); }
+    ctx.globalAlpha = 1;
   }
   // buildings with a second name (address): both names at the building
   for (const b of job.buildings || []) {
@@ -2194,7 +2198,7 @@ function drawPrint() {
   }
   // spots set by hand (where the box actually is)
   for (const [n, c] of Object.entries(data.controls)) if (c.x != null) {
-    if (designPos(n) || (drawing && !drawing.ends.includes(n))) continue;  // items on the print are drawn at this spot already
+    if (designPos(n)) continue;  // items on the print are drawn at this spot already
     const p = toScreen(c); ctx.strokeStyle = css("--ink"); ctx.lineWidth = 2;
     ctx.beginPath(); ctx.moveTo(p.x - 9, p.y); ctx.lineTo(p.x + 9, p.y); ctx.moveTo(p.x, p.y - 9); ctx.lineTo(p.x, p.y + 9); ctx.stroke();
     ctx.fillStyle = css("--ink"); ctx.font = "700 12px " + css("--body"); ctx.textAlign = "left"; ctx.textBaseline = "bottom"; ctx.fillText(n, p.x + 6, p.y - 6);
