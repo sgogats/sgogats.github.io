@@ -709,6 +709,7 @@ html.big #z-full { display: block; }
   <label class="field"><span>Name</span><input id="editloc-name" type="text" autocomplete="off" enterkeyhint="done"></label>
   <div class="small muted" style="margin:0">Location type (now <b id="editloc-now"></b>)</div>
   <div class="list loc-list" id="editloc-types" style="max-height:38vh"></div>
+  <div class="small" id="editloc-typenote" style="margin:0"></div>
   <button class="btn primary" id="editloc-save">Save</button>
   <button class="btn cancel" id="editloc-cancel">Cancel</button>
 </div></div>
@@ -756,7 +757,7 @@ html.big #z-full { display: block; }
 </div></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-06.94";
+const APP_VERSION = "2026-10-06.95";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -1237,17 +1238,29 @@ async function openProject(s) {
   const p = s === RANDOM ? { name: "System locations", slug: RANDOM, job: false } : allProjects().find(x => x.slug === s);
   job = p && p.job ? LS.get("job." + s, null) : null;
   data = LS.get("data." + s, null) || { project: p ? p.name : s, slug: s, items: {}, extra: [], controls: {}, lockScale: true };
+  applyPrintEdits();
   try { dropOldRuns(); } catch {}
   render();
   if (p && p.job && gh.on()) {
-    try { const j = await gh.raw(`gps/jobs/${s}.json`); if (j) { job = j; LS.set("job." + s, j) || null; render(); } }
+    try { const j = await gh.raw(`gps/jobs/${s}.json`); if (j) { job = j; LS.set("job." + s, j) || null; applyPrintEdits(); render(); } }
     catch (e) { setSync("err", "Offline"); }
   }
   if (p && !p.job && p.print) loadPrint(s);
   pull(); loadPool();
 }
 
+/* Steven 2026-10-06: boxes that came from the designer can be renamed or deleted on the phone too (two-way street).
+   job.raw keeps the designer's list; data.printRen {designer name: {to, prev, t}} and data.printDel {designer name: {on, t}}
+   are laid on top, and the designer picks them up with "Pull GPS spots from phone" (designer_core.apply_gps). */
+function applyPrintEdits() {
+  if (!job || !Array.isArray(job.items)) return;
+  if (!job.raw) job.raw = job.items;
+  const ren = data.printRen || {}, del = data.printDel || {};
+  job.items = job.raw.filter(i => !(del[i.name] && del[i.name].on)).map(i => { const r = ren[i.name]; return r && r.to && r.to !== i.name ? Object.assign({}, i, { name: r.to, orig: i.name }) : i; });
+}
+const printOrig = n => { const it = job && job.items.find(i => i.name === n); return it ? it.orig || it.name : null; };
 function itemsList() {
+  applyPrintEdits();
   const out = [];
   if (job) for (const it of job.items) out.push(Object.assign({}, it));
   for (const e of data.extra || []) if (!out.some(o => o.name === e.name)) out.push(Object.assign({ kind: "Other" }, e));
@@ -1955,6 +1968,7 @@ function merge(a, b) {
   out.assigned = Object.assign({}, b.assigned || {}, a.assigned || {});
   for (const [k, t] of Object.entries(out.gone)) { if (out.items[k] && out.items[k].t <= t) delete out.items[k]; out.extra = out.extra.filter(e => e.name !== k || (out.items[k] && out.items[k].t > t)); }
   out.labels = Object.assign({}, b.labels || {}, a.labels || {});
+  for (const f of ["printRen", "printDel"]) { out[f] = {}; for (const src of [b[f] || {}, a[f] || {}]) for (const [k, v] of Object.entries(src)) if (!out[f][k] || (out[f][k].t || 0) <= (v.t || 0)) out[f][k] = v; }   // designer boxes renamed / deleted on a phone: newest wins
   out.runs = Object.assign({}, b.runs || {}, a.runs || {});
   out.tracks = Object.assign({}, b.tracks || {}, a.tracks || {});   // walked trench dots   // conduit runs: which vault each end joins
   out.delRuns = {};   // change 2: runs sent to the Deleted runs list; the entry also keeps the run deleted on every phone
@@ -1978,7 +1992,7 @@ async function pull() {
     setSync("", "Syncing");
     const m = await gh.meta(`gps/readings/${s}.json`);
     if (s !== current) return;
-    if (m) { data = merge(data, JSON.parse(decodeB64(m.content))); LS.set("data." + s, data); if (dropOldRuns().length) toast("Older copies of re-walked runs moved to Deleted runs"); render(); }
+    if (m) { data = merge(data, JSON.parse(decodeB64(m.content))); LS.set("data." + s, data); applyPrintEdits(); if (dropOldRuns().length) toast("Older copies of re-walked runs moved to Deleted runs"); render(); }
     setSync("ok", "Saved to GitHub"); picUpload(s);
     if (!m && (Object.keys(data.items).length || (data.extra || []).length)) push("Upload shots");
   } catch (e) { setSync("err", "Not synced"); }
@@ -2179,6 +2193,7 @@ function fitView() {
 const toScreen = p => ({ x: p.x * view.s + view.x, y: p.y * view.s + view.y });
 const toPrint = (sx, sy) => ({ x: (sx - view.x) / view.s, y: (sy - view.y) / view.s });
 function drawPrint() {
+  applyPrintEdits();
   sizeCanvas(); if (!view.fitted) fitView();
   const r = cv.getBoundingClientRect();
   ctx.fillStyle = css("--panel"); ctx.fillRect(0, 0, r.width, r.height);
@@ -3667,8 +3682,8 @@ $("bdraw-close").onclick = () => { $("bdraw").hidden = true; };
 let editLoc = null;
 $("editloc-btn").onclick = () => {
   const it = itemsList().find(i => i.name === selected); if (!it) return;
-  if (job && job.items.some(i => i.name === it.name)) { toast("This one comes from the print. Change it in the designer."); return; }
-  editLoc = { old: it.name, type: typeOf(it) };
+  editLoc = { old: it.name, type: typeOf(it), orig: printOrig(it.name) };
+  $("editloc-types").hidden = !!editLoc.orig; $("editloc-typenote").textContent = editLoc.orig ? "From the designer: the name changes here and in the designer. Change its type in the designer." : "";
   $("editloc-name").value = it.name; $("editloc-now").textContent = editLoc.type;
   const list = allTypeNames().filter(n => !isRemovedType(n) || n === editLoc.type).sort((a, b) => a.localeCompare(b));
   $("editloc-types").innerHTML = list.map(n => `<button class="item loc-opt" style="display:block;text-align:left;width:100%" data-elt="${esc(n)}"><span class="nm">${esc(n)}</span></button>`).join("");
@@ -3685,17 +3700,23 @@ $("editloc-save").onclick = () => {
   if (nu !== old && itemsList().some(i => norm(i.name) === norm(nu))) { toast(`${nu} is already in this project`); return; }
   const oldX = (data.extra || []).find(x => x.name === old) || {};
   const now = Date.now(), g = current === RANDOM ? oldX.group : (typeGroup(t) || "Added in field"), kind = typeKind(t);
+  if (editLoc.orig) {   // a designer box: only the name changes; the designer renames it on its next pull
+    const o = editLoc.orig, was = (data.printRen || {})[o] || {}, prev = [...new Set([...(was.prev || []), old])].filter(x => x !== nu);
+    data.printRen = Object.assign({}, data.printRen, { [o]: { to: nu, prev, t: now } });
+  } else {
   data.extra = (data.extra || []).filter(x => x.name !== old);
   data.extra.push(g ? { name: nu, group: g, kind } : { name: nu, kind });
+  }
   if (nu !== old) {
+    for (const ru of Object.values(data.runs || {})) { if (ru.from === old) ru.from = nu; if (ru.to === old) ru.to = nu; }   // conduits stay joined to the renamed box
     if (data.items[old]) { data.items[nu] = Object.assign({}, data.items[old], { t: now }); delete data.items[old]; }
     if (data.controls && data.controls[old] && data.controls[old].x != null) { data.controls[nu] = data.controls[old]; data.controls[old] = {}; }
     if (data.labels && data.labels[old]) { data.labels[nu] = data.labels[old]; data.labels[old] = ""; }
     data.gone = Object.assign({}, data.gone, { [old]: now }); data.deleted = Object.assign({}, data.deleted, { [old]: now });
     if (data.gone[nu]) delete data.gone[nu]; if (data.deleted[nu]) delete data.deleted[nu];
   }
-  if (current !== RANDOM && !types().includes(t)) { data.types = [...types(), t]; data.typesOwn = true; data.typesT = now; }
-  typesCache = null; saveLocal(); push(nu !== old ? `Rename ${old} to ${nu} (${t})` : `${nu} is now a ${t}`);
+  if (!editLoc.orig && current !== RANDOM && !types().includes(t)) { data.types = [...types(), t]; data.typesOwn = true; data.typesT = now; }
+  applyPrintEdits(); typesCache = null; saveLocal(); push(nu !== old ? `Rename ${old} to ${nu} (${t})` : `${nu} is now a ${t}`);
   $("editloc").hidden = true; editLoc = null; selected = locMenuEdit ? null : nu; if (locMenuEdit) finding = true; locMenuEdit = false; cat = t; group = null; render(); toast("Saved");
 };
 /* Steven 2026-10-06: picking a location from a type list opens page 2-1a with three buttons: Edit, Delete, Plot GPS location.
@@ -3721,16 +3742,16 @@ $("locmenu-cancel").onclick = () => { $("locmenu").hidden = true; locMenuN = nul
 $("locmenu-gps").onclick = () => { const n = locMenuN; $("locmenu").hidden = true; locMenuN = null; selected = n; finding = false; render(); $("shot").scrollIntoView({ behavior: "smooth", block: "start" }); };
 $("locmenu-edit").onclick = () => {
   const n = locMenuN; if (!n) return;
-  if (fromPrint(n)) { toast("This one comes from the print. Change it in the designer."); return; }
   $("locmenu").hidden = true; locMenuN = null; selected = n; locMenuEdit = true; $("editloc-btn").onclick();
 };
 $("locmenu-del").onclick = async () => {
   const n = locMenuN; if (!n) return;
-  if (fromPrint(n)) { toast("This one comes from the print. Change it in the designer."); return; }
+  const orig = printOrig(n);
   const runs = runNames().filter(r => { const ru = (data.runs || {})[r] || {}; return ru.from === n || ru.to === n; });
-  if (!await ask(`Delete ${n}?${runs.length ? ` ${runs.length} conduit${runs.length === 1 ? "" : "s"} end${runs.length === 1 ? "s" : ""} here and will stay.` : ""} It goes to Deleted locations, so you can put it back.`, "Yes, delete it", "No, keep it")) return;
+  if (!await ask(`Delete ${n}?${runs.length ? ` ${runs.length} conduit${runs.length === 1 ? "" : "s"} end${runs.length === 1 ? "s" : ""} here and will stay.` : ""} It goes to Deleted locations, so you can put it back.${orig ? " It also comes out of the designer the next time you pull GPS spots there (the designer asks first)." : ""}`, "Yes, delete it", "No, keep it")) return;
   const t = Date.now(), x = (data.extra || []).find(e => e.name === n) || itemsList().find(i => i.name === n) || { name: n };
-  data.delLocs = Object.assign({}, data.delLocs, { [n]: { extra: { name: x.name, group: x.group, kind: x.kind }, gps: data.items[n] || null, control: data.controls[n] || null, t, u: t } });
+  data.delLocs = Object.assign({}, data.delLocs, { [n]: Object.assign({ extra: { name: x.name, group: x.group, kind: x.kind }, gps: data.items[n] || null, control: data.controls[n] || null, t, u: t }, orig ? { orig } : {}) });
+  if (orig) { data.printDel = Object.assign({}, data.printDel, { [orig]: { on: true, t } }); applyPrintEdits(); }
   data.extra = (data.extra || []).filter(e => e.name !== n); delete data.items[n];
   if (data.controls[n]) data.controls[n] = {};
   data.gone = Object.assign({}, data.gone, { [n]: t }); data.deleted = Object.assign({}, data.deleted, { [n]: t });
@@ -3743,7 +3764,9 @@ $("dellocs-list").onclick = e => {
   const n = b.dataset.locback, v = (data.delLocs || {})[n]; if (!v) return;
   if (itemsList().some(i => norm(i.name) === norm(n))) { toast(`${n} is already in this project`); return; }
   const t = Date.now();
-  data.extra = (data.extra || []).filter(e => e.name !== n); data.extra.push(Object.assign({ name: n }, v.extra.group ? { group: v.extra.group } : {}, v.extra.kind ? { kind: v.extra.kind } : {}));
+  data.extra = (data.extra || []).filter(e => e.name !== n);
+  if (v.orig) { data.printDel = Object.assign({}, data.printDel, { [v.orig]: { on: false, t } }); applyPrintEdits(); }   // a designer box comes back from the designer's list
+  else data.extra.push(Object.assign({ name: n }, v.extra.group ? { group: v.extra.group } : {}, v.extra.kind ? { kind: v.extra.kind } : {}));
   if (v.gps) data.items[n] = Object.assign({}, v.gps, { t });
   if (v.control) data.controls[n] = v.control;
   data.locBack = Object.assign({}, data.locBack, { [n]: t }); delete (data.gone || {})[n]; delete (data.deleted || {})[n];
