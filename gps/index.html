@@ -601,7 +601,7 @@ html.big #z-full { display: block; }
   <div class="canvas-box" id="cbox">
     <canvas id="cv"></canvas>
     <div class="placing" id="editPr" hidden>
-      <span id="editPr-msg">Drag a box or icon to move it. Tap a conduit line to erase it and draw it again. Two fingers move or zoom.</span>
+      <span id="editPr-msg">Drag a box or icon to move it. Tap a conduit line to change its size or redraw it. Two fingers move or zoom.</span>
       <div class="row"><button class="btn save" id="edit-draw-done">Done</button></div>
     </div>
     <div class="placing" id="placing" hidden>
@@ -757,7 +757,7 @@ html.big #z-full { display: block; }
 </div></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-06.95";
+const APP_VERSION = "2026-10-06.96";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -2499,10 +2499,37 @@ function endEditing() {
   $("cbox").classList.remove("full"); document.body.style.overflow = "";
   view.fitted = false; drawPrint();
 }
-async function redrawRun(r) {
+/* Steven 2026-10-06: in Edit drawing, tapping a conduit opens page 3-2 with Edit information (size, or the trench's utility) and Redraw route */
+let runBoxR = null;
+function openRunBox(r) {
+  const ru = (data.runs || {})[r]; if (!ru) return;
+  runBoxR = r;
+  const ft = Math.round(runFeet(runPath(r))), ends = [ru.from, ru.to].filter(Boolean).join(" to ");
+  $("runbox-name").textContent = ends || r;
+  $("runbox-sub").textContent = [ends ? r : "", ru.kind === "Trench" ? (ru.util && ru.util !== "Our conduit" ? `${ru.util.toLowerCase()} trench` : "trench") : (ru.size ? `${ru.size} conduit` : "conduit, no size yet"), ft ? `${ft.toLocaleString()} ft` : ""].filter(Boolean).join(" · ");
+  $("runbox-info").textContent = ru.kind === "Trench" ? "Edit information (what's in the trench)" : "Edit information (conduit size)";
+  $("runbox").hidden = false;
+}
+document.addEventListener("DOMContentLoaded", () => {   // page 3-2 sits below the script
+  $("runbox-cancel").onclick = () => { $("runbox").hidden = true; runBoxR = null; };
+  $("runbox-redraw").onclick = () => { const r = runBoxR; $("runbox").hidden = true; runBoxR = null; if (r) redrawRun(r, true); };
+  $("runbox-info").onclick = async () => {
+    const r = runBoxR, ru = r && (data.runs || {})[r]; if (!ru) return;
+    $("runbox").hidden = true;
+    if (ru.kind === "Trench") {
+      const us = Object.keys(UTIL_COLORS), i = await choose("What's in this trench?", us, "Cancel", "Page 3-2a · Trench");
+      if (i >= 0 && us[i] !== ru.util) { ru.util = us[i]; saveLocal(); push(`${r}: ${us[i]} trench`); toast("Saved"); }
+    } else {
+      const z = await verifySize(ru.size);
+      if (z && z !== ru.size) { ru.size = z; saveLocal(); push(`${r}: ${z} conduit`); toast("Saved"); }
+    }
+    drawPrint(); openRunBox(r);
+  };
+});
+async function redrawRun(r, sure) {
   const ru = (data.runs || {})[r]; if (!ru) return;
   const ends = [ru.from, ru.to].filter(Boolean).join(" to ");
-  if (!await ask(`Redraw ${r}${ends ? ` (${ends})` : ""}? The drawn line is erased and you draw it again.`, "Yes, redraw it", "No, leave it")) return;
+  if (!sure && !await ask(`Redraw ${r}${ends ? ` (${ends})` : ""}? The drawn line is erased and you draw it again.`, "Yes, redraw it", "No, leave it")) return;
   delete ru.drawn; delete ru.drawnLL; delete ru.drawnT; smoothCache.clear(); saveLocal(); push(`Erased drawn path of ${r}`);
   const keepView = { s: view.s, x: view.x, y: view.y };
   editPr = null; $("editPr").hidden = true; editBack = keepView;
@@ -2572,7 +2599,7 @@ function endPtr(e) {
       } else if (dg.orig) data.controls[dg.n] = dg.orig; else delete data.controls[dg.n];
       drawPrint(); return;
     }
-    if (p && !gesture && ptrs.size === 0) { const r = runAt(p.x, p.y); if (r) redrawRun(r); }
+    if (p && !gesture && ptrs.size === 0) { const r = runAt(p.x, p.y); if (r) openRunBox(r); }
     return;
   }
   if (drawing) {
@@ -2729,7 +2756,7 @@ async function checkOffSpots() {
 // 1 = home and its pages, 2 = inside a project, 3 = the print, 4 = system points; a pop-up on a page adds a letter (2-3a)
 const PAGE_NO = { main: "1", newproject: "1-1", lists: "1-2", status: "1-3", setup: "1-5",
   project: "2", vaultlist: "2-1", addtype: "2-2", capture: "2-3", clean: "2-4", addloc: "2-5",
-  print: "3", placing: "3-1", random: "4", editproject: "2-6", runs: "2-10", delruns: "2-10a", locmenu: "2-1a", dellocs: "2-1b", device: "0" };   // picture viewer: 2c / 2-3c
+  print: "3", placing: "3-1", random: "4", editproject: "2-6", runs: "2-10", delruns: "2-10a", locmenu: "2-1a", dellocs: "2-1b", device: "0", runbox: "3-2" };   // picture viewer: 2c / 2-3c
 function pageNo() { let sn = "main"; try { sn = screenNow(); } catch {} const n = PAGE_NO[sn] || "?"; return shot.running ? n + "a" : n; }
 $("ver-no").textContent = " · V " + APP_VERSION.slice(8);   // day.build, e.g. V 03.12
 setInterval(() => {
@@ -2750,6 +2777,7 @@ const SCREEN_BG = { main: "#e3f2ff", addtype: "#e2e4e7" };   // Steven's screen 
 function screenNow() {
   if (DESIGN_MODE && forcedScreen) return forcedScreen;
   if ($("device-pick") && !$("device-pick").hidden) return "device";
+  if ($("runbox") && !$("runbox").hidden) return "runbox";
   if ($("delruns") && !$("delruns").hidden) return "delruns";
   if ($("dellocs") && !$("dellocs").hidden) return "dellocs";
   if ($("locmenu") && !$("locmenu").hidden) return "locmenu";
@@ -3956,6 +3984,13 @@ render();
   <label class="row small test-tick"><input type="checkbox" id="pe-test"> Test data (leave blank for a real job)</label>
   <button class="btn primary" id="pe-save">Save and close</button>
   <button class="btn cancel" id="pe-cancel">Cancel</button></div></div>
+<div class="ask" id="runbox" hidden><div>
+  <button class="btn cancel" id="runbox-cancel">Cancel</button>
+  <span class="ask-no-label">Page 3-2 · Conduit</span>
+  <div id="runbox-name" style="font-size:26px;font-weight:800"></div><div class="small" id="runbox-sub"></div>
+  <button class="btn big gray" id="runbox-info">Edit information</button>
+  <button class="btn big gray" id="runbox-redraw">Redraw route</button>
+</div></div>
 <div class="ask big" id="vsize" hidden><div><span class="ask-no-label">Page 2-9e · Verify size</span><div>Verify conduit size</div>
   <button class="btn primary" id="vsize-now"></button>
   <div style="font-size:18px;font-weight:600">Or pick a different size:</div>
