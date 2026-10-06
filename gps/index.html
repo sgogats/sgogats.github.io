@@ -733,7 +733,7 @@ html.field .tc-k { color: var(--accent); }
 </div></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-06.92";
+const APP_VERSION = "2026-10-06.93";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -1268,6 +1268,7 @@ function render() {
     const sub = r ? `Shot ${new Date(r.t).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}` : i.kind;
     return `<button class="item" data-n="${esc(i.name)}" aria-current="${selected === i.name}">${symbol(i.kind)}<span><span class="nm">${esc(i.name)}</span><br><span class="sub" style="${RUN_SUB}">${esc(sub)}</span></span>${pill}</button>`;
   }).join("") || (cat && !group ? `<div class="item" style="cursor:default"><span></span><span class="sub">${current === RANDOM ? `No ${esc(cat)} points yet. Type a name above.` : `No ${esc(cat)} locations yet. Tap + Add new location.`}</span><span></span></div><button class="item" data-rm="${esc(cat)}"><span></span><span class="sub">Remove the ${esc(cat)} button${current === RANDOM ? "" : " from this project"}</span><span></span></button>` : "");
+  if (cat && !group && current !== RANDOM && delLocsList().length) $("items").insertAdjacentHTML("beforeend", `<button class="item" data-dellocs="1"><span></span><span class="nm">Deleted locations (${delLocsList().length})</span><span></span></button>`);
   const bm = finding && !selected && group && isBldg(group) && current !== RANDOM;
   $("bmap").hidden = !bm;
   if (bm) { const n = buildingCorners(group).length; $("bmap-count").textContent = n ? `${n} corner${n === 1 ? "" : "s"} captured for ${group}.` : `No corners captured for ${group} yet.`; $("bmap-next").textContent = n ? "Capture next corner" : "Capture first corner"; }
@@ -1611,8 +1612,10 @@ $("groups").addEventListener("click", e => {
   if (b.dataset.g != null) pickLocation(b.dataset.g); else pickItem(b.dataset.i);
 });
 $("items").addEventListener("click", e => {
-  const b = e.target.closest(".item"); if (!b || (!b.dataset.n && !b.dataset.g && !b.dataset.rm)) return;
+  const b = e.target.closest(".item"); if (!b || (!b.dataset.n && !b.dataset.g && !b.dataset.rm && !b.dataset.dellocs)) return;
   if (shot.running) { toast("Finish or cancel the current shot first"); return; }
+  if (b.dataset.dellocs) { showDelLocs(); return; }
+  if (b.dataset.n && cat && !group && current !== RANDOM) { openLocMenu(b.dataset.n); return; }   // Steven 2026-10-06: Edit / Delete / Plot GPS location
   if (b.dataset.rm) { const t = b.dataset.rm; cat = null; setTypes(types().filter(x => x !== t), `Remove type ${t}`); toast(`Removed ${t}`); return; }
   if (b.dataset.g) {
     group = b.dataset.g; render();
@@ -1888,11 +1891,16 @@ function saveLocal() { data.updated = Date.now(); if (!LS.set("data." + current,
 function merge(a, b) {
   const out = Object.assign({}, a, { items: {}, extra: [], controls: Object.assign({}, a.controls || {}, b.controls || {}), deleted: Object.assign({}, a.deleted || {}) });
   for (const [k, v] of Object.entries(b.deleted || {})) out.deleted[k] = Math.max(out.deleted[k] || 0, v);
+  out.locBack = Object.assign({}, b.locBack || {}, a.locBack || {});   // a location put back from Deleted locations beats its older delete mark
+  for (const [k, t] of Object.entries(out.locBack)) if ((out.deleted[k] || 0) <= t) delete out.deleted[k];
   for (const src of [a.items || {}, b.items || {}]) for (const [k, v] of Object.entries(src)) if (!out.items[k] || out.items[k].t < v.t) out.items[k] = v;
   for (const [k, t] of Object.entries(out.deleted)) if (out.items[k] && out.items[k].t <= t) delete out.items[k];
   for (const e of [...(a.extra || []), ...(b.extra || [])]) if (!out.extra.some(x => x.name === e.name)) out.extra.push(e);
   out.lockScale = a.lockScale !== undefined ? a.lockScale : b.lockScale;
   out.gone = Object.assign({}, b.gone || {}, a.gone || {});                 // random locations moved into a job
+  for (const [k, t] of Object.entries(out.locBack)) if ((out.gone[k] || 0) <= t) delete out.gone[k];
+  out.delLocs = {};
+  for (const src of [b.delLocs || {}, a.delLocs || {}]) for (const [k, v] of Object.entries(src)) if (!out.delLocs[k] || (out.delLocs[k].u || 0) <= (v.u || 0)) out.delLocs[k] = v;
   out.assigned = Object.assign({}, b.assigned || {}, a.assigned || {});
   for (const [k, t] of Object.entries(out.gone)) { if (out.items[k] && out.items[k].t <= t) delete out.items[k]; out.extra = out.extra.filter(e => e.name !== k || (out.items[k] && out.items[k].t > t)); }
   out.labels = Object.assign({}, b.labels || {}, a.labels || {});
@@ -2653,7 +2661,7 @@ async function checkOffSpots() {
 // 1 = home and its pages, 2 = inside a project, 3 = the print, 4 = system points; a pop-up on a page adds a letter (2-3a)
 const PAGE_NO = { main: "1", newproject: "1-1", lists: "1-2", status: "1-3", setup: "1-5",
   project: "2", vaultlist: "2-1", addtype: "2-2", capture: "2-3", clean: "2-4", addloc: "2-5",
-  print: "3", placing: "3-1", random: "4", editproject: "2-6", runs: "2-10", delruns: "2-10a" };   // picture viewer: 2c / 2-3c
+  print: "3", placing: "3-1", random: "4", editproject: "2-6", runs: "2-10", delruns: "2-10a", locmenu: "2-1a", dellocs: "2-1b" };   // picture viewer: 2c / 2-3c
 function pageNo() { let sn = "main"; try { sn = screenNow(); } catch {} const n = PAGE_NO[sn] || "?"; return shot.running ? n + "a" : n; }
 $("ver-no").textContent = " · V " + APP_VERSION.slice(8);   // day.build, e.g. V 03.12
 setInterval(() => {
@@ -2674,6 +2682,8 @@ const SCREEN_BG = { main: "#e3f2ff", addtype: "#e2e4e7" };   // Steven's screen 
 function screenNow() {
   if (DESIGN_MODE && forcedScreen) return forcedScreen;
   if ($("delruns") && !$("delruns").hidden) return "delruns";
+  if ($("dellocs") && !$("dellocs").hidden) return "dellocs";
+  if ($("locmenu") && !$("locmenu").hidden) return "locmenu";
   if ($("runs") && !$("runs").hidden) return "runs";
   if ($("pedit") && !$("pedit").hidden) return "editproject";
   if (!$("tab-print").hidden) { let pl = false; try { pl = !!placing; } catch {} return pl ? "placing" : "print"; }
@@ -3613,7 +3623,7 @@ $("editloc-btn").onclick = () => {
 };
 function showEditLocPick() { for (const b of $("editloc-types").children) { const on = b.dataset.elt === editLoc.type; b.classList.toggle("on-type", on); b.style.background = on ? "#b9f0c4" : ""; } }
 $("editloc-types").onclick = e => { const b = e.target.closest("[data-elt]"); if (b && editLoc) { editLoc.type = b.dataset.elt; showEditLocPick(); } };
-$("editloc-cancel").onclick = () => { $("editloc").hidden = true; editLoc = null; };
+$("editloc-cancel").onclick = () => { $("editloc").hidden = true; editLoc = null; if (locMenuEdit) { locMenuEdit = false; selected = null; finding = true; render(); } };
 $("editloc-save").onclick = () => {
   if (!editLoc) return;
   const old = editLoc.old, nu = $("editloc-name").value.trim(), t = editLoc.type;
@@ -3632,8 +3642,61 @@ $("editloc-save").onclick = () => {
   }
   if (current !== RANDOM && !types().includes(t)) { data.types = [...types(), t]; data.typesOwn = true; data.typesT = now; }
   typesCache = null; saveLocal(); push(nu !== old ? `Rename ${old} to ${nu} (${t})` : `${nu} is now a ${t}`);
-  $("editloc").hidden = true; editLoc = null; selected = nu; cat = t; group = null; render(); toast("Saved");
+  $("editloc").hidden = true; editLoc = null; selected = locMenuEdit ? null : nu; if (locMenuEdit) finding = true; locMenuEdit = false; cat = t; group = null; render(); toast("Saved");
 };
+/* Steven 2026-10-06: picking a location from a type list opens page 2-1a with three buttons: Edit, Delete, Plot GPS location.
+   Delete keeps a copy in Deleted locations (page 2-1b) so it can be put back, on every phone. */
+let locMenuN = null, locMenuEdit = false;
+const fromPrint = n => !!(job && job.items.some(i => i.name === n));
+function openLocMenu(n) {
+  const it = itemsList().find(i => i.name === n); if (!it) return;
+  locMenuN = n; const r = data.items[n];
+  $("locmenu-name").textContent = both(n);
+  $("locmenu-sub").textContent = `${typeOf(it)} · ${r ? `GPS stored ±${Math.round(r.acc_ft)} ft` : "No GPS yet"}`;
+  $("locmenu").hidden = false;
+}
+function delLocsList() { return Object.entries(data.delLocs || {}).filter(([, v]) => !v.back).sort((a, b) => b[1].t - a[1].t); }
+function showDelLocs() {
+  const ds = delLocsList();
+  $("dellocs-list").innerHTML = ds.map(([n, v]) => `<div class="item" style="cursor:default;grid-template-columns:1fr auto"><span><span class="nm">${esc(n)}</span><br><span class="sub">${esc((v.extra && v.extra.kind) || (v.extra && v.extra.group) || "")}${v.gps ? " · has GPS" : ""}</span></span><button class="btn" style="min-height:36px;padding:4px 12px;width:auto" data-locback="${esc(n)}">Put it back</button></div>`).join("")
+    || `<div class="item" style="display:block"><span class="sub">No deleted locations</span></div>`;
+  $("dellocs").hidden = false;
+}
+document.addEventListener("DOMContentLoaded", () => {   // these pop-ups sit below the script in the page
+$("locmenu-cancel").onclick = () => { $("locmenu").hidden = true; locMenuN = null; };
+$("locmenu-gps").onclick = () => { const n = locMenuN; $("locmenu").hidden = true; locMenuN = null; selected = n; finding = false; render(); $("shot").scrollIntoView({ behavior: "smooth", block: "start" }); };
+$("locmenu-edit").onclick = () => {
+  const n = locMenuN; if (!n) return;
+  if (fromPrint(n)) { toast("This one comes from the print. Change it in the designer."); return; }
+  $("locmenu").hidden = true; locMenuN = null; selected = n; locMenuEdit = true; $("editloc-btn").onclick();
+};
+$("locmenu-del").onclick = async () => {
+  const n = locMenuN; if (!n) return;
+  if (fromPrint(n)) { toast("This one comes from the print. Change it in the designer."); return; }
+  const runs = runNames().filter(r => { const ru = (data.runs || {})[r] || {}; return ru.from === n || ru.to === n; });
+  if (!await ask(`Delete ${n}?${runs.length ? ` ${runs.length} conduit${runs.length === 1 ? "" : "s"} end${runs.length === 1 ? "s" : ""} here and will stay.` : ""} It goes to Deleted locations, so you can put it back.`, "Yes, delete it", "No, keep it")) return;
+  const t = Date.now(), x = (data.extra || []).find(e => e.name === n) || itemsList().find(i => i.name === n) || { name: n };
+  data.delLocs = Object.assign({}, data.delLocs, { [n]: { extra: { name: x.name, group: x.group, kind: x.kind }, gps: data.items[n] || null, control: data.controls[n] || null, t, u: t } });
+  data.extra = (data.extra || []).filter(e => e.name !== n); delete data.items[n];
+  if (data.controls[n]) data.controls[n] = {};
+  data.gone = Object.assign({}, data.gone, { [n]: t }); data.deleted = Object.assign({}, data.deleted, { [n]: t });
+  if (data.locBack) delete data.locBack[n];
+  saveLocal(); push(`Delete ${n}`); $("locmenu").hidden = true; locMenuN = null; render(); toast(`${n} deleted`);
+};
+$("dellocs-back").onclick = () => { $("dellocs").hidden = true; };
+$("dellocs-list").onclick = e => {
+  const b = e.target.closest("[data-locback]"); if (!b) return;
+  const n = b.dataset.locback, v = (data.delLocs || {})[n]; if (!v) return;
+  if (itemsList().some(i => norm(i.name) === norm(n))) { toast(`${n} is already in this project`); return; }
+  const t = Date.now();
+  data.extra = (data.extra || []).filter(e => e.name !== n); data.extra.push(Object.assign({ name: n }, v.extra.group ? { group: v.extra.group } : {}, v.extra.kind ? { kind: v.extra.kind } : {}));
+  if (v.gps) data.items[n] = Object.assign({}, v.gps, { t });
+  if (v.control) data.controls[n] = v.control;
+  data.locBack = Object.assign({}, data.locBack, { [n]: t }); delete (data.gone || {})[n]; delete (data.deleted || {})[n];
+  data.delLocs[n] = Object.assign({}, v, { back: true, u: t });
+  saveLocal(); push(`Put back ${n}`); render(); showDelLocs(); toast(`${n} is back`);
+};
+});
 let setupFrom = null;   // Setup's Cancel goes back to the page it was opened from
 $("open-setup").onclick = () => { $("settings-sheet").hidden = true; setupFrom = ["collect", "print"].find(t => !$("tab-" + t).hidden) || "collect"; showTab("setup"); };
 let editSnap = null, editChanged = false;   // the look before this edit, so Cancel can put it all back
@@ -3781,6 +3844,14 @@ render();
   <div class="list loc-list" id="runs-list" style="max-height:48vh;overflow:auto"></div>
   <button class="btn" id="runs-del" hidden></button>
   <button class="btn" id="runs-done">Done</button></div></div>
+<div class="ask" id="locmenu" hidden><div><div class="row" style="justify-content:space-between;align-items:center;flex-wrap:nowrap;gap:10px"><span class="ask-no-label" style="margin:0">Page 2-1a · Location</span><button class="btn cancel" id="locmenu-cancel" style="width:auto;flex:none">Cancel</button></div>
+  <div id="locmenu-name" style="font-size:26px;font-weight:800"></div><div class="small" id="locmenu-sub"></div>
+  <button class="btn big" id="locmenu-edit">Edit</button>
+  <button class="btn big cancel" id="locmenu-del">Delete</button>
+  <button class="btn big primary" id="locmenu-gps">Plot GPS location</button></div></div>
+<div class="ask" id="dellocs" hidden><div><div class="row" style="justify-content:space-between;align-items:center;flex-wrap:nowrap;gap:10px"><span class="ask-no-label" style="margin:0">Page 2-1b · Deleted locations</span><button class="btn cancel" id="dellocs-back" style="width:auto;flex:none">Back</button></div>
+  <p class="small" style="margin:0">A deleted location stays here until you put it back.</p>
+  <div class="list loc-list" id="dellocs-list" style="max-height:55vh;overflow:auto"></div></div></div>
 <div class="ask" id="delruns" hidden><div><span class="ask-no-label">Page 2-10a · Deleted runs</span>
   <p class="small muted" style="margin:0">A deleted run is kept here until you clear it. Only the last copy of each run is kept.</p>
   <div class="list loc-list" id="delruns-list" style="max-height:48vh;overflow:auto"></div>
