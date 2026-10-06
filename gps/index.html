@@ -694,6 +694,11 @@ html.field .tc-k { color: var(--accent); }
   <svg id="bdraw-svg" style="width:100%;height:100%"></svg>
   <button class="btn big primary" id="bdraw-close">Close</button>
 </div>
+<div id="picview" hidden style="position:fixed;inset:0;z-index:62;background:#000;color:#fff;display:grid;grid-template-rows:auto 1fr auto;padding:12px;gap:10px">
+  <div><span class="ask-no-label" id="picview-page" style="color:#fff">Page 2-3c · Picture</span><div class="small mono" id="picview-info" style="color:#ccc"></div></div>
+  <img id="picview-img" alt="" style="width:100%;height:100%;object-fit:contain;min-height:0">
+  <div class="row" style="gap:10px"><button class="btn big primary" id="picview-keep" style="flex:1">Keep</button><button class="btn big danger" id="picview-del" style="flex:1">Delete</button></div>
+</div>
 <div id="empty-flash" hidden onclick="this.hidden=true"><div id="empty-flash-msg"></div></div>
 <div class="ask" id="settings-sheet" hidden><div>
   <span class="ask-no-label">Settings</span>
@@ -719,7 +724,7 @@ html.field .tc-k { color: var(--accent); }
 </div></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-06.77";
+const APP_VERSION = "2026-10-06.78";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -1073,6 +1078,7 @@ const idb = (() => {   // the print picture is too big for localStorage, so it i
   return {
     async get(k) { try { const db = await open(); return await new Promise(ok => { const q = db.transaction("kv").objectStore("kv").get(k); q.onsuccess = () => ok(q.result || null); q.onerror = () => ok(null); }); } catch { return null; } },
     async set(k, v) { try { const db = await open(); db.transaction("kv", "readwrite").objectStore("kv").put(v, k); } catch {} },
+    async del(k) { try { const db = await open(); db.transaction("kv", "readwrite").objectStore("kv").delete(k); } catch {} },
   };
 })();
 function blobB64(blob) { return new Promise((ok, no) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(",")[1]); r.onerror = () => no(r.error); r.readAsDataURL(blob); }); }
@@ -1654,13 +1660,30 @@ async function renderPics(proj) {
   const box = $(k + "thumbs"), mine = box.dataset.v = String(Date.now() + Math.random()); box.innerHTML = "";
   for (const [id, p] of list.slice(-6)) {
     const b = await idb.get("pic:" + id); if (box.dataset.v !== mine || (!proj && selected !== n)) return;
-    const card = document.createElement("div"); card.className = "small mono muted"; card.style.cssText = "display:flex;gap:8px;align-items:center;width:100%";
-    if (b) { const im = document.createElement("img"); im.src = URL.createObjectURL(b); im.style.cssText = "width:64px;height:64px;object-fit:cover;border-radius:6px;flex:none"; im.onclick = () => window.open(im.src); card.appendChild(im); }
+    const tx = document.createElement("div"), card = document.createElement("div"); card.className = "small mono muted"; card.style.cssText = "display:flex;gap:8px;align-items:center;width:100%";
+    if (b) { const im = document.createElement("img"); im.src = URL.createObjectURL(b); im.style.cssText = "width:64px;height:64px;object-fit:cover;border-radius:6px;flex:none"; im.onclick = () => picView(id, im.src, tx.textContent, proj); card.appendChild(im); }
     const g = p.lat != null ? `${p.lat.toFixed(7)}, ${p.lon.toFixed(7)} ±${p.acc_ft} ft` : "no GPS";
-    const tx = document.createElement("div"); tx.textContent = `${new Date(p.t).toLocaleString()} · ${g}` + (p.exif_lat != null ? ` · photo GPS ${p.exif_lat.toFixed(7)}, ${p.exif_lon.toFixed(7)}` : "");
+    tx.textContent = `${new Date(p.t).toLocaleString()} · ${g}` + (p.exif_lat != null ? ` · photo GPS ${p.exif_lat.toFixed(7)}, ${p.exif_lon.toFixed(7)}` : "");
     card.appendChild(tx); box.appendChild(card);
   }
 }
+/* tapping a picture opens it full screen with Keep and Delete across the bottom (Steven 2026-10-06) */
+let picOpen = null;
+function picView(id, src, info, proj) {
+  picOpen = { id, proj }; $("picview-img").src = src; $("picview-info").textContent = info;
+  $("picview-page").textContent = `Page ${proj ? "2" : "2-3"}c · Picture`; $("picview-del").textContent = "Delete"; $("picview-del").dataset.armed = ""; $("picview").hidden = false;
+}
+$("picview-keep").onclick = () => { $("picview").hidden = true; picOpen = null; };
+$("picview-del").onclick = async () => {
+  const b = $("picview-del"); if (!picOpen) return;
+  if (b.dataset.armed !== "1") { b.dataset.armed = "1"; b.textContent = "Tap again to delete"; setTimeout(() => { if (b.dataset.armed === "1") { b.dataset.armed = ""; b.textContent = "Delete"; } }, 3000); return; }
+  const { id, proj } = picOpen, p = (data.photos || {})[id]; $("picview").hidden = true; picOpen = null;
+  if (!p) return;
+  delete data.photos[id]; data.photosDel = data.photosDel || {}; data.photosDel[id] = Date.now();
+  saveLocal(); renderPics(proj); toast("Picture deleted"); idb.del("pic:" + id);
+  push(`Delete picture of ${p.name}`);
+  if (p.up && gh.on()) try { const m = await gh.meta(p.file); if (m && m.sha) await fetch(gh.url(p.file), { method: "DELETE", headers: gh.headers(false), body: JSON.stringify({ message: `GPS Shots: delete picture of ${p.name}`, branch: cfg.branch, sha: m.sha }) }); } catch {}
+};
 function picExif(buf) {   // the photo's own time and GPS, when the phone left them in (iPhone web pages often strip GPS)
   const v = new DataView(buf), out = {};
   try {
@@ -1870,6 +1893,8 @@ function merge(a, b) {
   for (const [k, v] of Object.entries(out.delRuns)) if (!v.back && out.runs[k] && (out.runs[k].t || 0) <= v.t) { delete out.runs[k]; delete out.tracks[k]; }
   out.photos = Object.assign({}, b.photos || {}, a.photos || {});   // location pictures
   for (const [k, v] of Object.entries(b.photos || {})) if (v.up) out.photos[k] = Object.assign({}, out.photos[k], { up: true });
+  out.photosDel = Object.assign({}, b.photosDel || {}, a.photosDel || {});   // deleted pictures stay deleted on every phone
+  for (const k of Object.keys(out.photosDel)) delete out.photos[k];
   out.bldgs = [...new Set([...(a.bldgs || []), ...(b.bldgs || [])])];   // buildings added on page 2-5
   const ta = a.types ? a.typesT || 0 : -1, tb = b.types ? b.typesT || 0 : -1;    // newest button list wins
   if (tb > ta) { out.types = b.types; out.typesT = b.typesT; out.typesOwn = b.typesOwn; }
@@ -2461,7 +2486,7 @@ async function checkOffSpots() {
 // 1 = home and its pages, 2 = inside a project, 3 = the print, 4 = system points; a pop-up on a page adds a letter (2-3a)
 const PAGE_NO = { main: "1", newproject: "1-1", lists: "1-2", status: "1-3", setup: "1-5",
   project: "2", vaultlist: "2-1", addtype: "2-2", capture: "2-3", clean: "2-4", addloc: "2-5",
-  print: "3", placing: "3-1", random: "4", editproject: "2-6", runs: "2-10", delruns: "2-10a" };
+  print: "3", placing: "3-1", random: "4", editproject: "2-6", runs: "2-10", delruns: "2-10a" };   // picture viewer: 2c / 2-3c
 function pageNo() { let sn = "main"; try { sn = screenNow(); } catch {} const n = PAGE_NO[sn] || "?"; return shot.running ? n + "a" : n; }
 $("ver-no").textContent = " · V " + APP_VERSION.slice(8);   // day.build, e.g. V 03.12
 setInterval(() => {
