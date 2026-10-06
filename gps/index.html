@@ -714,7 +714,7 @@ html.field .tc-k { color: var(--accent); }
 </div></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-06.75";
+const APP_VERSION = "2026-10-06.76";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -1678,11 +1678,11 @@ function picExif(buf) {   // the photo's own time and GPS, when the phone left t
   } catch {}
   return out;
 }
-function picShrink(file) {   // phone pictures are 3-12 MB; 1600 px JPEG keeps them small enough for GitHub
+function picShrink(file) {   // phone pictures are 3-12 MB; 1600 px JPEG at quality 0.75 is about 200-400 KB and still sharp on a computer (Steven 2026-10-06)
   return new Promise((ok, no) => {
     const u = URL.createObjectURL(file), im = new Image();
     im.onload = () => { const k = Math.min(1, 1600 / Math.max(im.width, im.height)), c = document.createElement("canvas"); c.width = Math.round(im.width * k); c.height = Math.round(im.height * k);
-      c.getContext("2d").drawImage(im, 0, 0, c.width, c.height); URL.revokeObjectURL(u); c.toBlob(b => b ? ok(b) : no(new Error("Picture could not be read")), "image/jpeg", 0.85); };
+      c.getContext("2d").drawImage(im, 0, 0, c.width, c.height); URL.revokeObjectURL(u); c.toBlob(b => b ? ok(b) : no(new Error("Picture could not be read")), "image/jpeg", 0.75); };
     im.onerror = () => { URL.revokeObjectURL(u); no(new Error("Picture could not be read")); };
     im.src = u;
   });
