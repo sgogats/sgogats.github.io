@@ -693,7 +693,7 @@ html.field .tc-k { color: var(--accent); }
   <button class="btn primary" id="editloc-save">Save</button>
   <button class="btn cancel" id="editloc-cancel">Cancel</button>
 </div></div>
-<div id="bdraw" hidden style="position:fixed;inset:0;z-index:58;background:#fff;color:#111;display:grid;grid-template-rows:auto 1fr auto;padding:16px;gap:10px">
+<div id="bdraw" hidden style="position:fixed;inset:0;z-index:58;background:#fff;color:#111;display:grid;grid-template-rows:auto 1fr auto auto;padding:16px;gap:10px">
   <div><span class="ask-no-label" id="bdraw-title" style="color:#111"></span><div class="small" id="bdraw-sub" style="color:#555"></div></div>
   <svg id="bdraw-svg" style="width:100%;height:100%"></svg>
   <button class="btn big primary" id="bdraw-close">Close</button>
@@ -728,7 +728,7 @@ html.field .tc-k { color: var(--accent); }
 </div></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-06.84";
+const APP_VERSION = "2026-10-06.85";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -2959,7 +2959,7 @@ function ensureLoc(x) {   // add a typed-in location to the project, and its typ
   data.extra = data.extra || []; data.extra.push({ name: x.name, group: typeGroup(x.type) || "Added in field", kind: typeKind(x.type) });
 }
 let trkWake = null;
-function trkScreen(title, sub, stopText) { $("trk-title").textContent = title; $("trk-sub").textContent = sub; $("trk-stop").textContent = stopText; $("trk").hidden = false; }
+function trkScreen(title, sub, stopText) { $("trk-fix").hidden = true; $("trk-title").textContent = title; $("trk-sub").textContent = sub; $("trk-stop").textContent = stopText; $("trk").hidden = false; }
 function trkWakeOn() { try { if (navigator.wakeLock && !trkWake) navigator.wakeLock.request("screen").then(w => trkWake = w).catch(() => {}); } catch {} }
 function trkWakeOff() { if (trkWake) { trkWake.release().catch(() => {}); trkWake = null; } }
 function holdReading(title, sub) {   // 10 second fixed reading; resolves the average, or null if cancelled
@@ -2990,12 +2990,28 @@ function walkTrack(startPt, pts) {   // a dot every half second until Stop; reso
   return new Promise(res => {
     let last = null, id = null, tm = null, tick = 0;
     trkScreen("Start walking trench", "Walk the trench. Tap Stop at the end.", "Stop"); $("trk-cv").style.visibility = "visible"; $("trk-saved").hidden = false;
-    const end = () => { if (id != null) navigator.geolocation.clearWatch(id); clearInterval(tm); saveWalk(); res(pts); };
+    let hold = false;
+    const end = () => { if (id != null) navigator.geolocation.clearWatch(id); clearInterval(tm); $("trk-fix").hidden = true; saveWalk(); res(pts); };
     $("trk-stop").onclick = end;
+    // Steven 2026-10-06: fix a walk while walking. Redo trace starts the dots over from the start; Delete trace throws the walk away.
+    $("trk-fix").hidden = false;
+    $("trk-redo").onclick = async () => {
+      hold = true;
+      const go = await ask(`Redo the trace? Go back to ${(walkRec && walkRec.sel.start.name) || "the start"}, then tap OK. The dots start over from there.`, "OK, start over", "No, keep walking", true);
+      if (go) { pts.length = 0; saveWalk(); drawTrk(startPt, pts); toast("Trace started over"); }
+      hold = false;
+    };
+    $("trk-del").onclick = async () => {
+      hold = true;
+      if (!await ask(`Delete this trace? Nothing is saved for this run. ${(walkRec && walkRec.sel.start.name) || "The start"} keeps its GPS spot.`, "Yes, delete it", "No, keep walking", true)) { hold = false; return; }
+      if (id != null) navigator.geolocation.clearWatch(id); clearInterval(tm);
+      clearWalk(); $("trk-fix").hidden = true; $("trk").hidden = true; trkWakeOff(); cm = null;
+      toast("Trace deleted"); try { backToProject(); } catch {} res(null);
+    };
     id = navigator.geolocation.watchPosition(p => { last = p; }, () => {}, { enableHighAccuracy: true, maximumAge: 0, timeout: 30000 });
     let lastT = 0;
     tm = setInterval(() => {
-      if (last && last.timestamp !== lastT) { lastT = last.timestamp; pts.push([+last.coords.latitude.toFixed(7), +last.coords.longitude.toFixed(7), Math.round(last.coords.accuracy * FT * 10) / 10, Math.round(last.timestamp / 100) / 10]); }
+      if (!hold && last && last.timestamp !== lastT) { lastT = last.timestamp; pts.push([+last.coords.latitude.toFixed(7), +last.coords.longitude.toFixed(7), Math.round(last.coords.accuracy * FT * 10) / 10, Math.round(last.timestamp / 100) / 10]); }
       const ft = runFeet([startPt, ...pts.map(q => ({ lat: q[0], lon: q[1] }))]);
       $("trk-sub").textContent = `Walk the trench. Tap Stop at the end. ${pts.length} dots · ${Math.round(ft)} ft` + (last ? ` · ±${Math.round(last.coords.accuracy * FT)} ft` : "");
       drawTrk(startPt, pts);
@@ -3089,7 +3105,7 @@ async function mapTrench(sel) {
   if (hasGps(sel.start)) {   // a start that already has its GPS spot needs no new reading (Steven 2026-10-06)
     if (!await ask(`Go to ${sel.start.name}. It already has its GPS spot, so no reading is needed. Tap OK, then start walking the trench.`, "OK", "Cancel", true)) { trkWakeOff(); toast("Stopped. Nothing was saved."); return; }
     walkRec = { proj: current, r, sel: JSON.parse(JSON.stringify(sel)), a: JSON.parse(JSON.stringify(data.items[sel.start.name])), pts: [] }; saveWalk();
-    await walkTrack(data.items[sel.start.name], walkRec.pts);
+    if (await walkTrack(data.items[sel.start.name], walkRec.pts) === null) return;
     await endWalk(walkRec);
     return;
   }
@@ -3105,7 +3121,7 @@ async function mapTrench(sel) {
   saveLocal();
   await ask(`${sel.start.name} is recorded. Tap OK, then start walking the trench.`, "OK", "", true);   // walk starts only on OK (Steven 2026-10-05)
   walkRec = { proj: current, r, sel: JSON.parse(JSON.stringify(sel)), a: JSON.parse(JSON.stringify(data.items[sel.start.name])), pts: [] }; saveWalk();
-  await walkTrack(data.items[sel.start.name], walkRec.pts);
+  if (await walkTrack(data.items[sel.start.name], walkRec.pts) === null) return;
   await endWalk(walkRec);
 }
 async function endWalk(w) {   // after Stop (or "Finish it here" on a saved walk): keep the dots, then the stop reading
@@ -3157,7 +3173,7 @@ async function checkWalk() {   // the app opened and found a walk that never got
   walkRec = w; cm = w.sel; trkWakeOn(); saveWalk();
   if (k === 0) {
     await ask(`Tap OK, then keep walking ${w.r}. The gap since you stopped gets a straight line.`, "OK", "", true);
-    await walkTrack(data.items[w.sel.start.name] || w.a, w.pts);
+    if (await walkTrack(data.items[w.sel.start.name] || w.a, w.pts) === null) return;
   }
   await endWalk(w);
 }
@@ -3631,6 +3647,7 @@ render();
 <div id="trk" hidden style="position:fixed;inset:0;z-index:59;background:#fff;color:#111;display:grid;grid-template-rows:auto 1fr auto;padding:16px;gap:10px"><button class="modebtn modefloat" type="button"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><g class="ic-sun"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2"/></g><g class="ic-house"><path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/></g></svg><span class="modelbl">Field mode</span></button>
   <div><span class="ask-no-label" id="trk-title" style="color:#111"></span><div id="trk-sub" style="font-size:22px;font-weight:700;line-height:1.3"></div></div>
   <div style="position:relative;min-height:0"><span id="trk-saved" hidden>✓ Saved as you walk</span><canvas id="trk-cv" style="width:100%;height:100%;min-height:0;border:1px solid #ccc;border-radius:8px"></canvas></div>
+  <div class="row" id="trk-fix" hidden style="gap:10px;flex-wrap:nowrap"><button class="btn" id="trk-redo" style="flex:1;min-height:52px;font-size:18px;color:#111;background:#fff;border-color:#111">Redo trace</button><button class="btn" id="trk-del" style="flex:1;min-height:52px;font-size:18px;color:#e0201a;background:#fff;border-color:#e0201a">Delete trace</button></div>
   <button class="btn big" id="trk-stop" style="background:#e0201a;color:#fff;border-color:#e0201a">Stop</button>
 </div>
 <div class="ask" id="pedit" hidden><div style="max-height:92vh;overflow:auto"><span class="ask-no-label">Page 2-6 · Edit project</span>
