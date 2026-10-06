@@ -590,6 +590,10 @@ html.field .tc-k { color: var(--accent); }
       <span id="placing-msg"></span>
       <div class="row"><button class="btn save" id="place-save" disabled>Save spot</button><button class="btn" id="place-skip">Skip</button></div>
     </div>
+    <div class="placing" id="drawing" hidden>
+      <span id="drawing-msg"></span>
+      <div class="row"><button class="btn save" id="draw-save" disabled>Save path</button><button class="btn" id="draw-clear">Clear</button><button class="btn" id="draw-skip">Skip</button></div>
+    </div>
     <div class="canvas-tools">
       <button class="btn" id="z-in" aria-label="Zoom in">+</button>
       <button class="btn" id="z-out" aria-label="Zoom out">−</button>
@@ -724,7 +728,7 @@ html.field .tc-k { color: var(--accent); }
 </div></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-06.83";
+const APP_VERSION = "2026-10-06.84";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -1892,6 +1896,7 @@ function merge(a, b) {
   out.delRuns = {};   // change 2: runs sent to the Deleted runs list; the entry also keeps the run deleted on every phone
   for (const src of [b.delRuns || {}, a.delRuns || {}]) for (const [k, v] of Object.entries(src)) if (!out.delRuns[k] || (out.delRuns[k].u || 0) <= (v.u || 0)) out.delRuns[k] = v;
   for (const [k, v] of Object.entries(out.delRuns)) if (!v.back && out.runs[k] && (out.runs[k].t || 0) <= v.t) { delete out.runs[k]; delete out.tracks[k]; }
+  out.learn = Object.assign({}, b.learn || {}, a.learn || {});   // drawn + walked path pairs, kept for tuning the straightening
   out.photos = Object.assign({}, b.photos || {}, a.photos || {});   // location pictures
   for (const [k, v] of Object.entries(b.photos || {})) if (v.up) out.photos[k] = Object.assign({}, out.photos[k], { up: true });
   out.photosDel = Object.assign({}, b.photosDel || {}, a.photosDel || {});   // deleted pictures stay deleted on every phone
@@ -1959,7 +1964,8 @@ function solve() {
   const local = r => ({ x: (r.lon - lon0) * m.lon * FT, y: -(r.lat - lat0) * m.lat * FT });  // feet, y down like the print
   const ctrl = shots.filter(([n]) => isUsed(n) && controlPos(n)).map(([n, r]) => ({ n, u: local(r), p: controlPos(n), r }));
   const ptft = job && job.pt_per_ft || null, lock = data.lockScale !== false && !!ptft;
-  const res = { ctrl, local, ptft, lock, ok: false };
+  const unlocal = u => ({ lat: lat0 - u.y / (m.lat * FT), lon: lon0 + u.x / (m.lon * FT) });   // feet back to GPS
+  const res = { ctrl, local, unlocal, ptft, lock, ok: false };
   if (ctrl.length < 2) return res;
   const k = ctrl.length;
   const uc = { x: 0, y: 0 }, pc = { x: 0, y: 0 };
@@ -1978,7 +1984,8 @@ function solve() {
   let ss = 0;
   for (const c of ctrl) { const q = map(c.u); c.err = Math.hypot(q.x - c.p.x, q.y - c.p.y) / unit; ss += c.err * c.err; }
   const dof = Math.max(1, k - (lock ? 3 : 4));
-  Object.assign(res, { ok: true, map, s, th, unit, rms: Math.sqrt(ss / k), sigma: k > (lock ? 3 : 4) ? Math.sqrt(ss / dof) : null });
+  const unmap = q => { const dx = q.x - tx, dy = q.y - ty; return { x: (cos * dx + sin * dy) / s, y: (-sin * dx + cos * dy) / s }; };   // print spot back to feet
+  Object.assign(res, { ok: true, map, unmap, s, th, unit, rms: Math.sqrt(ss / k), sigma: k > (lock ? 3 : 4) ? Math.sqrt(ss / dof) : null });
   return res;
 }
 
@@ -2140,6 +2147,7 @@ function drawPrint() {
   const z = Math.max(5, Math.min(10, view.s * 6));
   for (const it of job.items) {
     if (it.x == null) continue;
+    if (drawing && !drawing.ends.includes(it.name)) continue;   // drawing a path: only its start and end show
     const c = data.controls[it.name], placed = c && c.x != null;  // verified: the icon moves to the spot set by hand
     const p = toScreen(placed ? c : it);
     ctx.globalAlpha = placed || data.items[it.name] ? 0.9 : 0.45;
@@ -2165,7 +2173,7 @@ function drawPrint() {
   }
   // spots set by hand (where the box actually is)
   for (const [n, c] of Object.entries(data.controls)) if (c.x != null) {
-    if (designPos(n)) continue;  // items on the print are drawn at this spot already
+    if (designPos(n) || (drawing && !drawing.ends.includes(n))) continue;  // items on the print are drawn at this spot already
     const p = toScreen(c); ctx.strokeStyle = css("--ink"); ctx.lineWidth = 2;
     ctx.beginPath(); ctx.moveTo(p.x - 9, p.y); ctx.lineTo(p.x + 9, p.y); ctx.moveTo(p.x, p.y - 9); ctx.lineTo(p.x, p.y + 9); ctx.stroke();
     ctx.fillStyle = css("--ink"); ctx.font = "700 12px " + css("--body"); ctx.textAlign = "left"; ctx.textBaseline = "bottom"; ctx.fillText(n, p.x + 6, p.y - 6);
@@ -2175,6 +2183,21 @@ function drawPrint() {
     const p = toScreen(pending); ctx.strokeStyle = css("--bad"); ctx.lineWidth = 3;
     ctx.beginPath(); ctx.moveTo(p.x - 14, p.y); ctx.lineTo(p.x + 14, p.y); ctx.moveTo(p.x, p.y - 14); ctx.lineTo(p.x, p.y + 14); ctx.stroke();
     ctx.beginPath(); ctx.arc(p.x, p.y, 8, 0, 7); ctx.stroke();
+  }
+  // the real path being drawn by hand (Steven 2026-10-06): start square, stop circle, red line
+  if (drawing) {
+    const line = [...drawing.strokes, drawing.cur || []].filter(s => s.length).map(s => s.map(toScreen));
+    ctx.strokeStyle = "#e0201a"; ctx.lineWidth = 4; ctx.lineCap = ctx.lineJoin = "round";
+    for (const s of line) { ctx.beginPath(); s.forEach((q, i) => i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y)); ctx.stroke(); }
+    drawing.ends.forEach((n, k) => {
+      const f = drawEnd(n); if (!f) return; const p = toScreen(f);
+      ctx.fillStyle = k ? "#1f6fd1" : "#1e9e4a"; ctx.beginPath();
+      if (k) ctx.arc(p.x, p.y, 10, 0, 7); else ctx.rect(p.x - 10, p.y - 10, 20, 20); ctx.fill();
+      ctx.font = "800 16px " + css("--body"); ctx.textAlign = "left"; ctx.textBaseline = "middle";
+      const t = (k ? "Stop: " : "Start: ") + n, w = ctx.measureText(t).width;
+      ctx.fillStyle = css("--panel"); ctx.globalAlpha = 0.9; ctx.fillRect(p.x + 14, p.y - 13, w + 12, 26); ctx.globalAlpha = 1;
+      ctx.fillStyle = css("--ink"); ctx.fillText(t, p.x + 20, p.y);
+    });
   }
   // the item being looked for
   if (focusName) {
@@ -2190,7 +2213,7 @@ function drawPrint() {
     }
   }
   // buildings mapped by walking their corners: outline drawn over the print (checks the building sits where the print shows it)
-  if (sol && sol.ok && !hideCorners) {
+  if (sol && sol.ok && !hideCorners && !drawing) {
     const gs = [...new Set(Object.values(data.items).filter(x => x.corner).map(x => x.group))];
     for (const g of gs) {
       const qs = buildingCorners(g).map(n => toScreen(sol.map(sol.local(data.items[n]))));
@@ -2202,7 +2225,7 @@ function drawPrint() {
     }
   }
   // conduit runs: orange line, joined to the vault's spot on the print
-  if (sol && sol.ok) for (const r of runNames()) {
+  if (sol && sol.ok && !drawing) for (const r of runNames()) {
     const qs = pinnedRun(r).map(toScreen);
     if (qs.length < 2) continue;
     const col = runColor((data.runs || {})[r]);
@@ -2212,7 +2235,7 @@ function drawPrint() {
     ctx.font = "700 12px " + css("--body"); ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillStyle = css("--ink"); ctx.fillText(runLabel(r, (data.runs || {})[r], runFeet(runPath(r))), (m.x + m2.x) / 2, (m.y + m2.y) / 2 - 10);
   }
   // shots mapped through the fit
-  if (sol && sol.ok) {
+  if (sol && sol.ok && !drawing) {
     ctx.font = "600 12px " + css("--body"); ctx.textAlign = "left"; ctx.textBaseline = "middle";
     for (const [n, rd] of Object.entries(data.items)) {
       if (rd.corner || rd.run) continue;
@@ -2299,9 +2322,58 @@ $("place-save").onclick = async () => {
   saveLocal(); push(`Spot for ${n}`); toast(`Saved ${n} on the print`);
   const back = placeReturn; endPlacing();
   if (placeQueue.length) { sol = solve(); startPlacing(placeQueue.shift(), false); return; }
+  if (drawNext) { const r = drawNext; drawNext = null; startDrawing(r); return; }
   if (back) { showTab("collect"); selected = null; group = null; finding = false; home = false; render(); }
 };
-$("place-skip").onclick = () => { const back = placeReturn; endPlacing(); if (placeQueue.length) { startPlacing(placeQueue.shift(), false); return; } if (back) { showTab("collect"); selected = null; group = null; finding = false; home = false; render(); } };
+$("place-skip").onclick = () => { const back = placeReturn; endPlacing(); if (placeQueue.length) { startPlacing(placeQueue.shift(), false); return; } if (drawNext) { const r = drawNext; drawNext = null; startDrawing(r); return; } if (back) { showTab("collect"); selected = null; group = null; finding = false; home = false; render(); } };
+/* Steven 2026-10-06: after a trench walk the print shows only its start and end; draw the real path with a finger and Save.
+   The drawn line is the run as built. The GPS walk is kept, and each drawn + walked pair is saved in data.learn so the
+   automatic straightening can be tuned from real examples. */
+var drawing = null, drawNext = null;   // var: drawPrint may run before this line
+function drawEnd(n) { const c = n && controlPos(n); if (c) return c; return n && sol && sol.ok && data.items[n] ? sol.map(sol.local(data.items[n])) : null; }
+function startDrawing(r) {
+  const ru = (data.runs || {})[r]; if (!ru || !job || !job.plan) return;
+  sol = solve(); if (!sol || !sol.ok) { toast("Put a few shots on the print first, then draw the path."); return; }
+  drawing = { r, ends: [ru.from, ru.to].filter(Boolean), strokes: [], cur: null };
+  $("drawing").hidden = false; $("draw-save").disabled = true;
+  $("drawing-msg").textContent = `Draw the real path of ${r} with one finger, from ${ru.from || "the start"} to ${ru.to || "the end"}. Two fingers move or zoom.`;
+  $("cbox").classList.add("full"); document.body.style.overflow = "hidden";
+  sizeCanvas(); const rc = cv.getBoundingClientRect(), ps = drawing.ends.map(drawEnd).filter(Boolean);
+  if (ps.length) {
+    const xs = ps.map(p => p.x), ys = ps.map(p => p.y), w = Math.max(...xs) - Math.min(...xs), h = Math.max(...ys) - Math.min(...ys);
+    view.s = Math.max(0.05, Math.min(40, Math.min(rc.width * 0.6 / (w || 1), rc.height * 0.5 / (h || 1), 6)));
+    view.x = rc.width / 2 - (Math.min(...xs) + Math.max(...xs)) / 2 * view.s; view.y = rc.height / 2 - (Math.min(...ys) + Math.max(...ys)) / 2 * view.s; view.fitted = true;
+  }
+  drawPrint();
+}
+function endDrawing() {
+  drawing = null; $("drawing").hidden = true;
+  $("cbox").classList.remove("full"); document.body.style.overflow = "";
+  view.fitted = false; drawPrint();
+}
+$("draw-clear").onclick = () => { if (!drawing) return; drawing.strokes = []; drawing.cur = null; $("draw-save").disabled = true; drawPrint(); };
+$("draw-skip").onclick = () => endDrawing();
+$("draw-save").onclick = () => {
+  if (!drawing || !drawing.strokes.length) return;
+  const r = drawing.r, ru = data.runs[r]; if (!ru) { endDrawing(); return; }
+  let pts = drawing.strokes.flat();
+  const A = drawEnd(ru.from), B = drawEnd(ru.to), d = (p, q) => Math.hypot(p.x - q.x, p.y - q.y);
+  if (A && B && d(pts[0], B) + d(pts[pts.length - 1], A) < d(pts[0], A) + d(pts[pts.length - 1], B)) pts.reverse();   // drawn from the stop end
+  if (A) pts.unshift(A); if (B) pts.push(B);
+  const tol = sol.unit * 0.75, keep = new Array(pts.length).fill(false); keep[0] = keep[pts.length - 1] = true;   // tidy the finger line (under a foot)
+  (function dp(i, j) { let best = 0, bi = -1; const a = pts[i], b = pts[j], L = d(a, b) || 1;
+    for (let m = i + 1; m < j; m++) { const e = Math.abs((b.y - a.y) * (pts[m].x - a.x) - (b.x - a.x) * (pts[m].y - a.y)) / L; if (e > best) { best = e; bi = m; } }
+    if (best > tol) { keep[bi] = true; dp(i, bi); dp(bi, j); } })(0, pts.length - 1);
+  pts = pts.filter((_, i) => keep[i]);
+  const t = Date.now(), drawn = pts.map(p => [Math.round(p.x * 10) / 10, Math.round(p.y * 10) / 10]);
+  const ll = pts.map(p => sol.unlocal(sol.unmap(p))).map(g => [Math.round(g.lat * 1e7) / 1e7, Math.round(g.lon * 1e7) / 1e7]);
+  Object.assign(ru, { drawn, drawnLL: ll, drawnT: t, t });
+  const gps = n => { const g = n && data.items[n]; return g && g.lat != null ? [g.lat, g.lon] : null; };
+  data.learn = Object.assign({}, data.learn, { [`${r}|${t}`]: { run: r, t, kind: ru.kind || "Conduit", from: ru.from || null, to: ru.to || null,
+    walk: (data.tracks || {})[r] || null, drawnLL: ll, drawn, ends: { from: A, to: B, fromGps: gps(ru.from), toGps: gps(ru.to) } } });
+  smoothCache.clear(); saveLocal(); push(`Drawn path for ${r}`);
+  endDrawing(); toast(`Saved the real path of ${r}`);
+};
 function focusPos(n) {
   const c = controlPos(n); if (c) return c;
   if (sol && sol.ok && data.items[n]) return sol.map(sol.local(data.items[n]));
@@ -2323,10 +2395,13 @@ $("lock-scale").onchange = e => { data.lockScale = e.target.checked; saveLocal()
 
 // pan, pinch, tap
 const ptrs = new Map(); let gesture = null;
-cv.addEventListener("pointerdown", e => { cv.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, { x: e.offsetX, y: e.offsetY, x0: e.offsetX, y0: e.offsetY }); gesture = null; });
+cv.addEventListener("pointerdown", e => { cv.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, { x: e.offsetX, y: e.offsetY, x0: e.offsetX, y0: e.offsetY }); gesture = null;
+  if (drawing) { drawing.cur = ptrs.size === 1 ? [toPrint(e.offsetX, e.offsetY)] : null; drawPrint(); }   // one finger draws; a second finger means move or zoom
+});
 cv.addEventListener("pointermove", e => {
   const p = ptrs.get(e.pointerId); if (!p) return;
   const prev = { x: p.x, y: p.y }; p.x = e.offsetX; p.y = e.offsetY;
+  if (drawing && ptrs.size === 1) { if (drawing.cur) { drawing.cur.push(toPrint(p.x, p.y)); drawPrint(); } return; }
   if (ptrs.size === 1) {
     if (Math.hypot(p.x - p.x0, p.y - p.y0) > 6) gesture = "pan";
     if (gesture === "pan") { view.x += p.x - prev.x; view.y += p.y - prev.y; drawPrint(); }
@@ -2334,12 +2409,17 @@ cv.addEventListener("pointermove", e => {
     gesture = "pinch";
     const [a, b] = [...ptrs.values()];
     const other = a === p ? b : a;
+    if (drawing) { view.x += (p.x - prev.x) / 2; view.y += (p.y - prev.y) / 2; }   // two fingers also slide the print while drawing
     const d0 = Math.hypot(prev.x - other.x, prev.y - other.y), d1 = Math.hypot(p.x - other.x, p.y - other.y);
     if (d0 > 0) zoomAt((p.x + other.x) / 2, (p.y + other.y) / 2, d1 / d0);
   }
 });
 function endPtr(e) {
   const p = ptrs.get(e.pointerId); ptrs.delete(e.pointerId);
+  if (drawing) {
+    if (p && drawing.cur && drawing.cur.length > 1) drawing.strokes.push(drawing.cur);
+    drawing.cur = null; $("draw-save").disabled = !drawing.strokes.length; drawPrint(); return;
+  }
   if (p && !gesture && ptrs.size === 0 && placing) {
     pending = toPrint(p.x, p.y); $("place-save").disabled = false;
     $("placing-msg").textContent = `${placing}: tap again to adjust, or Save spot.`;
@@ -3057,7 +3137,8 @@ async function endWalk(w) {   // after Stop (or "Finish it here" on a saved walk
   // Steven 2026-10-06: put both ends on the print right away; an end already placed on the print is skipped
   if (job && job.plan) {
     placeQueue = [sel.start.name, sel.stop.name].filter(n => data.items[n] && !(data.controls[n] && data.controls[n].x != null));
-    if (placeQueue.length) setTimeout(() => { sol = solve(); startPlacing(placeQueue.shift(), false); }, 300);
+    drawNext = r;   // then draw the real path (Steven 2026-10-06)
+    setTimeout(() => { sol = solve(); if (placeQueue.length) startPlacing(placeQueue.shift(), false); else { drawNext = null; startDrawing(r); } }, 300);
   }
 }
 async function checkWalk() {   // the app opened and found a walk that never got its Stop
@@ -3213,9 +3294,9 @@ const RUN_SUB = "white-space:nowrap;overflow:hidden;text-overflow:ellipsis;displ
 function showRuns() {
   const rs = runNames().sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
   const n = delRunsList().length;
-  $("runs-note").textContent = rs.length ? "Redo maps the run again from the start. The old one goes to Deleted runs either way." : "No conduit or trench runs in this project yet.";
+  $("runs-note").textContent = rs.length ? "Draw lets you trace the real path on the print. Redo maps the run again from the start. The old one goes to Deleted runs either way." : "No conduit or trench runs in this project yet.";
   $("runs-list").innerHTML = rs.map(x => runRow(x, (data.runs || {})[x] || {},
-    `<button class="btn" ${RUN_BTN} data-redo="${esc(x)}">Redo</button><button class="btn cancel" ${RUN_BTN} data-del="${esc(x)}">Delete</button>`)).join("")
+    `${job && job.plan ? `<button class="btn" ${RUN_BTN} data-draw="${esc(x)}">Draw</button>` : ""}<button class="btn" ${RUN_BTN} data-redo="${esc(x)}">Redo</button><button class="btn cancel" ${RUN_BTN} data-del="${esc(x)}">Delete</button>`)).join("")
     || `<div class="item" style="display:block"><span class="sub">Nothing to show</span></div>`;
   $("runs-del").textContent = n ? `Deleted runs (${n})` : "Deleted runs";
   $("runs-del").hidden = !n;
@@ -3274,7 +3355,8 @@ $("runs-done").onclick = () => { $("runs").hidden = true; };
 $("runs-del").onclick = showDelRuns;
 $("delruns-done").onclick = showRuns;
 $("runs-list").addEventListener("click", async e => {
-  const d = e.target.closest("[data-del]"), rd = e.target.closest("[data-redo]");
+  const d = e.target.closest("[data-del]"), rd = e.target.closest("[data-redo]"), dw = e.target.closest("[data-draw]");
+  if (dw) { $("runs").hidden = true; showTab("print"); startDrawing(dw.dataset.draw); return; }
   if (d) {
     const x = d.dataset.del;
     if (!await ask(`Delete ${x}? It goes to the Deleted runs list, so you can put it back.`, "Yes, delete it", "No, keep it")) return;
@@ -3310,6 +3392,10 @@ $("delruns-list").addEventListener("click", async e => {
 const smoothCache = new Map();
 function runPath(r) {   // GPS points of the run with the joined vaults at the ends
   const ru = (data.runs || {})[r] || {}, tr = (data.tracks || {})[r];
+  if (ru.drawnLL && ru.drawnLL.length > 1) {   // drawn by hand on the print: this is the run as built
+    const n = ru.drawnLL.length;
+    return ru.drawnLL.map(([lat, lon], i) => Object.assign(i === 0 && ru.from ? { end: ru.from } : i === n - 1 && ru.to ? { end: ru.to } : {}, { lat, lon }));
+  }
   if (tr) {   // walked trench: the smoothed line from the start reading to the stop reading
     const A = ru.from && data.items[ru.from], B = ru.to && data.items[ru.to], key = `${r}|${tr.length}|${A && A.t}|${B && B.t}`;
     let line = smoothCache.get(key); if (!line) { line = smoothTrack(tr, A, B); smoothCache.set(key, line); }
@@ -3322,6 +3408,8 @@ function runPath(r) {   // GPS points of the run with the joined vaults at the e
 }
 // print spots of a run. A walked trench is slid as a whole so both ends sit on their placed spots (Steven 2026-10-06), not bent at the last dot.
 function pinnedRun(r) {
+  const ru = (data.runs || {})[r] || {};
+  if (ru.drawn && ru.drawn.length > 1) { const d = ru.drawn.map(([x, y]) => ({ x, y })), A = ru.from && controlPos(ru.from), B = ru.to && controlPos(ru.to); if (A) d[0] = A; if (B) d[d.length - 1] = B; return d; }
   const ps = runPath(r), g = ps.map(p => sol.map(sol.local(p)));
   if (!(data.tracks || {})[r] || g.length < 2) return ps.map((p, i) => (p.end && controlPos(p.end)) || g[i]);
   const off = i => { const d = ps[i].end && controlPos(ps[i].end); return d ? { x: d.x - g[i].x, y: d.y - g[i].y } : null; };
