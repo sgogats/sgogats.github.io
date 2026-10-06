@@ -584,8 +584,13 @@ html.field .tc-k { color: var(--accent); }
   <div class="row" style="justify-content:space-between;align-items:center"><h2>Put shots on the print</h2><button class="btn cancel" id="print-cancel">Cancel</button></div>
   <p class="small"><b id="print-proj"></b></p>
   <p class="small muted" id="print-help">Pick 4 to 6 shots spread around the site (corners plus one near the middle). Items already on the print line up by themselves. Tap Find to zoom to a box, or Set spot to tap where it actually is.</p>
+  <button class="btn" id="edit-draw" hidden style="margin-bottom:10px">Edit drawing</button>
   <div class="canvas-box" id="cbox">
     <canvas id="cv"></canvas>
+    <div class="placing" id="editPr" hidden>
+      <span id="editPr-msg">Drag a box or icon to move it. Tap a conduit line to erase it and draw it again. Two fingers move or zoom.</span>
+      <div class="row"><button class="btn save" id="edit-draw-done">Done</button></div>
+    </div>
     <div class="placing" id="placing" hidden>
       <span id="placing-msg"></span>
       <div class="row"><button class="btn save" id="place-save" disabled>Save spot</button><button class="btn" id="place-skip">Skip</button></div>
@@ -728,7 +733,7 @@ html.field .tc-k { color: var(--accent); }
 </div></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-06.88";
+const APP_VERSION = "2026-10-06.89";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -2121,6 +2126,7 @@ function drawPrint() {
   sol = solve();
   renderFitNote(); renderCtrlRows();
   $("save-pdf").hidden = !!(job && job.plan) || !gsheet();
+  $("edit-draw").hidden = !(job && job.plan) || !!editPr || !!drawing || !!placing;
   if ((!job || !job.plan) && gsheet()) { drawSheet(gsheet()); return; }
   if (!job || !job.plan) {
     ctx.fillStyle = css("--muted"); ctx.font = "16px " + css("--body"); ctx.textAlign = "center";
@@ -2199,6 +2205,7 @@ function drawPrint() {
       ctx.fillStyle = css("--ink"); ctx.fillText(t, p.x + 20, p.y);
     });
   }
+  if (editPr && editPr.drag && editPr.drag.moved) { const f = focusPos(editPr.drag.n); if (f) { const p = toScreen(f); ctx.strokeStyle = "#e0201a"; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(p.x, p.y, 20, 0, 7); ctx.stroke(); } }
   // the item being looked for
   if (focusName) {
     const f = focusPos(focusName);
@@ -2348,6 +2355,7 @@ function startDrawing(r) {
 }
 function endDrawing() {
   drawing = null; $("drawing").hidden = true;
+  if (editBack) { const v = editBack; editBack = null; editPr = { drag: null }; $("editPr").hidden = false; Object.assign(view, v, { fitted: true }); drawPrint(); return; }
   $("cbox").classList.remove("full"); document.body.style.overflow = "";
   view.fitted = false; drawPrint();
 }
@@ -2374,6 +2382,52 @@ $("draw-save").onclick = () => {
   smoothCache.clear(); saveLocal(); push(`Drawn path for ${r}`);
   endDrawing(); toast(`Saved the real path of ${r}`);
 };
+/* Steven 2026-10-06: Edit drawing on the print. Every box and icon can be dragged to a new spot (its GPS reading is kept);
+   tapping a conduit line erases the hand-drawn path and opens the draw step again. Lines stay joined to the boxes they end at. */
+var editPr = null;
+function iconAt(sx, sy) {
+  if (!sol) sol = solve();
+  const names = new Set([...(job ? job.items.filter(i => i.x != null).map(i => i.name) : []), ...Object.keys(data.controls).filter(n => data.controls[n].x != null),
+    ...Object.keys(data.items).filter(n => !data.items[n].run && !data.items[n].corner)]);
+  let hit = null, best = 26;
+  for (const n of names) { const f = focusPos(n); if (!f) continue; const q = toScreen(f), d = Math.hypot(q.x - sx, q.y - sy); if (d < best) { best = d; hit = n; } }
+  return hit;
+}
+function runAt(sx, sy) {
+  if (!sol || !sol.ok) return null;
+  let hit = null, best = 16;
+  for (const r of runNames()) {
+    const qs = pinnedRun(r).map(toScreen);
+    for (let i = 1; i < qs.length; i++) {
+      const a = qs[i - 1], b = qs[i], dx = b.x - a.x, dy = b.y - a.y, L = dx * dx + dy * dy || 1, t = Math.max(0, Math.min(1, ((sx - a.x) * dx + (sy - a.y) * dy) / L));
+      const d = Math.hypot(a.x + t * dx - sx, a.y + t * dy - sy); if (d < best) { best = d; hit = r; }
+    }
+  }
+  return hit;
+}
+function startEditing() {
+  if (!job || !job.plan) return;
+  editPr = { drag: null }; $("editPr").hidden = false;
+  $("cbox").classList.add("full"); document.body.style.overflow = "hidden";
+  view.fitted = false; sizeCanvas(); fitView(); drawPrint();
+}
+function endEditing() {
+  editPr = null; $("editPr").hidden = true;
+  $("cbox").classList.remove("full"); document.body.style.overflow = "";
+  view.fitted = false; drawPrint();
+}
+async function redrawRun(r) {
+  const ru = (data.runs || {})[r]; if (!ru) return;
+  const ends = [ru.from, ru.to].filter(Boolean).join(" to ");
+  if (!await ask(`Redraw ${r}${ends ? ` (${ends})` : ""}? The drawn line is erased and you draw it again.`, "Yes, redraw it", "No, leave it")) return;
+  delete ru.drawn; delete ru.drawnLL; delete ru.drawnT; smoothCache.clear(); saveLocal(); push(`Erased drawn path of ${r}`);
+  const keepView = { s: view.s, x: view.x, y: view.y };
+  editPr = null; $("editPr").hidden = true; editBack = keepView;
+  startDrawing(r);
+}
+var editBack = null;   // back to Edit drawing after a redraw is saved or skipped
+$("edit-draw").onclick = () => startEditing();
+$("edit-draw-done").onclick = () => endEditing();
 function focusPos(n) {
   const c = controlPos(n); if (c) return c;
   if (sol && sol.ok && data.items[n]) return sol.map(sol.local(data.items[n]));
@@ -2397,11 +2451,21 @@ $("lock-scale").onchange = e => { data.lockScale = e.target.checked; saveLocal()
 const ptrs = new Map(); let gesture = null;
 cv.addEventListener("pointerdown", e => { cv.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, { x: e.offsetX, y: e.offsetY, x0: e.offsetX, y0: e.offsetY }); gesture = null;
   if (drawing) { drawing.cur = ptrs.size === 1 ? [toPrint(e.offsetX, e.offsetY)] : null; drawPrint(); }   // one finger draws; a second finger means move or zoom
+  if (editPr) {   // Edit drawing: a finger on an icon picks it up
+    if (editPr.drag) { const c = editPr.drag; if (c.orig) data.controls[c.n] = c.orig; else delete data.controls[c.n]; editPr.drag = null; }
+    const n = ptrs.size === 1 ? iconAt(e.offsetX, e.offsetY) : null;
+    if (n) { editPr.drag = { n, orig: data.controls[n] ? Object.assign({}, data.controls[n]) : null, moved: false }; gesture = "drag"; drawPrint(); }
+  }
 });
 cv.addEventListener("pointermove", e => {
   const p = ptrs.get(e.pointerId); if (!p) return;
   const prev = { x: p.x, y: p.y }; p.x = e.offsetX; p.y = e.offsetY;
   if (drawing && ptrs.size === 1) { if (drawing.cur) { drawing.cur.push(toPrint(p.x, p.y)); drawPrint(); } return; }
+  if (editPr && editPr.drag && ptrs.size === 1) {
+    if (Math.hypot(p.x - p.x0, p.y - p.y0) > 6) editPr.drag.moved = true;
+    if (editPr.drag.moved) { const q = toPrint(p.x, p.y); data.controls[editPr.drag.n] = Object.assign({}, data.controls[editPr.drag.n], { x: q.x, y: q.y, use: true }); smoothCache.clear(); drawPrint(); }
+    return;
+  }
   if (ptrs.size === 1) {
     if (Math.hypot(p.x - p.x0, p.y - p.y0) > 6) gesture = "pan";
     if (gesture === "pan") { view.x += p.x - prev.x; view.y += p.y - prev.y; drawPrint(); }
@@ -2416,6 +2480,18 @@ cv.addEventListener("pointermove", e => {
 });
 function endPtr(e) {
   const p = ptrs.get(e.pointerId); ptrs.delete(e.pointerId);
+  if (editPr) {
+    const dg = editPr.drag; editPr.drag = null;
+    if (dg) {
+      if (dg.moved && ptrs.size === 0) {   // dropped: this is its spot on the print now; its GPS reading is kept as it was
+        const c = data.controls[dg.n]; data.controls[dg.n] = Object.assign({}, c, { x: Math.round(c.x * 10) / 10, y: Math.round(c.y * 10) / 10, use: true });
+        saveLocal(); push(`Moved ${dg.n} on the print`); toast(`Moved ${dg.n}`);
+      } else if (dg.orig) data.controls[dg.n] = dg.orig; else delete data.controls[dg.n];
+      drawPrint(); return;
+    }
+    if (p && !gesture && ptrs.size === 0) { const r = runAt(p.x, p.y); if (r) redrawRun(r); }
+    return;
+  }
   if (drawing) {
     if (p && drawing.cur && drawing.cur.length > 1) drawing.strokes.push(drawing.cur);
     drawing.cur = null; $("draw-save").disabled = !drawing.strokes.length; drawPrint(); return;
