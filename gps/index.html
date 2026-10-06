@@ -710,7 +710,7 @@ html.field .tc-k { color: var(--accent); }
 </div></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-05.71";
+const APP_VERSION = "2026-10-06.72";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -2799,6 +2799,26 @@ async function joinNear(x, pt) {
     const it = itemsList().find(i => i.name === v.name); Object.assign(x, { name: v.name, type: it ? typeOf(it) : x.type, had: true });
   }
 }
+/* change 2 (Steven 2026-10-06): a start or stop reading more than 15 ft from where that box is already saved asks you to verify.
+   Yes: carry on as before. No: pick from the locations close by, or Other location, which goes back to page 2-1. */
+const RUN_WRONG_FT = 15;
+async function verifyEnd(x, pt) {
+  const old = data.items[x.name];
+  if (!old || old.lat == null) return true;
+  const d = feetApart(pt, old);
+  if (d <= RUN_WRONG_FT) return true;
+  if (await ask(`You are ${Math.round(d)} ft from where ${x.name} is saved. You may be mapping the wrong run. Are you at ${x.name}?`, `Yes, I am at ${x.name}`, "No, I am somewhere else")) return true;
+  const near = nearbyEnds(pt, x.name).filter(v => !v.bldg);
+  if (near.length) {
+    const k = await choose("Which location are you at?", near.map(v => `${v.name} (${Math.round(v.d)} ft)`), "Other location", "Page 2-9g · Which location");
+    if (k >= 0) {
+      const it = itemsList().find(i => i.name === near[k].name);
+      Object.assign(x, { name: near[k].name, type: it ? typeOf(it) : x.type, had: true });
+      return true;
+    }
+  }
+  return false;
+}
 async function mapTrench(sel) {
   const n = Math.max(0, ...runNames().map(k => parseInt(k.replace(/\D+/g, "")) || 0)) + 1, r = `Conduit run ${n}`;
   trkWakeOn();
@@ -2806,6 +2826,7 @@ async function mapTrench(sel) {
   if (!await ask(`Place your phone or iPad on the start location: ${sel.start.name}. Hold it steady, then tap OK.`, "OK", "Cancel", true)) { trkWakeOff(); toast("Stopped. Nothing was saved."); return; }
   const a = await holdReading(`Position phone on ${sel.start.name}`, "Hold the phone steady.");
   if (!a) { $("trk").hidden = true; trkWakeOff(); toast("Stopped. Nothing was saved."); return; }
+  if (!await verifyEnd(sel.start, a)) { $("trk").hidden = true; trkWakeOff(); cm = null; backToProject(); toast("Stopped. Pick the location you are at."); return; }
   await joinNear(sel.start, a);
   ensureLoc(sel.start);
   data.items[sel.start.name] = Object.assign(a, { t: Date.now(), group: (itemsList().find(i => i.name === sel.start.name) || {}).group || typeGroup(sel.start.type) || "Added in field" });
@@ -2822,7 +2843,8 @@ async function endWalk(w) {   // after Stop (or "Finish it here" on a saved walk
   data.runs = data.runs || {}; data.runs[r] = Object.assign({ from: sel.start.name, track: true, kind: sel.kind || "Conduit", t: Date.now(), toOpen: true }, sel.size && sel.kind !== "Trench" ? { size: sel.size } : {}, sel.kind === "Trench" && sel.util ? { util: sel.util } : {});
   saveLocal(); clearWalk();
   const go = await ask(`Place your phone or iPad on the stop location: ${sel.stop.name}. Hold it steady, then tap OK.`, "OK", "Skip", true);
-  const b = go && await holdReading(`Position over ${sel.stop.name}`, "Hold the phone steady.");
+  let b = go && await holdReading(`Position over ${sel.stop.name}`, "Hold the phone steady.");
+  if (b && !await verifyEnd(sel.stop, b)) { b = null; toast(`The end of ${r} is left open. Pick the location you are at.`); }
   if (b) {
     await joinNear(sel.stop, b);
     ensureLoc(sel.stop);
