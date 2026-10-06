@@ -106,28 +106,34 @@ function draw() {
   if (pts.length) map.fitBounds(pts, { padding: [40, 40], maxZoom: 19 });
   say(pts.length ? "" : "No GPS shots saved for this project yet.");
 }
-// same smoothing as GPS Shots: drop rough fixes, average 3 dots each side, straighten (3 ft), round the turns
+// straight runs (Steven 2026-10-06): electric and low-voltage go in straight lines, so the walk is drawn as straight legs
+// with a turn only where the direction clearly changes. Rough fixes and jumps (GPS bouncing off buildings) are dropped. The raw dots stay saved.
 function smoothTrack(raw, a, b) {
   let pts = raw.map(q => ({ lat: q[0], lon: q[1], acc: q[2] }));
-  if (pts.length > 4) { const accs = pts.map(p => p.acc || 0).sort((x, y) => x - y), med = accs[accs.length >> 1]; pts = pts.filter(p => !(p.acc > Math.max(med * 2.5, 30))); }
+  const accs = pts.map(p => p.acc || 0).filter(v => v > 0).sort((x, y) => x - y), med = accs.length ? accs[accs.length >> 1] : 10;
+  if (pts.length > 4) pts = pts.filter(p => !(p.acc > Math.max(med * 2.5, 30)));
   const ends = [a, ...pts, b].filter(Boolean); if (ends.length < 3) return ends.map(p => ({ lat: p.lat, lon: p.lon }));
   const lat0 = ends[0].lat, lon0 = ends[0].lon, c0 = Math.cos(lat0 * Math.PI / 180);
   const to = p => ({ x: (p.lon - lon0) * 364000 * c0, y: (p.lat - lat0) * 364000 }), back = p => ({ lat: lat0 + p.y / 364000, lon: lon0 + p.x / (364000 * c0) });
-  const P = ends.map(to), n = P.length;
-  const avg = P.map((p, i) => { if (i === 0 || i === n - 1) return p; let sx = 0, sy = 0, k = 0; for (let j = Math.max(0, i - 3); j <= Math.min(n - 1, i + 3); j++) { sx += P[j].x; sy += P[j].y; k++; } return { x: sx / k, y: sy / k }; });
-  const keep = new Array(n).fill(false); keep[0] = keep[n - 1] = true;
+  let P = ends.map(to);
+  const mid = v => { const s = v.slice().sort((x, y) => x - y); return s[s.length >> 1]; };
+  const jump = Math.max(15, med * 2);   // a dot this far from the middle of its neighbours is a jump
+  P = P.filter((p, i) => { if (i === 0 || i === P.length - 1) return true; const w = P.slice(Math.max(0, i - 3), i + 4); return Math.hypot(p.x - mid(w.map(q => q.x)), p.y - mid(w.map(q => q.y))) <= jump; });
+  const n = P.length;
+  const avg = P.map((p, i) => { if (i === 0 || i === n - 1) return p; let sx = 0, sy = 0, k = 0; for (let j = Math.max(0, i - 5); j <= Math.min(n - 1, i + 5); j++) { sx += P[j].x; sy += P[j].y; k++; } return { x: sx / k, y: sy / k }; });
+  const tol = Math.min(20, Math.max(10, med * 0.8)), keep = new Array(n).fill(false); keep[0] = keep[n - 1] = true;   // straight legs: Douglas-Peucker, 10-20 ft
   (function dp(i, j) {
     let best = 0, bi = -1; const A = avg[i], B = avg[j], dx = B.x - A.x, dy = B.y - A.y, L = Math.hypot(dx, dy) || 1;
     for (let m = i + 1; m < j; m++) { const d = Math.abs(dy * (avg[m].x - A.x) - dx * (avg[m].y - A.y)) / L; if (d > best) { best = d; bi = m; } }
-    if (best > 3) { keep[bi] = true; dp(i, bi); dp(bi, j); }
+    if (best > tol) { keep[bi] = true; dp(i, bi); dp(bi, j); }
   })(0, n - 1);
-  let line = avg.filter((_, i) => keep[i]);
-  for (let it = 0; it < 3 && line.length > 2; it++) {
-    const out = [line[0]];
-    for (let i = 0; i < line.length - 1; i++) { const p = line[i], q = line[i + 1];
-      if (i > 0) out.push({ x: .75 * p.x + .25 * q.x, y: .75 * p.y + .25 * q.y });
-      if (i < line.length - 2) out.push({ x: .25 * p.x + .75 * q.x, y: .25 * p.y + .75 * q.y }); }
-    out.push(line[line.length - 1]); line = out;
+  const line = avg.filter((_, i) => keep[i]);
+  const turn = i => { const p = line[i - 1], q = line[i], r = line[i + 1], a1 = Math.atan2(q.y - p.y, q.x - p.x), a2 = Math.atan2(r.y - q.y, r.x - q.x); let d = Math.abs(a2 - a1) * 180 / Math.PI; return d > 180 ? 360 - d : d; };
+  const len = i => Math.hypot(line[i + 1].x - line[i].x, line[i + 1].y - line[i].y);
+  for (let done = false; !done && line.length > 2;) {   // no small bends or short zig-zags: a turn under 25 degrees or a leg under 10 ft goes
+    done = true; let bi = -1, bt = 1e9;
+    for (let i = 1; i < line.length - 1; i++) { const t = turn(i); if ((t < 25 || len(i - 1) < 10 || len(i) < 10) && t < bt) { bt = t; bi = i; } }
+    if (bi > 0) { line.splice(bi, 1); done = false; }
   }
   return line.map(back);
 }
