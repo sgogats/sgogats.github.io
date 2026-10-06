@@ -724,7 +724,7 @@ html.field .tc-k { color: var(--accent); }
 </div></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-06.82";
+const APP_VERSION = "2026-10-06.83";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -2203,7 +2203,7 @@ function drawPrint() {
   }
   // conduit runs: orange line, joined to the vault's spot on the print
   if (sol && sol.ok) for (const r of runNames()) {
-    const qs = runPath(r).map(p => { const d = p.end && controlPos(p.end); return toScreen(d || sol.map(sol.local(p))); });
+    const qs = pinnedRun(r).map(toScreen);
     if (qs.length < 2) continue;
     const col = runColor((data.runs || {})[r]);
     ctx.strokeStyle = col; ctx.lineWidth = 3; ctx.beginPath(); qs.forEach((q, i) => i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y)); ctx.stroke();
@@ -2938,28 +2938,34 @@ function drawTrk(startPt, pts) {   // live picture while walking: raw dots and t
   const a = S(q[0]); x.fillStyle = "#1e9e4a"; x.fillRect(a.x - 7, a.y - 7, 14, 14);
   const b = S(q[q.length - 1]); x.fillStyle = "#1f6fd1"; x.beginPath(); x.arc(b.x, b.y, 7, 0, 7); x.fill();
 }
-// the smoothed line: drop rough fixes, average 3 dots before and 3 after, straighten near-straight stretches, round the turns
+// straight runs (Steven 2026-10-06): electric and low-voltage go in straight lines, so the walk is drawn as straight legs
+// with a turn only where the direction clearly changes. Rough fixes and jumps (GPS bouncing off buildings) are dropped. The raw dots stay saved.
 function smoothTrack(raw, a, b) {
   let pts = raw.map(q => ({ lat: q[0], lon: q[1], acc: q[2] }));
-  if (pts.length > 4) { const accs = pts.map(p => p.acc || 0).sort((x, y) => x - y), med = accs[accs.length >> 1]; pts = pts.filter(p => !(p.acc > Math.max(med * 2.5, 30))); }
+  const accs = pts.map(p => p.acc || 0).filter(v => v > 0).sort((x, y) => x - y), med = accs.length ? accs[accs.length >> 1] : 10;
+  if (pts.length > 4) pts = pts.filter(p => !(p.acc > Math.max(med * 2.5, 30)));
   const ends = [a, ...pts, b].filter(Boolean); if (ends.length < 3) return ends.map(p => ({ lat: p.lat, lon: p.lon }));
   const lat0 = ends[0].lat, lon0 = ends[0].lon, c0 = Math.cos(lat0 * Math.PI / 180);
   const to = p => ({ x: (p.lon - lon0) * 364000 * c0, y: (p.lat - lat0) * 364000 }), back = p => ({ lat: lat0 + p.y / 364000, lon: lon0 + p.x / (364000 * c0) });
-  const P = ends.map(to), n = P.length;
-  const avg = P.map((p, i) => { if (i === 0 || i === n - 1) return p; let sx = 0, sy = 0, k = 0; for (let j = Math.max(0, i - 3); j <= Math.min(n - 1, i + 3); j++) { sx += P[j].x; sy += P[j].y; k++; } return { x: sx / k, y: sy / k }; });
-  const keep = new Array(n).fill(false); keep[0] = keep[n - 1] = true;   // straighten: Douglas-Peucker, 3 ft
+  let P = ends.map(to);
+  const mid = v => { const s = v.slice().sort((x, y) => x - y); return s[s.length >> 1]; };
+  const jump = Math.max(15, med * 2);   // a dot this far from the middle of its neighbours is a jump
+  P = P.filter((p, i) => { if (i === 0 || i === P.length - 1) return true; const w = P.slice(Math.max(0, i - 3), i + 4); return Math.hypot(p.x - mid(w.map(q => q.x)), p.y - mid(w.map(q => q.y))) <= jump; });
+  const n = P.length;
+  const avg = P.map((p, i) => { if (i === 0 || i === n - 1) return p; let sx = 0, sy = 0, k = 0; for (let j = Math.max(0, i - 5); j <= Math.min(n - 1, i + 5); j++) { sx += P[j].x; sy += P[j].y; k++; } return { x: sx / k, y: sy / k }; });
+  const tol = Math.min(20, Math.max(10, med * 0.8)), keep = new Array(n).fill(false); keep[0] = keep[n - 1] = true;   // straight legs: Douglas-Peucker, 10-20 ft
   (function dp(i, j) {
     let best = 0, bi = -1; const A = avg[i], B = avg[j], dx = B.x - A.x, dy = B.y - A.y, L = Math.hypot(dx, dy) || 1;
     for (let m = i + 1; m < j; m++) { const d = Math.abs(dy * (avg[m].x - A.x) - dx * (avg[m].y - A.y)) / L; if (d > best) { best = d; bi = m; } }
-    if (best > 3) { keep[bi] = true; dp(i, bi); dp(bi, j); }
+    if (best > tol) { keep[bi] = true; dp(i, bi); dp(bi, j); }
   })(0, n - 1);
-  let line = avg.filter((_, i) => keep[i]);
-  for (let it = 0; it < 3 && line.length > 2; it++) {   // round the turns (Chaikin), ends stay put
-    const out = [line[0]];
-    for (let i = 0; i < line.length - 1; i++) { const p = line[i], q = line[i + 1];
-      if (i > 0) out.push({ x: .75 * p.x + .25 * q.x, y: .75 * p.y + .25 * q.y });
-      if (i < line.length - 2) out.push({ x: .25 * p.x + .75 * q.x, y: .25 * p.y + .75 * q.y }); }
-    out.push(line[line.length - 1]); line = out;
+  const line = avg.filter((_, i) => keep[i]);
+  const turn = i => { const p = line[i - 1], q = line[i], r = line[i + 1], a1 = Math.atan2(q.y - p.y, q.x - p.x), a2 = Math.atan2(r.y - q.y, r.x - q.x); let d = Math.abs(a2 - a1) * 180 / Math.PI; return d > 180 ? 360 - d : d; };
+  const len = i => Math.hypot(line[i + 1].x - line[i].x, line[i + 1].y - line[i].y);
+  for (let done = false; !done && line.length > 2;) {   // no small bends or short zig-zags: a turn under 25 degrees or a leg under 10 ft goes
+    done = true; let bi = -1, bt = 1e9;
+    for (let i = 1; i < line.length - 1; i++) { const t = turn(i); if ((t < 25 || len(i - 1) < 10 || len(i) < 10) && t < bt) { bt = t; bi = i; } }
+    if (bi > 0) { line.splice(bi, 1); done = false; }
   }
   return line.map(back);
 }
@@ -3313,6 +3319,16 @@ function runPath(r) {   // GPS points of the run with the joined vaults at the e
   if (ru.from && data.items[ru.from]) pts.unshift(Object.assign({ end: ru.from }, data.items[ru.from]));
   if (ru.to && data.items[ru.to]) pts.push(Object.assign({ end: ru.to }, data.items[ru.to]));
   return pts;
+}
+// print spots of a run. A walked trench is slid as a whole so both ends sit on their placed spots (Steven 2026-10-06), not bent at the last dot.
+function pinnedRun(r) {
+  const ps = runPath(r), g = ps.map(p => sol.map(sol.local(p)));
+  if (!(data.tracks || {})[r] || g.length < 2) return ps.map((p, i) => (p.end && controlPos(p.end)) || g[i]);
+  const off = i => { const d = ps[i].end && controlPos(ps[i].end); return d ? { x: d.x - g[i].x, y: d.y - g[i].y } : null; };
+  let A = off(0), B = off(g.length - 1); if (!A && !B) return g; A = A || B; B = B || A;
+  const cum = [0]; for (let i = 1; i < g.length; i++) cum.push(cum[i - 1] + Math.hypot(g[i].x - g[i - 1].x, g[i].y - g[i - 1].y));
+  const L = cum[cum.length - 1] || 1;
+  return g.map((p, i) => { const f = cum[i] / L; return { x: p.x + A.x + (B.x - A.x) * f, y: p.y + A.y + (B.y - A.y) * f }; });
 }
 function runFeet(pts) { let t = 0; for (let i = 1; i < pts.length; i++) t += feetApart(pts[i - 1], pts[i]); return t; }
 function drawRun(r) {
