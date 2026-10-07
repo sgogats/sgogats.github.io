@@ -769,7 +769,7 @@ html.big #z-full { display: block; }
 </div></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-06.99";
+const APP_VERSION = "2026-10-07.01";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -2085,8 +2085,8 @@ const view = { s: 1, x: 0, y: 0, fitted: false };
 let placing = null, sol = null, focusName = null;
 function css(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
 function sizeCanvas() {
-  const r = cv.getBoundingClientRect(), d = window.devicePixelRatio || 1;
-  cv.width = Math.round(r.width * d); cv.height = Math.round(r.height * d);
+  const r = cv.getBoundingClientRect(), d = window.devicePixelRatio || 1, W = Math.round(r.width * d), H = Math.round(r.height * d);
+  if (cv.width !== W) cv.width = W; if (cv.height !== H) cv.height = H;   // resizing every frame was slow
   ctx.setTransform(d, 0, 0, d, 0, 0);
 }
 function extent() {
@@ -2204,13 +2204,60 @@ function fitView() {
 }
 const toScreen = p => ({ x: p.x * view.s + view.x, y: p.y * view.s + view.y });
 const toPrint = (sx, sy) => ({ x: (sx - view.x) / view.s, y: (sy - view.y) / view.s });
-function drawPrint() {
+/* Speed (Steven 2026-10-07: editing on the print lagged). The site plan has ~10,000 lines: they are batched into a few
+   Path2D shapes once, drawn into a picture that is reused while the view doesn't move (dragging a box, drawing a path),
+   and finger moves redraw at most once per screen frame without rebuilding the shots table under the print. */
+const planPaths = new WeakMap();
+function planGroups(plan) {
+  let g = planPaths.get(plan); if (g) return g;
+  const m = new Map();
+  for (const [col, w, pts] of plan.lines) {
+    const gray = col === "#b4b4b4", k = (gray ? "g" : "o") + w; let e = m.get(k);
+    if (!e) { e = { gray, w, p: new Path2D() }; m.set(k, e); }
+    e.p.moveTo(pts[0], pts[1]); for (let i = 2; i < pts.length; i += 2) e.p.lineTo(pts[i], pts[i + 1]);
+  }
+  g = [...m.values()]; planPaths.set(plan, g); return g;
+}
+let planLayer = null;
+function drawPlanLayer(r, full, quick) {
+  const d = window.devicePixelRatio || 1, W = Math.round(r.width * d), H = Math.round(r.height * d);
+  const c1 = css("--plan"), c2 = css("--plan2"), ink = css("--ink"), mut = css("--muted"), font = css("--body");
+  const base = [W, H, full, c1, c2, ink, mut].join("|"), key = [view.x, view.y, view.s, base].join("|");
+  if (quick && planLayer && planLayer.base === base && planLayer.plan === job.plan && planLayer.key !== key) {   // moving or zooming: slide the last picture; the sharp one follows when the fingers stop
+    const L = planLayer.v, k = view.s / L.s;
+    ctx.drawImage(planLayer.c, view.x - L.x * k, view.y - L.y * k, r.width * k, r.height * k); return;
+  }
+  if (!planLayer || planLayer.key !== key || planLayer.plan !== job.plan) {
+    const c = planLayer && planLayer.c.width === W && planLayer.c.height === H ? planLayer.c : Object.assign(document.createElement("canvas"), { width: W, height: H });
+    const x = c.getContext("2d");
+    x.setTransform(1, 0, 0, 1, 0, 0); x.clearRect(0, 0, W, H);
+    x.setTransform(d, 0, 0, d, 0, 0); x.translate(view.x, view.y); x.scale(view.s, view.s);
+    if (job.plan.img) x.drawImage(job.plan.img, 0, 0, job.plan.size[0], job.plan.size[1]);   // uploaded PDF print
+    x.lineCap = "butt"; x.lineJoin = "bevel";   // round ends cost more than half the drawing time and don't show on thin print lines
+    for (const g of planGroups(job.plan)) {
+      if (full) { x.strokeStyle = g.gray ? c1 : ink; x.lineWidth = Math.max(g.w, 1.3 / view.s); }
+      else { x.strokeStyle = g.gray ? c2 : c1; x.lineWidth = Math.max(g.w, 0.6 / view.s); }
+      x.stroke(g.p);
+    }
+    x.fillStyle = mut; x.textAlign = "center"; x.textBaseline = "middle";
+    for (const [tx, ty, t, size] of job.plan.texts) { x.font = `600 ${size}px ${font}`; x.fillText(t, tx, ty); }
+    planLayer = { key, base, c, plan: job.plan, v: { x: view.x, y: view.y, s: view.s } };
+  }
+  ctx.drawImage(planLayer.c, 0, 0, r.width, r.height);
+}
+let drawQueued = false, drawSettle = null;
+function drawSoon() {   // finger moves: one redraw per screen frame
+  clearTimeout(drawSettle); drawSettle = setTimeout(() => drawPrint(), 200);
+  if (drawQueued) return; drawQueued = true;
+  requestAnimationFrame(() => { drawQueued = false; drawPrint(true); });
+}
+function drawPrint(quick) {
   applyPrintEdits();
   sizeCanvas(); if (!view.fitted) fitView();
   const r = cv.getBoundingClientRect();
   ctx.fillStyle = css("--panel"); ctx.fillRect(0, 0, r.width, r.height);
   sol = solve();
-  renderFitNote(); renderCtrlRows();
+  if (!quick) { renderFitNote(); renderCtrlRows(); }
   $("save-pdf").hidden = !!(job && job.plan) || !gsheet();
   $("edit-draw").hidden = !(job && job.plan) || !!editPr || !!drawing || !!placing;
   $("z-edit").hidden = $("edit-draw").hidden || !$("cbox").classList.contains("full");   // full-screen print: Edit drawing from the tool column (Steven 2026-10-06)
@@ -2221,21 +2268,8 @@ function drawPrint() {
     ctx.fillText("Shots are still saved and can be exported.", r.width / 2, r.height / 2 + 14);
     return;
   }
-  ctx.save(); ctx.translate(view.x, view.y); ctx.scale(view.s, view.s);
-  const c1 = css("--plan"), c2 = css("--plan2");
-  if (job.plan.img) ctx.drawImage(job.plan.img, 0, 0, job.plan.size[0], job.plan.size[1]);   // uploaded PDF print
-  ctx.lineCap = "round"; ctx.lineJoin = "round";
   const full = $("cbox").classList.contains("full");
-  for (const [col, w, pts] of job.plan.lines) {
-    if (full) { ctx.strokeStyle = col === "#b4b4b4" ? c1 : css("--ink"); ctx.lineWidth = Math.max(w, 1.3 / view.s); }
-    else { ctx.strokeStyle = col === "#b4b4b4" ? c2 : c1; ctx.lineWidth = Math.max(w, 0.6 / view.s); }
-    ctx.beginPath(); ctx.moveTo(pts[0], pts[1]);
-    for (let i = 2; i < pts.length; i += 2) ctx.lineTo(pts[i], pts[i + 1]);
-    ctx.stroke();
-  }
-  ctx.fillStyle = css("--muted"); ctx.textAlign = "center"; ctx.textBaseline = "middle";
-  for (const [x, y, t, size] of job.plan.texts) { ctx.font = `600 ${size}px ${css("--body")}`; ctx.fillText(t, x, y); }
-  ctx.restore();
+  drawPlanLayer(r, full, quick);
   // conduit runs: drawn under the boxes, so each line looks like it enters the vault or lockbox (Steven 2026-10-06)
   if (sol && sol.ok) {
     const lanes = runLanes(), labs = [];
@@ -2584,15 +2618,15 @@ cv.addEventListener("pointerdown", e => { cv.setPointerCapture(e.pointerId); ptr
 cv.addEventListener("pointermove", e => {
   const p = ptrs.get(e.pointerId); if (!p) return;
   const prev = { x: p.x, y: p.y }; p.x = e.offsetX; p.y = e.offsetY;
-  if (drawing && ptrs.size === 1) { if (drawing.cur) { drawing.cur.push(toPrint(p.x, p.y)); drawPrint(); } return; }
+  if (drawing && ptrs.size === 1) { if (drawing.cur) { drawing.cur.push(toPrint(p.x, p.y)); drawSoon(); } return; }
   if (editPr && editPr.drag && ptrs.size === 1) {
     if (Math.hypot(p.x - p.x0, p.y - p.y0) > 6) editPr.drag.moved = true;
-    if (editPr.drag.moved) { const q = toPrint(p.x, p.y); data.controls[editPr.drag.n] = Object.assign({}, data.controls[editPr.drag.n], { x: q.x, y: q.y, use: true }); smoothCache.clear(); drawPrint(); }
+    if (editPr.drag.moved) { const q = toPrint(p.x, p.y); data.controls[editPr.drag.n] = Object.assign({}, data.controls[editPr.drag.n], { x: q.x, y: q.y, use: true }); drawSoon(); }
     return;
   }
   if (ptrs.size === 1) {
     if (Math.hypot(p.x - p.x0, p.y - p.y0) > 6) gesture = "pan";
-    if (gesture === "pan") { view.x += p.x - prev.x; view.y += p.y - prev.y; drawPrint(); }
+    if (gesture === "pan") { view.x += p.x - prev.x; view.y += p.y - prev.y; drawSoon(); }
   } else if (ptrs.size === 2) {
     gesture = "pinch";
     const [a, b] = [...ptrs.values()];
@@ -2646,7 +2680,7 @@ cv.addEventListener("pointerup", endPtr); cv.addEventListener("pointercancel", e
 cv.addEventListener("wheel", e => { e.preventDefault(); zoomAt(e.offsetX, e.offsetY, e.deltaY < 0 ? 1.15 : 1 / 1.15); }, { passive: false });
 function zoomAt(sx, sy, k) {
   const ns = Math.max(0.05, Math.min(40, view.s * k)); k = ns / view.s;
-  view.x = sx - (sx - view.x) * k; view.y = sy - (sy - view.y) * k; view.s = ns; drawPrint();
+  view.x = sx - (sx - view.x) * k; view.y = sy - (sy - view.y) * k; view.s = ns; drawSoon();
 }
 $("z-in").onclick = () => { const r = cv.getBoundingClientRect(); zoomAt(r.width / 2, r.height / 2, 1.5); };
 $("z-out").onclick = () => { const r = cv.getBoundingClientRect(); zoomAt(r.width / 2, r.height / 2, 1 / 1.5); };
