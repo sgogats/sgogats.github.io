@@ -769,7 +769,7 @@ html.big #z-full { display: block; }
 </div></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-07.01";
+const APP_VERSION = "2026-10-07.02";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -1537,11 +1537,15 @@ $("cats").addEventListener("click", e => {
   typeCheck = b.dataset.act === "add-ltype";
   if (b.dataset.act === "add-type" || b.dataset.act === "add-loctype" || b.dataset.act === "add-ltype") { if (current === RANDOM) { $("type-box").hidden = false; render(); }  $("type-box").hidden = false; $("type-name").value = ""; renderTypeSugg(); applyDesign(); $("type-name").focus(); return; }
   if (current === RANDOM) { cat = cat === b.dataset.cat ? null : b.dataset.cat; render(); if (cat && $("loc").value.trim()) { locOpen = true; renderGroups(); } if (cat) $("loc").focus(); return; }
-  { const t = b.dataset.cat, its = itemsList();   // a type with no locations yet goes straight to Add new location (Steven 2026-10-05)
-    if (!its.some(i => inCat(i, t)) && !(t === "Building" && (data.bldgs || []).length)) { cat = null; group = null; selected = null; adding = { type: t }; render(); $("addloc-name").value = ""; window.scrollTo(0, 0); $("addloc-name").focus(); return; } }
-  cat = b.dataset.cat; group = null; selected = null; locOpen = false; $("loc").value = ""; render();
-  $("items-h").scrollIntoView({ behavior: "smooth", block: "start" });
+  if (isPoleLineType(b.dataset.cat)) { openPolePick(b.dataset.cat); return; }   // page 2-11: Single Pole or Map a Pole Line (Steven 2026-10-07)
+  openCat(b.dataset.cat);
 });
+function openCat(t) {
+  { const its = itemsList();   // a type with no locations yet goes straight to Add new location (Steven 2026-10-05)
+    if (!its.some(i => inCat(i, t)) && !(t === "Building" && (data.bldgs || []).length)) { cat = null; group = null; selected = null; adding = { type: t }; render(); $("addloc-name").value = ""; window.scrollTo(0, 0); $("addloc-name").focus(); return; } }
+  cat = t; group = null; selected = null; locOpen = false; $("loc").value = ""; render();
+  $("items-h").scrollIntoView({ behavior: "smooth", block: "start" });
+}
 /* ---------- page 2-5: + Add new location = pick its type (any of the project's types, or a new one), then name it ---------- */
 let adding = null;   // null, or { type } while adding a location
 function renderAddLoc() {
@@ -2553,7 +2557,8 @@ function openRunBox(r) {
   runBoxR = r;
   const ft = Math.round(runFeet(runPath(r))), ends = [ru.from, ru.to].filter(Boolean).join(" to ");
   $("runbox-name").textContent = ends || r;
-  $("runbox-sub").textContent = [ends ? r : "", ru.kind === "Trench" ? (ru.util && ru.util !== "Our conduit" ? `${ru.util.toLowerCase()} trench` : "trench") : (ru.size ? `${ru.size} conduit` : "conduit, no size yet"), ft ? `${ft.toLocaleString()} ft` : ""].filter(Boolean).join(" · ");
+  $("runbox-sub").textContent = [ends ? r : "", ru.kind === "Aerial" ? "pole line" : ru.kind === "Trench" ? (ru.util && ru.util !== "Our conduit" ? `${ru.util.toLowerCase()} trench` : "trench") : (ru.size ? `${ru.size} conduit` : "conduit, no size yet"), ft ? `${ft.toLocaleString()} ft` : ""].filter(Boolean).join(" · ");
+  $("runbox-info").hidden = ru.kind === "Aerial";   // a pole line span has no size
   $("runbox-info").textContent = ru.kind === "Trench" ? "Edit information (what's in the trench)" : "Edit information (conduit size)";
   $("runbox").hidden = false;
 }
@@ -2804,14 +2809,14 @@ async function checkOffSpots() {
 // 1 = home and its pages, 2 = inside a project, 3 = the print, 4 = system points; a pop-up on a page adds a letter (2-3a)
 const PAGE_NO = { main: "1", newproject: "1-1", lists: "1-2", status: "1-3", setup: "1-5",
   project: "2", vaultlist: "2-1", addtype: "2-2", capture: "2-3", clean: "2-4", addloc: "2-5",
-  print: "3", placing: "3-1", random: "4", editproject: "2-6", runs: "2-10", delruns: "2-10a", locmenu: "2-1a", dellocs: "2-1b", device: "0", runbox: "3-2", relink: "2-10b" };   // picture viewer: 2c / 2-3c
+  print: "3", placing: "3-1", random: "4", editproject: "2-6", runs: "2-10", delruns: "2-10a", locmenu: "2-1a", dellocs: "2-1b", device: "0", runbox: "3-2", relink: "2-10b", polepick: "2-11", poleline: "2-12" };   // picture viewer: 2c / 2-3c
 function pageNo() { let sn = "main"; try { sn = screenNow(); } catch {} const n = PAGE_NO[sn] || "?"; return shot.running ? n + "a" : n; }
 $("ver-no").textContent = " · V " + APP_VERSION.slice(8);   // day.build, e.g. V 03.12
 setInterval(() => {
   const t = "Page " + pageNo(); if ($("page-no").textContent !== t) $("page-no").textContent = t;
   { let sn = "main"; try { sn = screenNow(); } catch {}   // the top bar names the page, like Mockup v3
     const pn = (allProjects().find(p => p.slug === current) || {}).name || "GPS Shots";
-    const T = { newproject: "New project", lists: $("lists-title").textContent, status: "Change status of job", setup: "Setup", vaultlist: pn, capture: pn, addloc: "Add new location", addtype: "Add new location", editproject: "Edit project", print: "Put shots on the print", placing: "Put shots on the print", random: "System point" };
+    const T = { newproject: "New project", lists: $("lists-title").textContent, status: "Change status of job", setup: "Setup", vaultlist: pn, capture: pn, addloc: "Add new location", addtype: "Add new location", editproject: "Edit project", print: "Put shots on the print", placing: "Put shots on the print", random: "System point", polepick: "Pole Line", poleline: "Map a Pole Line" };
     const bt = T[sn] || "GPS Shots"; if ($("brand").textContent !== bt) $("brand").textContent = bt; }
   if (!$("ask").hidden) { const a = "Page " + pageNo().replace(/a$/, "") + (shot.running ? "b" : "a"); if ($("ask-page").textContent !== a) $("ask-page").textContent = a; }
 }, 300);
@@ -2825,6 +2830,8 @@ const SCREEN_BG = { main: "#e3f2ff", addtype: "#e2e4e7" };   // Steven's screen 
 function screenNow() {
   if (DESIGN_MODE && forcedScreen) return forcedScreen;
   if ($("device-pick") && !$("device-pick").hidden) return "device";
+  if ($("poleline") && !$("poleline").hidden) return "poleline";
+  if ($("polepick") && !$("polepick").hidden) return "polepick";
   if ($("runbox") && !$("runbox").hidden) return "runbox";
   if ($("relink") && !$("relink").hidden) return "relink";
   if ($("delruns") && !$("delruns").hidden) return "delruns";
@@ -3065,8 +3072,8 @@ const UTIL_COLORS = { "Our conduit": "#ff8c1a", "Gas": "#f2c200", "Water": "#1f6
 // conduit size: pick from a list (Steven 2026-10-05); each size has its own line color
 const CONDUIT_SIZES = ['1"', '1¼"', '1½"', '2"', '3"', '4"'];
 const SIZE_COLORS = { '1"': "#8a8f98", '1¼"': "#b39a6e", '1½"': "#d99447", '2"': "#ff8c1a", '3"': "#e03a1e", '4"': "#8e3fbf" };   // Steven: 1" gray, 2" orange; 1¼" 1½" 3" 4" are defaults until he picks
-function runColor(ru) { return (ru && ru.kind === "Trench" && ru.util && UTIL_COLORS[ru.util]) || (ru && ru.size && SIZE_COLORS[ru.size]) || "#ff8c1a"; }
-function runLabel(rn, ru, ft) { return `${rn}${ru && ru.size ? ` · ${ru.size} conduit` : ru && ru.kind === "Trench" ? (ru.util && ru.util !== "Our conduit" ? ` · ${ru.util.toLowerCase()} trench` : " · trench") : ""} · ${Math.round(ft).toLocaleString()} ft`; }
+function runColor(ru) { return ru && ru.kind === "Aerial" ? "#6d4c41" : (ru && ru.kind === "Trench" && ru.util && UTIL_COLORS[ru.util]) || (ru && ru.size && SIZE_COLORS[ru.size]) || "#ff8c1a"; }
+function runLabel(rn, ru, ft) { return `${rn}${ru && ru.kind === "Aerial" ? " · pole line" : ru && ru.size ? ` · ${ru.size} conduit` : ru && ru.kind === "Trench" ? (ru.util && ru.util !== "Our conduit" ? ` · ${ru.util.toLowerCase()} trench` : " · trench") : ""} · ${Math.round(ft).toLocaleString()} ft`; }
 function verifySize(cur) {   // top button = the size now (tap to confirm), list underneath to change it
   return new Promise(res => {
     const done = v => { $("vsize").hidden = true; res(v); };
@@ -3241,8 +3248,8 @@ function holdReading(title, sub) {   // 10 second fixed reading; resolves the av
 let walkRec = null;   // {proj, r, sel, a, pts, t}
 function saveWalk() { if (walkRec) { walkRec.t = Date.now(); LS.set("walk", walkRec); } }
 function clearWalk() { walkRec = null; try { localStorage.removeItem("gps.walk"); } catch {} }
-window.addEventListener("pagehide", saveWalk);
-document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") saveWalk(); });
+window.addEventListener("pagehide", () => { saveWalk(); try { savePole(); } catch {} });
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") { saveWalk(); try { savePole(); } catch {} } });
 function walkTrack(startPt, pts) {   // a dot every half second until Stop; resolves the dots (a resumed walk adds to its saved dots)
   pts = pts || [];
   return new Promise(res => {
@@ -3353,7 +3360,7 @@ async function verifyEnd(x, pt) {
 }
 const hasGps = x => { const g = x && data.items[x.name]; return !!(g && g.lat != null); };
 async function mapTrench(sel) {
-  const n = Math.max(0, ...runNames().map(k => parseInt(k.replace(/\D+/g, "")) || 0)) + 1, r = `Conduit run ${n}`;
+  const n = Math.max(0, ...runNames().filter(k => !/^Pole line /.test(k)).map(k => parseInt(k.replace(/\D+/g, "")) || 0)) + 1, r = `Conduit run ${n}`;
   if (hasGps(sel.start) && hasGps(sel.stop)) {   // Steven 2026-10-06: both ends already located, so no readings; just pick where the walk begins
     const k = await choose("Select start point", [sel.start.name, sel.stop.name], "Cancel", "Page 2-9h · Start point");
     if (k < 0) { $("cmap").hidden = false; return; }
@@ -3426,7 +3433,7 @@ async function checkWalk() {   // the app opened and found a walk that never got
   }
   if (current !== w.proj || home) pickProject(w.proj);
   if ((data.runs || {})[w.r]) {   // that run number got used meanwhile (another phone): take the next one
-    const n = Math.max(0, ...runNames().map(x => parseInt(x.replace(/\D+/g, "")) || 0)) + 1; w.r = `Conduit run ${n}`;
+    const n = Math.max(0, ...runNames().filter(x => !/^Pole line /.test(x)).map(x => parseInt(x.replace(/\D+/g, "")) || 0)) + 1; w.r = `Conduit run ${n}`;
   }
   walkRec = w; cm = w.sel; trkWakeOn(); saveWalk();
   if (k === 0) {
@@ -3436,6 +3443,166 @@ async function checkWalk() {   // the app opened and found a walk that never got
   await endWalk(w);
 }
 document.addEventListener("DOMContentLoaded", () => setTimeout(checkWalk, 600));
+/* ---------- pole lines (Steven 2026-10-07): tapping a Pole line type on page 2 asks Single Pole or Map a Pole Line.
+   Map a Pole Line: name the pole, Grab GPS against it, Begin Walking to the next pole, Stop, name it, Grab GPS, and so on.
+   Done saves every pole and the walked span between each pair. Back undoes the last step; Cancel throws the line away.
+   The line in progress is kept on the phone (gps.poleWalk) until Done or Cancel, so a screen lock loses nothing. ---------- */
+const isPoleLineType = t => /pole\s*line/i.test(t || "");
+let poleRec = null;   // {proj, type, line, poles: [{name, g}], legs: [[dots]], stage: "name" | "grab" | "got" | "walk"}
+let plWatch = null, plTimer = null, plLast = null, plGrabEnd = null;
+function savePole() { if (poleRec) LS.set("poleWalk", poleRec); }
+function clearPole() { poleRec = null; try { localStorage.removeItem("gps.poleWalk"); } catch {} }
+function plStopGps() { if (plWatch != null) navigator.geolocation.clearWatch(plWatch); plWatch = null; clearInterval(plTimer); plTimer = null; }
+function nextPoleLineNo() { return Math.max(0, ...Object.keys(data.runs || {}).map(k => +((/^Pole line (\d+) span/.exec(k) || [])[1] || 0))) + 1; }
+function openPolePick(t) { polePickType = t; $("polepick-msg").textContent = t; $("polepick").hidden = false; }
+var polePickType = null;
+function startPoleLine(t) {
+  poleRec = { proj: current, type: t, line: nextPoleLineNo(), poles: [], legs: [], stage: "name" }; savePole();
+  trkWakeOn(); $("pl-name").value = ""; $("poleline").hidden = false; renderPole(); $("pl-name").focus();
+}
+function renderPole() {
+  if (!poleRec) { $("poleline").hidden = true; return; }
+  const R = poleRec, st = R.stage, n = R.poles.length, show = (id, on) => { $(id).hidden = !on; };
+  const nextNo = n + (st === "name" || st === "grab" ? 1 : 0);
+  $("pl-sub").textContent = st === "name" ? (n ? `Enter the name of pole ${n + 1}, then tap Grab GPS.` : "Enter the first pole's name, then tap Grab GPS.")
+    : st === "grab" ? `Hold the phone against pole ${nextNo}.`
+    : st === "got" ? `${R.poles[n - 1].name} is saved. ${n === 1 ? "Tap Begin Walking to walk to the next pole." : "Tap Start to walk to the next pole, or Done if this is the last pole."}`
+    : `Walking to pole ${n + 1}. Tap Stop at the next pole.`;
+  $("pl-list").textContent = n ? `${R.type} ${R.line}: ` + R.poles.map(p => `${p.name} (±${Math.round(p.g.acc_ft)} ft)`).join(" → ") : "";
+  show("pl-name-box", st === "name"); show("pl-grab", st === "name"); show("pl-hold", st === "grab");
+  show("pl-walk", st === "got"); $("pl-walk").textContent = n === 1 ? "Begin Walking" : "Start";
+  show("pl-reshoot", st === "got"); show("pl-done", st === "got" && n >= 2); show("pl-stop", st === "walk");
+  show("pl-back", st !== "grab"); $("pl-cancel").textContent = st === "grab" ? "Stop reading" : "Cancel";
+  drawPole();
+}
+function drawPole() {   // the poles so far (brown circles) and the walked dots
+  const c = $("pl-cv"), r = c.getBoundingClientRect(), k = devicePixelRatio || 1; if (!r.width || !poleRec) return;
+  if (c.width !== Math.round(r.width * k) || c.height !== Math.round(r.height * k)) { c.width = Math.round(r.width * k); c.height = Math.round(r.height * k); }
+  const x = c.getContext("2d"); x.setTransform(k, 0, 0, k, 0, 0); x.fillStyle = "#fff"; x.fillRect(0, 0, r.width, r.height);
+  const ps = poleRec.poles.map(p => p.g), dots = poleRec.legs.flat().map(q => ({ lat: q[0], lon: q[1] }));
+  const all = [...ps, ...dots]; if (!all.length) return;
+  const o = all[0], c0 = Math.cos(o.lat * Math.PI / 180), f = p => ({ x: (p.lon - o.lon) * 364000 * c0, y: -(p.lat - o.lat) * 364000 });
+  const q = all.map(f), xs = q.map(p => p.x), ys = q.map(p => p.y), w = Math.max(30, Math.max(...xs) - Math.min(...xs)), h = Math.max(30, Math.max(...ys) - Math.min(...ys));
+  const s = Math.min((r.width - 40) / w, (r.height - 40) / h), ox = r.width / 2 - (Math.min(...xs) + Math.max(...xs)) / 2 * s, oy = r.height / 2 - (Math.min(...ys) + Math.max(...ys)) / 2 * s;
+  const S = p => { const z = f(p); return { x: z.x * s + ox, y: z.y * s + oy }; };
+  x.fillStyle = "#9aa"; for (const d of dots) { const z = S(d); x.beginPath(); x.arc(z.x, z.y, 2.5, 0, 7); x.fill(); }
+  x.strokeStyle = "#6d4c41"; x.lineWidth = 3; x.beginPath(); ps.forEach((p, i) => { const z = S(p); i ? x.lineTo(z.x, z.y) : x.moveTo(z.x, z.y); }); x.stroke();
+  x.font = "bold 14px system-ui"; x.textAlign = "center";
+  ps.forEach((p, i) => { const z = S(p); x.fillStyle = "#6d4c41"; x.beginPath(); x.arc(z.x, z.y, 8, 0, 7); x.fill(); x.fillStyle = "#111"; x.fillText(poleRec.poles[i].name, z.x, z.y - 12); });
+}
+function plGrab(name) {   // fixed reading held against the pole; "Hold still" shows while it captures
+  const need = +cfg.secs || 10, samples = [], t0 = Date.now();
+  poleRec.stage = "grab"; poleRec.grabName = name; renderPole();
+  plWatch = navigator.geolocation.watchPosition(p => samples.push({ lat: p.coords.latitude, lon: p.coords.longitude, acc: p.coords.accuracy, alt: p.coords.altitude, t: p.timestamp }),
+    e => { if (e.code === 1) { toast("Location is blocked. Allow location for this site."); plGrabEnd(null); } }, { enableHighAccuracy: true, maximumAge: 0, timeout: 30000 });
+  plGrabEnd = g => {
+    plStopGps(); plGrabEnd = null; if (!poleRec) return;
+    if (!g) { poleRec.stage = "name"; $("pl-name").value = name; savePole(); renderPole(); return; }
+    poleRec.poles.push({ name, g: Object.assign(g, { t: Date.now() }) }); delete poleRec.grabName; poleRec.stage = "got"; savePole(); renderPole();
+    toast(`${name} saved`);
+  };
+  plTimer = setInterval(() => {
+    const secs = (Date.now() - t0) / 1000, last = samples[samples.length - 1];
+    $("pl-hold").textContent = `Hold still. ${Math.min(need, Math.floor(secs))} of ${need} s` + (last ? ` · ±${Math.round(last.acc * FT)} ft` : " · waiting for GPS");
+    if (secs >= need && samples.length && plGrabEnd) plGrabEnd(average(samples));
+    if (secs > need + 50 && !samples.length && plGrabEnd) { toast("No GPS fix came in. Step into the open and try again."); plGrabEnd(null); }
+  }, 250);
+}
+function plWalk(resume) {   // a dot every half second until Stop
+  const R = poleRec; if (!resume) R.legs.push([]);
+  R.stage = "walk"; savePole(); renderPole();
+  const pts = R.legs[R.legs.length - 1]; let lastT = 0, tick = 0; plLast = null;
+  plWatch = navigator.geolocation.watchPosition(p => { plLast = p; }, () => {}, { enableHighAccuracy: true, maximumAge: 0, timeout: 30000 });
+  plTimer = setInterval(() => {
+    if (!poleRec) return;
+    if (plLast && plLast.timestamp !== lastT) { lastT = plLast.timestamp; pts.push([+plLast.coords.latitude.toFixed(7), +plLast.coords.longitude.toFixed(7), Math.round(plLast.coords.accuracy * FT * 10) / 10, Math.round(plLast.timestamp / 100) / 10]); }
+    const from = R.poles[R.poles.length - 1].g, ft = runFeet([from, ...pts.map(q => ({ lat: q[0], lon: q[1] }))]);
+    $("pl-sub").textContent = `Walking to pole ${R.poles.length + 1}. Tap Stop at the next pole. ${pts.length} dots · ${Math.round(ft)} ft` + (plLast ? ` · ±${Math.round(plLast.coords.accuracy * FT)} ft` : "");
+    drawPole(); if (++tick % 6 === 0) savePole();
+  }, 500);
+}
+function plClose() { plStopGps(); clearPole(); $("poleline").hidden = true; trkWakeOff(); }
+function plSave() {   // Done: every pole becomes a location with its GPS, every walk a span between two poles
+  const R = poleRec, t = Date.now();
+  for (const p of R.poles) {
+    const it = itemsList().find(i => norm(i.name) === norm(p.name)), name = it ? it.name : p.name;
+    ensureLoc({ name, type: R.type, had: !!it });
+    data.items[name] = Object.assign({}, p.g, { t, group: (it || {}).group || typeGroup(R.type) || "Added in field" });
+    if (data.deleted) delete data.deleted[name];
+    p.name = name;
+  }
+  data.runs = data.runs || {}; data.tracks = data.tracks || {};
+  R.legs.slice(0, R.poles.length - 1).forEach((pts, i) => {
+    const r = `Pole line ${R.line} span ${i + 1}`;
+    data.tracks[r] = pts; data.runs[r] = { from: R.poles[i].name, to: R.poles[i + 1].name, track: true, kind: "Aerial", line: R.line, t };
+  });
+  const names = R.poles.map(p => p.name);
+  saveLocal(); push(`${R.type} ${R.line}: ${names.join(", ")}`);
+  plClose(); cat = R.type; group = null; selected = null; finding = true; render();
+  toast(`${R.type} ${R.line} saved: ${names.length} poles`);
+  if (job && job.plan) {   // put the poles on the print, one at a time; a pole already placed is skipped
+    showTab("print");
+    placeQueue = names.filter(n => data.items[n] && !(data.controls[n] && data.controls[n].x != null)); drawNext = null;
+    setTimeout(() => { sol = solve(); if (placeQueue.length) startPlacing(placeQueue.shift(), false); }, 300);
+  }
+}
+async function checkPoleWalk() {   // the app opened and found a pole line that never got its Done
+  if (poleRec) return;   // a pole line is already open on screen
+  const w = LS.get("poleWalk", null); if (!w || !Array.isArray(w.poles) || !Array.isArray(w.legs)) return;
+  const p = allProjects().find(x => x.slug === w.proj); if (!p) return;
+  if (LS.get("walk", null)) return;   // a conduit walk asks first; this asks next time
+  const go = await ask(`Keep going on ${w.type} ${w.line}? (${p.name}, ${w.poles.length} pole${w.poles.length === 1 ? "" : "s"} so far)`, "Keep going", "Throw it away");
+  if (!go) { if (await ask(`Throw away ${w.type} ${w.line}? Nothing from it is saved.`, "Yes, throw it away", "No, keep it")) { clearPole(); toast("Pole line thrown away."); } else checkPoleWalk(); return; }
+  if (current !== w.proj || home) pickProject(w.proj);
+  poleRec = w; trkWakeOn(); $("poleline").hidden = false;
+  if (w.stage === "grab") { w.stage = "name"; $("pl-name").value = w.grabName || ""; }
+  if (w.stage === "walk") plWalk(true); else renderPole();
+}
+document.addEventListener("DOMContentLoaded", () => {   // pages 2-11 and 2-12 sit below the script
+  $("polepick-cancel").onclick = () => { $("polepick").hidden = true; polePickType = null; };
+  $("polepick-single").onclick = () => { const t = polePickType; $("polepick").hidden = true; polePickType = null; if (t) openCat(t); };
+  $("polepick-line").onclick = () => { const t = polePickType; $("polepick").hidden = true; polePickType = null; if (t) startPoleLine(t); };
+  $("pl-grab").onclick = () => {
+    const name = $("pl-name").value.trim(); if (!poleRec) return;
+    if (!name) { toast("Type the pole name first"); $("pl-name").focus(); return; }
+    if (poleRec.poles.some(p => norm(p.name) === norm(name))) { toast(`${name} is already in this pole line`); return; }
+    if (itemsList().some(i => norm(i.name) === norm(name))) toast(`${name} is already in this project. Its GPS will be updated.`);
+    $("pl-name").blur(); plGrab(name);
+  };
+  $("pl-name").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); $("pl-grab").click(); } });
+  $("pl-walk").onclick = () => { if (poleRec) plWalk(false); };
+  $("pl-stop").onclick = () => { if (!poleRec) return; plStopGps(); poleRec.stage = "name"; savePole(); $("pl-name").value = ""; renderPole(); toast("Walk saved. Enter the next pole's name."); };
+  $("pl-reshoot").onclick = () => { if (!poleRec || !poleRec.poles.length) return; const p = poleRec.poles.pop(); plGrab(p.name); };
+  $("pl-done").onclick = async () => {
+    if (!poleRec || poleRec.poles.length < 2) return;
+    if (await ask(`Save ${poleRec.type} ${poleRec.line} with ${poleRec.poles.length} poles (${poleRec.poles.map(p => p.name).join(", ")})?`, "Yes, save it", "No, go back")) plSave();
+  };
+  $("pl-back").onclick = async () => {   // undo the last step, so a mistake can be redone
+    const R = poleRec; if (!R) return;
+    if (R.stage === "walk") {
+      if (!await ask(`Throw away this walk and go back to ${R.poles[R.poles.length - 1].name}?`, "Yes, go back", "No, keep walking")) return;
+      plStopGps(); R.legs.pop(); R.stage = "got";
+    } else if (R.stage === "name" && R.legs.length >= R.poles.length && R.poles.length) {
+      if (!await ask(`Throw away the walk from ${R.poles[R.poles.length - 1].name} and go back to it?`, "Yes, go back", "No")) return;
+      R.legs.pop(); R.stage = "got";
+    } else if (R.stage === "got") {
+      const p = R.poles[R.poles.length - 1];
+      if (!await ask(`Take ${p.name} off this pole line so you can redo it?`, `Yes, redo ${p.name}`, "No")) return;
+      R.poles.pop(); R.stage = "name"; $("pl-name").value = p.name;
+    } else {   // nothing saved yet: back to page 2
+      plClose(); return;
+    }
+    savePole(); renderPole();
+  };
+  $("pl-cancel").onclick = async () => {
+    if (!poleRec) return;
+    if (poleRec.stage === "grab") { if (plGrabEnd) plGrabEnd(null); return; }
+    if (poleRec.poles.length && !await ask(`Cancel ${poleRec.type} ${poleRec.line}? Nothing from it is saved, so you can map it again.`, "Yes, cancel it", "No, keep going")) return;
+    plClose(); toast("Pole line canceled. Nothing was saved.");
+  };
+  window.addEventListener("resize", () => { if (poleRec && !$("poleline").hidden) drawPole(); });
+  setTimeout(checkPoleWalk, 1500);
+});
 /* ---------- conduit mapping (Steven 2026-10-03): walk the run, capture the start, every bend, the end.
    Points save as "Conduit run 1 point 1", "... point 2"; each end can join a Vault, Lockbox or Riser pole, and the wall it enters is kept for the vault conduit sheet. ---------- */
 var runFor = null;
@@ -3560,7 +3727,7 @@ async function finishRun(r) {
 function delRunsList() { return Object.entries(data.delRuns || {}).filter(([, v]) => !v.back && !v.cleared).sort((a, b) => b[1].t - a[1].t); }
 function runRow(r, ru, acts) {
   const ft = Math.round(runFeet(runPath(r))), ends = [ru.from, ru.to].filter(Boolean).join(" to ");
-  const sub = [ends ? r : "", ru.kind === "Trench" ? (ru.util && ru.util !== "Our conduit" ? `${ru.util.toLowerCase()} trench` : "trench") : (ru.size ? `${ru.size} conduit` : "conduit"), ft ? `${ft.toLocaleString()} ft` : ""].filter(Boolean).join(" · ");
+  const sub = [ends ? r : "", ru.kind === "Aerial" ? "pole line" : ru.kind === "Trench" ? (ru.util && ru.util !== "Our conduit" ? `${ru.util.toLowerCase()} trench` : "trench") : (ru.size ? `${ru.size} conduit` : "conduit"), ft ? `${ft.toLocaleString()} ft` : ""].filter(Boolean).join(" · ");
   return `<div class="item" style="cursor:default;grid-template-columns:1fr;gap:8px"><span><span class="nm">${esc(ends || r)}</span><br><span class="sub">${esc(sub)}</span></span><span class="row run-acts" style="gap:6px;flex-wrap:nowrap">${acts}</span></div>`;
 }
 const RUN_BTN = 'style="min-height:36px;padding:4px 12px;width:auto"';
@@ -3662,7 +3829,7 @@ function putRunBack(r) {
   const t = Date.now();
   let name = r;
   if ((data.runs || {})[name] || runPoints(name).length) {   // that run number is in use again: give it the next free one
-    const n = Math.max(0, ...runNames().map(k => parseInt(k.replace(/\D+/g, "")) || 0)) + 1; name = `Conduit run ${n}`;
+    const n = Math.max(0, ...runNames().filter(k => !/^Pole line /.test(k)).map(k => parseInt(k.replace(/\D+/g, "")) || 0)) + 1; name = `Conduit run ${n}`;
   }
   data.runs = data.runs || {}; data.runs[name] = Object.assign({}, v.run, { t });
   if (v.track) { data.tracks = data.tracks || {}; data.tracks[name] = v.track; }
@@ -4091,6 +4258,26 @@ render();
   <div class="list loc-list" id="vsize-list" style="max-height:40vh;overflow:auto;font-size:18px"></div><button class="btn" id="vsize-cancel">Cancel</button></div></div>
 <div class="ask" id="choose" hidden><div><span class="ask-no-label" id="choose-page">Page 2-7 · Connect</span><div id="choose-msg"></div><div class="list loc-list" id="choose-list" style="max-height:45vh;overflow:auto"></div><button class="btn" id="choose-none"></button></div></div>
 <div class="ask" id="newend" hidden><div><span class="ask-no-label">Page 2-8 · New location here</span><div>What is it?</div><div class="cats" id="newend-types"></div><label class="field"><span>Name</span><input id="newend-name" type="text" autocomplete="off" placeholder="enter name"></label><button class="btn primary" id="newend-save">Save</button><button class="btn" id="newend-cancel">Cancel</button></div></div>
+<div class="ask" id="polepick" hidden><div><span class="ask-no-label">Page 2-11 · Pole Line</span>
+  <div id="polepick-msg" style="font-size:24px;font-weight:800">Pole Line</div>
+  <button class="btn big primary" id="polepick-single">Single Pole</button>
+  <button class="btn big primary" id="polepick-line">Map a Pole Line</button>
+  <button class="btn big cancel" id="polepick-cancel">Cancel</button></div></div>
+<div id="poleline" hidden style="position:fixed;inset:0;z-index:59;background:#fff;color:#111;display:grid;grid-template-rows:auto auto 1fr auto;padding:16px;gap:10px;overflow:auto">
+  <div><span class="ask-no-label" style="color:#111">Page 2-12 · Map a Pole Line</span><div id="pl-sub" style="font-size:22px;font-weight:700;line-height:1.3"></div></div>
+  <div id="pl-list" style="font-size:16px;font-weight:600;color:#111"></div>
+  <div style="position:relative;min-height:120px"><canvas id="pl-cv" style="width:100%;height:100%;min-height:120px;border:1px solid #ccc;border-radius:8px"></canvas></div>
+  <div class="stack" style="gap:8px">
+    <div id="pl-hold" hidden style="font-size:24px;font-weight:800;color:#111;text-align:center;padding:10px;border:3px solid #111;border-radius:10px">Hold still</div>
+    <label class="field" id="pl-name-box"><span style="color:#111">Pole name</span><input id="pl-name" type="text" autocomplete="off" enterkeyhint="done" placeholder="e.g. 61625"></label>
+    <button class="btn big primary" id="pl-grab">Grab GPS</button>
+    <button class="btn big primary" id="pl-walk">Begin Walking</button>
+    <button class="btn big" id="pl-reshoot" style="color:#111;background:#fff;border-color:#111">Reshoot GPS</button>
+    <button class="btn big" id="pl-stop" style="background:#e0201a;color:#fff;border-color:#e0201a">Stop</button>
+    <button class="btn big" id="pl-done" style="background:#1e9e4a;color:#fff;border-color:#1e9e4a">Done</button>
+    <div class="row" style="gap:10px;flex-wrap:nowrap"><button class="btn" id="pl-back" style="flex:1;min-height:52px;font-size:18px;color:#111;background:#fff;border-color:#111">Back</button><button class="btn" id="pl-cancel" style="flex:1;min-height:52px;font-size:18px;color:#e0201a;background:#fff;border-color:#e0201a">Cancel</button></div>
+  </div>
+</div>
 <div class="ask" id="ask" hidden><div><span class="ask-no-label" id="ask-page"></span><div id="ask-msg"></div><button class="btn primary" id="ask-yes"></button><button class="btn" id="ask-no"></button></div></div>
 </body>
 </html>
