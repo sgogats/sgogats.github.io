@@ -769,7 +769,7 @@ html.big #z-full { display: block; }
 </div></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-07.02";
+const APP_VERSION = "2026-10-07.03";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -3454,7 +3454,24 @@ function savePole() { if (poleRec) LS.set("poleWalk", poleRec); }
 function clearPole() { poleRec = null; try { localStorage.removeItem("gps.poleWalk"); } catch {} }
 function plStopGps() { if (plWatch != null) navigator.geolocation.clearWatch(plWatch); plWatch = null; clearInterval(plTimer); plTimer = null; }
 function nextPoleLineNo() { return Math.max(0, ...Object.keys(data.runs || {}).map(k => +((/^Pole line (\d+) span/.exec(k) || [])[1] || 0))) + 1; }
-function openPolePick(t) { polePickType = t; $("polepick-msg").textContent = t; $("polepick").hidden = false; }
+function openPolePick(t) { polePickType = t; $("polepick-msg").textContent = t; $("polepick-cont").hidden = !itemsList().some(i => inCat(i, t)); $("polepick").hidden = false; }
+function poleLineOf(n) {   // the pole line a pole ends (or starts), and how many spans that line has
+  const rs = Object.entries(data.runs || {}).filter(([k, v]) => /^Pole line \d+ span/.test(k) && (v.to === n || v.from === n)).sort((a, b) => (a[1].to === n) - (b[1].to === n));
+  if (!rs.length) return null;
+  const L = rs[rs.length - 1][1].line || +(/^Pole line (\d+)/.exec(rs[rs.length - 1][0]) || [])[1];
+  return { line: L, spans: Math.max(0, ...Object.keys(data.runs).map(k => { const m = /^Pole line (\d+) span (\d+)/.exec(k); return m && +m[1] === L ? +m[2] : 0; })) };
+}
+async function continuePoleLine(t) {   // Steven 2026-10-07: open a saved or unfinished pole line again and keep adding poles from the pole you're at
+  const poles = itemsList().filter(i => inCat(i, t)).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+  const k = await choose("Which pole are you starting from?", poles.map(i => { const pl = poleLineOf(i.name), g = data.items[i.name];
+    return `${i.name}${pl ? ` (${t} ${pl.line})` : ""}${g && g.lat != null ? "" : " · no GPS yet"}`; }), "Cancel", "Page 2-11a · Continue a Pole Line");
+  if (k < 0) return;
+  const n = poles[k].name, g = data.items[n], pl = poleLineOf(n);
+  poleRec = { proj: current, type: t, line: pl ? pl.line : nextPoleLineNo(), spanBase: pl ? pl.spans : 0, poles: [], legs: [], stage: "name" };
+  if (g && g.lat != null) { poleRec.poles.push({ name: n, g: JSON.parse(JSON.stringify(g)), keep: true }); poleRec.stage = "got"; $("pl-name").value = ""; }
+  else $("pl-name").value = n;
+  savePole(); trkWakeOn(); $("poleline").hidden = false; renderPole();
+}
 var polePickType = null;
 function startPoleLine(t) {
   poleRec = { proj: current, type: t, line: nextPoleLineNo(), poles: [], legs: [], stage: "name" }; savePole();
@@ -3466,7 +3483,7 @@ function renderPole() {
   const nextNo = n + (st === "name" || st === "grab" ? 1 : 0);
   $("pl-sub").textContent = st === "name" ? (n ? `Enter the name of pole ${n + 1}, then tap Grab GPS.` : "Enter the first pole's name, then tap Grab GPS.")
     : st === "grab" ? `Hold the phone against pole ${nextNo}.`
-    : st === "got" ? `${R.poles[n - 1].name} is saved. ${n === 1 ? "Tap Begin Walking to walk to the next pole." : "Tap Start to walk to the next pole, or Done if this is the last pole."}`
+    : st === "got" ? `${R.poles[n - 1].keep ? `Starting from ${R.poles[n - 1].name}.` : `${R.poles[n - 1].name} is saved.`} ${n === 1 ? "Tap Begin Walking to walk to the next pole." : "Tap Start to walk to the next pole, or Done if this is the last pole."}`
     : `Walking to pole ${n + 1}. Tap Stop at the next pole.`;
   $("pl-list").textContent = n ? `${R.type} ${R.line}: ` + R.poles.map(p => `${p.name} (±${Math.round(p.g.acc_ft)} ft)`).join(" → ") : "";
   show("pl-name-box", st === "name"); show("pl-grab", st === "name"); show("pl-hold", st === "grab");
@@ -3525,6 +3542,7 @@ function plClose() { plStopGps(); clearPole(); $("poleline").hidden = true; trkW
 function plSave() {   // Done: every pole becomes a location with its GPS, every walk a span between two poles
   const R = poleRec, t = Date.now();
   for (const p of R.poles) {
+    if (p.keep) continue;   // the pole a continued line starts from keeps its GPS as it was
     const it = itemsList().find(i => norm(i.name) === norm(p.name)), name = it ? it.name : p.name;
     ensureLoc({ name, type: R.type, had: !!it });
     data.items[name] = Object.assign({}, p.g, { t, group: (it || {}).group || typeGroup(R.type) || "Added in field" });
@@ -3533,7 +3551,7 @@ function plSave() {   // Done: every pole becomes a location with its GPS, every
   }
   data.runs = data.runs || {}; data.tracks = data.tracks || {};
   R.legs.slice(0, R.poles.length - 1).forEach((pts, i) => {
-    const r = `Pole line ${R.line} span ${i + 1}`;
+    const r = `Pole line ${R.line} span ${(R.spanBase || 0) + i + 1}`;
     data.tracks[r] = pts; data.runs[r] = { from: R.poles[i].name, to: R.poles[i + 1].name, track: true, kind: "Aerial", line: R.line, t };
   });
   const names = R.poles.map(p => p.name);
@@ -3561,6 +3579,7 @@ async function checkPoleWalk() {   // the app opened and found a pole line that 
 document.addEventListener("DOMContentLoaded", () => {   // pages 2-11 and 2-12 sit below the script
   $("polepick-cancel").onclick = () => { $("polepick").hidden = true; polePickType = null; };
   $("polepick-single").onclick = () => { const t = polePickType; $("polepick").hidden = true; polePickType = null; if (t) openCat(t); };
+  $("polepick-cont").onclick = () => { const t = polePickType; $("polepick").hidden = true; polePickType = null; if (t) continuePoleLine(t); };
   $("polepick-line").onclick = () => { const t = polePickType; $("polepick").hidden = true; polePickType = null; if (t) startPoleLine(t); };
   $("pl-grab").onclick = () => {
     const name = $("pl-name").value.trim(); if (!poleRec) return;
@@ -3587,6 +3606,7 @@ document.addEventListener("DOMContentLoaded", () => {   // pages 2-11 and 2-12 s
       R.legs.pop(); R.stage = "got";
     } else if (R.stage === "got") {
       const p = R.poles[R.poles.length - 1];
+      if (p.keep && R.poles.length === 1) { plClose(); return; }   // back from the starting pole of a continued line: back to page 2
       if (!await ask(`Take ${p.name} off this pole line so you can redo it?`, `Yes, redo ${p.name}`, "No")) return;
       R.poles.pop(); R.stage = "name"; $("pl-name").value = p.name;
     } else {   // nothing saved yet: back to page 2
@@ -4262,6 +4282,7 @@ render();
   <div id="polepick-msg" style="font-size:24px;font-weight:800">Pole Line</div>
   <button class="btn big primary" id="polepick-single">Single Pole</button>
   <button class="btn big primary" id="polepick-line">Map a Pole Line</button>
+  <button class="btn big primary" id="polepick-cont">Continue a Pole Line</button>
   <button class="btn big cancel" id="polepick-cancel">Cancel</button></div></div>
 <div id="poleline" hidden style="position:fixed;inset:0;z-index:59;background:#fff;color:#111;display:grid;grid-template-rows:auto auto 1fr auto;padding:16px;gap:10px;overflow:auto">
   <div><span class="ask-no-label" style="color:#111">Page 2-12 · Map a Pole Line</span><div id="pl-sub" style="font-size:22px;font-weight:700;line-height:1.3"></div></div>
