@@ -101,7 +101,7 @@
    GPS Shots use: a typed name that matches one (18 for a lockbox = LB-18) is that location; any other becomes a new
    location GPS Shots lists and can plot (gpsName / gk / gg below are what GPS Shots reads). Lines start on one icon
    and end on another and stay attached when an icon moves. */
-const APP_VERSION = "V 01.07";
+const APP_VERSION = "V 01.08";
 // phones keep an old copy of this page for a while: load the newest one when it changes (same as GPS Shots)
 (async () => {
   try {
@@ -954,7 +954,7 @@ $("t-save").onclick = async () => {
   g.fillText(`${projName} · As-built`, M, M + head / 2);
   g.textAlign = "right"; g.font = "500 40px sans-serif"; g.fillText(new Date().toLocaleDateString(), PW - M, M + head / 2);
   g.save(); g.translate(ox, oy); g.scale(k, k); g.translate(-b.x0, -b.y0); paintPlan(g, k, printMode === "off" ? 0 : printMode === "faded" ? 0.4 : 1); g.restore();
-  const T = p => ({ x: (p.x - b.x0) * k + ox, y: (p.y - b.y0) * k + oy }), z = iconSize() * k, wm = 0.9, lks = lineKinds();
+  const T = p => ({ x: (p.x - b.x0) * k + ox, y: (p.y - b.y0) * k + oy }), z = iconSize() * k, wm = Math.max(0.2, z * 0.11), lks = lineKinds();
   for (const ln of doc.lines) paintLine(g, linePts(ln).map(T), lks[ln.k] || DEF_LINES.c2, wm, false);
   for (const it of doc.items) paintIcon(g, it, T(it), z, false);
   for (const it of doc.items) paintLabel(g, it, T(it), z, z * 1.05);
