@@ -1,0 +1,850 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Draw As-built</title>
+<style>
+  :root { --bg:#f3f5f4; --panel:#ffffff; --ink:#14201b; --muted:#4a5852; --line:#d3dbd7; --accent:#0b6e4f; --accent-ink:#fff; --red:#c62828; --hi:#ffd200;
+          --body:-apple-system, "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { --bg:#111417; --panel:#1d2227; --ink:#f1f4f6; --muted:#c3cbd2; --line:#3c454e; --accent:#3dbe8b; --accent-ink:#06130e; --red:#ff6b6b; }
+  }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  [hidden] { display:none !important; }
+  html, body { margin:0; height:100%; background:var(--bg); color:var(--ink); font:16px/1.3 var(--body); overflow:hidden; }
+  body { display:flex; flex-direction:column; height:100dvh; }
+  button, a.btn { font:inherit; border:0; border-radius:10px; padding:10px 13px; min-height:44px; cursor:pointer; text-decoration:none;
+                  background:var(--panel); color:var(--ink); border:1px solid var(--line); display:inline-flex; align-items:center; justify-content:center; gap:6px; }
+  button.primary { background:var(--accent); color:var(--accent-ink); border-color:var(--accent); font-weight:600; }
+  button.danger { background:var(--red); color:#fff; border-color:var(--red); }
+  button.on { outline:3px solid var(--accent); outline-offset:-3px; font-weight:600; }
+  #bar { display:flex; align-items:center; gap:8px; padding:6px 10px; padding-top:max(6px, env(safe-area-inset-top)); background:var(--panel); border-bottom:1px solid var(--line); }
+  #bar .ttl { flex:1; min-width:0; line-height:1.15; }
+  #bar .ttl b { display:block; font-size:17px; }
+  #bar .ttl span { display:block; font-size:13px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  #bar .meta { text-align:right; font-size:12px; color:var(--muted); line-height:1.25; white-space:nowrap; max-width:42vw; overflow:hidden; text-overflow:ellipsis; }
+  #bar .meta div { overflow:hidden; text-overflow:ellipsis; }
+  #wrap { position:relative; flex:1; min-height:0; background:#fff; }
+  #cv { position:absolute; inset:0; width:100%; height:100%; touch-action:none; display:block; }
+  #hint { position:absolute; left:8px; right:8px; top:8px; background:var(--panel); color:var(--ink); border:2px solid var(--accent); border-radius:12px;
+          padding:8px 10px; display:flex; flex-wrap:wrap; gap:8px; align-items:center; box-shadow:0 2px 10px rgba(0,0,0,.18); }
+  #hint-t { flex:1 1 220px; font-size:15px; }
+  #hint .hb { display:flex; gap:6px; flex-wrap:wrap; }
+  #hint button { min-height:38px; padding:6px 11px; }
+  #sel { background:var(--panel); border-top:1px solid var(--line); padding:8px 10px; display:flex; flex-direction:column; gap:8px; }
+  #sel .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  #sel .nm { font-weight:700; font-size:17px; flex:1; }
+  #sel input[type=range] { flex:1; min-width:120px; height:34px; }
+  #sel select { font:inherit; min-height:44px; border-radius:10px; border:1px solid var(--line); background:var(--panel); color:var(--ink); padding:0 8px; }
+  #tools { display:flex; gap:6px; padding:8px 10px; padding-bottom:max(8px, env(safe-area-inset-bottom)); background:var(--panel); border-top:1px solid var(--line); overflow-x:auto; }
+  #tools button { flex:1 0 auto; }
+  .small { font-size:13px; color:var(--muted); }
+  #modal { position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:20; display:flex; align-items:flex-end; justify-content:center; }
+  #card { background:var(--panel); color:var(--ink); width:100%; max-width:640px; max-height:92dvh; overflow:auto; border-radius:16px 16px 0 0; padding:14px 14px max(14px, env(safe-area-inset-bottom)); position:relative; }
+  @media (min-width:700px) { #modal { align-items:center; } #card { border-radius:16px; } }
+  #card h2 { margin:0 0 4px; font-size:20px; padding-right:70px; }
+  #card h3 { margin:14px 0 6px; font-size:15px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; }
+  #card .pg { position:absolute; top:10px; right:14px; font-size:12px; color:var(--muted); }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(100px, 1fr)); gap:8px; }
+  .grid button { flex-direction:column; padding:8px 4px; min-height:92px; font-size:14px; text-align:center; line-height:1.15; }
+  .grid img { width:44px; height:44px; }
+  .list { display:flex; flex-direction:column; gap:8px; }
+  .list button { justify-content:flex-start; text-align:left; }
+  .swl { display:inline-block; width:46px; height:0; border-top:5px solid; vertical-align:middle; }
+  .acts { display:flex; gap:8px; flex-wrap:wrap; margin-top:14px; }
+  .acts button { flex:1 1 auto; }
+  label.f { display:block; margin-top:10px; }
+  label.f span { display:block; font-size:14px; color:var(--muted); margin-bottom:4px; }
+  label.f input[type=text] { width:100%; font:inherit; font-size:20px; padding:10px; border-radius:10px; border:1px solid var(--line); background:var(--bg); color:var(--ink); }
+  .chips { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; max-height:30vh; overflow:auto; }
+  .chips button { min-height:38px; padding:6px 10px; font-size:15px; }
+  .sw { display:flex; flex-wrap:wrap; gap:6px; }
+  .sw button { width:40px; height:40px; min-height:40px; padding:0; border-radius:50%; border:2px solid var(--line); }
+  .sw button.on { outline:3px solid var(--ink); outline-offset:1px; }
+  .seg { display:flex; gap:6px; flex-wrap:wrap; }
+  .preview { margin-top:10px; padding:10px; border-radius:10px; background:var(--bg); font-size:16px; }
+  #toast { position:fixed; left:50%; bottom:110px; transform:translateX(-50%); background:#14201b; color:#fff; padding:10px 16px; border-radius:22px; z-index:30; font-size:15px; max-width:90vw; text-align:center; }
+  #pg { position:absolute; right:6px; bottom:4px; font-size:11px; color:#666; background:rgba(255,255,255,.7); padding:1px 5px; border-radius:6px; pointer-events:none; }
+</style>
+</head>
+<body>
+<div id="bar">
+  <a class="btn" id="back" href="./">Back</a>
+  <div class="ttl"><b>Draw as-built</b><span id="proj">Loading…</span></div>
+  <div class="meta"><div id="save"></div><div id="ver"></div></div>
+</div>
+<div id="wrap">
+  <canvas id="cv"></canvas>
+  <div id="hint" hidden><span id="hint-t"></span><span class="hb" id="hint-b"></span></div>
+  <div id="pg">Page D-1</div>
+</div>
+<div id="sel" hidden></div>
+<div id="tools">
+  <button class="primary" id="t-icon">Add icon</button>
+  <button class="primary" id="t-line">Draw line</button>
+  <button id="t-undo">Undo</button>
+  <button id="t-print">Print: faded</button>
+  <button id="t-fit">Whole print</button>
+  <button id="t-save">Save picture</button>
+</div>
+<div id="modal" hidden><div id="card"></div></div>
+<div id="toast" hidden></div>
+
+<script>
+"use strict";
+/* Draw as-built (Steven 2026-10-08): his own as-built drawn by hand on the job's print, kept as a SEPARATE print from the
+   GPS one. Saved in ASBUILT_MAKER gps/drawn/<slug>.json. Icon names are the same location names the designer and
+   GPS Shots use: a typed name that matches one (18 for a lockbox = LB-18) is that location; any other becomes a new
+   location GPS Shots lists and can plot (gpsName / gk / gg below are what GPS Shots reads). Lines start on one icon
+   and end on another and stay attached when an icon moves. */
+const APP_VERSION = "V 01.01";
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const LS = {
+  get(k, d) { try { const v = localStorage.getItem("gps." + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { localStorage.setItem("gps." + k, JSON.stringify(v)); return true; } catch { return false; } },
+};
+$("ver").textContent = APP_VERSION;
+const slug = new URLSearchParams(location.search).get("p") || LS.get("current", "");
+const cfg = Object.assign({ token: "", repo: "sgogats/ASBUILT_MAKER", branch: "main" }, LS.get("cfg", {}) || {});
+$("back").href = "./";
+$("back").onclick = e => { if (history.length > 1) { e.preventDefault(); history.back(); } };
+
+function b64(str) { const bytes = new TextEncoder().encode(str); let s = ""; for (let i = 0; i < bytes.length; i += 8192) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 8192)); return btoa(s); }
+function decodeB64(s) { const bin = atob(s.replace(/\n/g, "")); return new TextDecoder().decode(Uint8Array.from(bin, c => c.charCodeAt(0))); }
+const gh = {
+  on() { return !!cfg.token; },
+  url(path) { return `https://api.github.com/repos/${cfg.repo}/contents/${path.split("/").map(encodeURIComponent).join("/")}`; },
+  headers(raw) { return { Authorization: "Bearer " + cfg.token, Accept: raw ? "application/vnd.github.raw+json" : "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" }; },
+  async get(path, raw) {
+    const r = await fetch(this.url(path) + "?ref=" + encodeURIComponent(cfg.branch) + "&t=" + Date.now(), { headers: this.headers(raw), cache: "no-store" });
+    if (r.status === 404) return null;
+    if (!r.ok) { const e = new Error("GitHub said " + r.status); e.status = r.status; throw e; }
+    return raw === "blob" ? r.blob() : r.json();
+  },
+  async put(path, obj, sha, message) {
+    const body = { message, branch: cfg.branch, content: b64(JSON.stringify(obj, null, 1)) };
+    if (sha) body.sha = sha;
+    const r = await fetch(this.url(path), { method: "PUT", headers: this.headers(false), body: JSON.stringify(body) });
+    if (!r.ok) { const e = new Error("GitHub said " + r.status); e.status = r.status; throw e; }
+    return r.json();
+  },
+};
+const idbGet = k => new Promise(ok => { try { const q = indexedDB.open("gps", 1); q.onupgradeneeded = () => q.result.createObjectStore("kv"); q.onerror = () => ok(null);
+  q.onsuccess = () => { try { const g = q.result.transaction("kv").objectStore("kv").get(k); g.onsuccess = () => ok(g.result || null); g.onerror = () => ok(null); } catch { ok(null); } }; } catch { ok(null); } });
+
+let toastT = null;
+function toast(t) { const el = $("toast"); el.textContent = t; el.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => el.hidden = true, 2600); }
+
+/* ---------------------------------------------------------------- icons and line types
+   Steven's own: blue rectangle = vault, red triangle = lockbox, circle with X = pole, circle with X and a small R circle = riser pole,
+   orange line = 2" conduit, gray line = 1" conduit. Electric / water / cable TV follow the usual utility map symbols and
+   colors (red electric, blue water, orange cable TV). Every one can be renamed and recolored; renames are kept per job. */
+const GROUPS = ["Telecom", "Electric", "Water", "Cable TV", "My icons"];
+const DEF_KINDS = {
+  vault:   { name: "Vault", color: "#1f5fd6", shape: "rect", grp: "Telecom", gk: "Lockbox vault", gg: "Vaults, cans and poles", match: ["Lockbox vault", "Vault", "Can", "Main", "MDU entry"], pre: "v" },
+  lockbox: { name: "Lockbox", color: "#d62828", shape: "tri", grp: "Telecom", gk: "Lockbox", gg: "Added in field", match: ["Lockbox"], pre: "lb" },
+  pole:    { name: "Pole", color: "#222222", shape: "pole", grp: "Telecom", gk: "Pole line", gg: "Pole line", match: ["Pole line", "Pole"], pre: "" },
+  riser:   { name: "Riser pole", color: "#222222", shape: "riser", grp: "Telecom", gk: "Riser pole", gg: "Vaults, cans and poles", match: ["Riser pole"], pre: "rp" },
+  ped:     { name: "Pedestal", color: "#4b5563", shape: "ped", grp: "Telecom", gk: "Pedestal", gg: "Pedestal", match: ["Pedestal"] },
+  xfmr:    { name: "Transformer", color: "#c1121f", shape: "box", letter: "T", grp: "Electric" },
+  emeter:  { name: "Electric meter", color: "#c1121f", shape: "circ", letter: "M", grp: "Electric" },
+  ebox:    { name: "Electric handhole", color: "#c1121f", shape: "box", letter: "E", grp: "Electric" },
+  light:   { name: "Light pole", color: "#c1121f", shape: "light", grp: "Electric" },
+  wvalve:  { name: "Water valve", color: "#1565c0", shape: "valve", grp: "Water" },
+  hydrant: { name: "Fire hydrant", color: "#1565c0", shape: "hydrant", grp: "Water" },
+  wmeter:  { name: "Water meter", color: "#1565c0", shape: "box", letter: "W", grp: "Water" },
+  tvped:   { name: "Cable TV pedestal", color: "#e07000", shape: "box", letter: "TV", grp: "Cable TV" },
+  tvamp:   { name: "Cable TV amplifier", color: "#e07000", shape: "amp", grp: "Cable TV" },
+  tvtap:   { name: "Cable TV tap", color: "#e07000", shape: "circ", letter: "T", grp: "Cable TV" },
+};
+const SHAPES = { rect: "Rectangle", tri: "Triangle", pole: "Circle with X", riser: "Riser pole", ped: "Pedestal", box: "Box with letters",
+                 circ: "Circle with letters", valve: "Valve", hydrant: "Hydrant", amp: "Amplifier", light: "Light", dot: "Dot", diamond: "Diamond" };
+const DEF_LINES = {
+  c2:    { name: '2" conduit', color: "#f28c28", w: 3.5, dash: "" },
+  c1:    { name: '1" conduit', color: "#8a8f98", w: 3, dash: "" },
+  elec:  { name: "Electric", color: "#c1121f", w: 3, dash: "dash" },
+  water: { name: "Water", color: "#1565c0", w: 3, dash: "dash" },
+  tv:    { name: "Cable TV", color: "#e07000", w: 3, dash: "dot" },
+};
+const COLORS = ["#d62828", "#c1121f", "#f28c28", "#e07000", "#f2c500", "#2e9d4f", "#0b6e4f", "#1f5fd6", "#1565c0", "#7b3fbf", "#8a8f98", "#4b5563", "#6d4c41", "#222222"];
+const DASH = { "": [], dash: [12, 6], dot: [3, 5] };
+
+let doc = null;           // the drawing
+let plan = null, ppf = 0, projName = slug, names = [];   // print, print points per foot, location names shared with the designer / GPS Shots
+let kCache = null, lCache = null;
+const kinds = () => { if (kCache) return kCache; const o = kCache = {}; for (const [k, v] of Object.entries(DEF_KINDS)) o[k] = Object.assign({}, v, (doc.kinds || {})[k]); for (const [k, v] of Object.entries(doc.kinds || {})) if (!o[k]) o[k] = Object.assign({ grp: "My icons" }, v); return o; };
+const lineKinds = () => { if (lCache) return lCache; const o = lCache = {}; for (const [k, v] of Object.entries(DEF_LINES)) o[k] = Object.assign({}, v, (doc.lineKinds || {})[k]); for (const [k, v] of Object.entries(doc.lineKinds || {})) if (!o[k]) o[k] = Object.assign({ w: 3, dash: "" }, v); return o; };
+const kindOf = it => kinds()[it.k] || { name: "Icon", color: "#444", shape: "dot" };
+function label(it) {   // Steven: type 18 for a lockbox and the print says "Lockbox 18"
+  const kn = kindOf(it).name, n = String(it.name || "").trim();
+  if (!n) return kn;
+  return n.toLowerCase().startsWith(kn.toLowerCase()) ? n : kn + " " + n;
+}
+const newDoc = () => ({ project: projName, slug, v: 1, updated: 0, kinds: {}, lineKinds: {}, items: [], lines: [] });
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+
+/* ---------------------------------------------------------------- shared names (designer + GPS Shots) */
+const sq = s => String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+function nameKey(n, pre) {   // "Lockbox 18", "LB-18" and 18 (typed for a lockbox) are the same location
+  let s = String(n || "").trim().toLowerCase();
+  s = s.replace(/^lock\s*box\b/, "lb").replace(/^riser\s*pole\b/, "rp").replace(/^vault\b/, "v").replace(/^pole\b/, "");
+  s = sq(s);
+  if (pre && /^[0-9]/.test(s)) s = pre + s;
+  return s;
+}
+function findName(it) {   // the designer / GPS location this icon is, or null when it is a new one
+  const kd = kindOf(it), typed = String(it.name || "").trim(); if (!typed) return null;
+  const exact = names.find(n => n.name === typed); if (exact) return exact.name;
+  const pre = kd.pre, k1 = nameKey(typed, pre), k2 = nameKey(label(it), pre);
+  const same = n => { const k = nameKey(n.name, pre); return k === k1 || k === k2; };
+  const typedKind = names.filter(n => (kd.match || []).includes(n.kind));
+  const hit = typedKind.find(same) || (kd.match ? null : names.find(same));
+  return hit ? hit.name : null;
+}
+function stamp(it) {   // what GPS Shots reads: the location name, its kind and its list
+  const kd = kindOf(it);
+  it.gpsName = findName(it) || label(it);
+  it.gk = kd.gk || kd.name; it.gg = kd.gg || kd.name;
+}
+
+/* ---------------------------------------------------------------- view */
+const cv = $("cv"), ctx = cv.getContext("2d");
+let W = 0, H = 0, DPR = 1, TOP = null;
+const view = { x: 0, y: 0, s: 1, fitted: false };
+const toScreen = p => ({ x: p.x * view.s + view.x, y: p.y * view.s + view.y });
+const toPrint = p => ({ x: (p.x - view.x) / view.s, y: (p.y - view.y) / view.s });
+function bounds() {
+  if (plan && plan.size) { const [ox, oy] = plan.origin || [0, 0]; return { x0: ox, y0: oy, x1: ox + plan.size[0], y1: oy + plan.size[1] }; }
+  const pts = doc.items.length ? doc.items : [{ x: 0, y: 0 }];
+  const xs = pts.map(p => p.x), ys = pts.map(p => p.y);
+  return { x0: Math.min(...xs) - 200, y0: Math.min(...ys) - 200, x1: Math.max(...xs) + 200, y1: Math.max(...ys) + 200 };
+}
+function fit() {
+  const b = bounds(), pad = 10;
+  view.s = Math.min((W - 2 * pad) / (b.x1 - b.x0), (H - 2 * pad) / (b.y1 - b.y0));
+  view.x = (W - (b.x1 - b.x0) * view.s) / 2 - b.x0 * view.s; view.y = (H - (b.y1 - b.y0) * view.s) / 2 - b.y0 * view.s;
+  view.fitted = true;
+}
+function resize() {
+  const r = $("wrap").getBoundingClientRect(); DPR = Math.min(window.devicePixelRatio || 1, 3);
+  if (TOP != null && r.top !== TOP) view.y -= r.top - TOP;   // the top bar grew or shrank: keep the print still on the screen
+  TOP = r.top;
+  if (r.width === W && r.height === H) { draw(); return; }
+  W = r.width; H = r.height; cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
+  planCache = null; if (!view.fitted || !doc) { if (doc) fit(); }
+  draw();
+}
+new ResizeObserver(resize).observe($("wrap"));
+
+/* ---------------------------------------------------------------- drawing */
+let printMode = LS.get("draw.print", "faded");   // normal / faded / off
+const ICON = 6;   // icon half-size in print units (about 4 ft) before the on-screen limits
+const iconPx = s => Math.max(8, Math.min(20, ICON * s));
+let planPaths = null, planCache = null;
+function planGroups() {
+  if (planPaths && planPaths.plan === plan) return planPaths.g;
+  const m = new Map();
+  for (const [col, w, pts] of plan.lines || []) {
+    const k = col + "|" + w; let e = m.get(k); if (!e) { e = { col, w, p: new Path2D() }; m.set(k, e); }
+    e.p.moveTo(pts[0], pts[1]); for (let i = 2; i < pts.length; i += 2) e.p.lineTo(pts[i], pts[i + 1]);
+  }
+  planPaths = { plan, g: [...m.values()] }; return planPaths.g;
+}
+function paintPlan(g, s, alpha) {   // g is already set to print units
+  if (!plan || alpha <= 0) return;
+  g.save(); g.globalAlpha = alpha;
+  if (plan.img) g.drawImage(plan.img, 0, 0, plan.size[0], plan.size[1]);
+  g.lineCap = "butt"; g.lineJoin = "bevel";
+  for (const e of planGroups()) { g.strokeStyle = e.col; g.lineWidth = Math.max(e.w, 0.7 / s); g.stroke(e.p); }
+  g.textBaseline = "alphabetic";
+  for (const [x, y, t, size, col, rot] of plan.texts || []) {
+    g.save(); g.translate(x, y); if (rot) g.rotate(-rot * Math.PI / 180);
+    g.fillStyle = col || "#333"; g.font = `${size || 8}px sans-serif`; g.fillText(t, 0, 0); g.restore();
+  }
+  g.restore();
+}
+const printAlpha = () => printMode === "off" ? 0 : printMode === "faded" ? 0.35 : 1;
+function drawPlanLayer(quick) {
+  const key = [view.x, view.y, view.s, W, H, printMode].join("|");
+  if (quick && planCache && planCache.key !== key && planCache.mode === printMode) {   // fingers moving: slide the last picture, the sharp one follows
+    const L = planCache.v, k = view.s / L.s;
+    ctx.drawImage(planCache.c, view.x - L.x * k, view.y - L.y * k, W * k, H * k); return;
+  }
+  if (!planCache || planCache.key !== key) {
+    const c = planCache && planCache.c.width === cv.width && planCache.c.height === cv.height ? planCache.c : Object.assign(document.createElement("canvas"), { width: cv.width, height: cv.height });
+    const g = c.getContext("2d"); g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, c.width, c.height);
+    g.setTransform(DPR, 0, 0, DPR, 0, 0); g.translate(view.x, view.y); g.scale(view.s, view.s);
+    paintPlan(g, view.s, printAlpha());
+    planCache = { key, c, mode: printMode, v: { x: view.x, y: view.y, s: view.s } };
+  }
+  ctx.drawImage(planCache.c, 0, 0, W, H);
+}
+
+function iconShape(g, kd, z) {
+  const c = kd.color; g.strokeStyle = c; g.fillStyle = c; g.lineWidth = Math.max(1.4, z * 0.17); g.lineJoin = "round";
+  const white = () => { g.fillStyle = "#fff"; g.fill(); g.fillStyle = c; g.stroke(); };
+  const letters = (t, r) => { g.fillStyle = c; g.font = `700 ${Math.round(r)}px sans-serif`; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText(t, 0, z * 0.06); };
+  switch (kd.shape) {
+    case "rect": g.fillRect(-z * 1.25, -z * 0.75, z * 2.5, z * 1.5); break;
+    case "tri": g.beginPath(); g.moveTo(0, -z * 1.05); g.lineTo(z * 1.05, z * 0.8); g.lineTo(-z * 1.05, z * 0.8); g.closePath(); g.fill(); break;
+    case "pole": case "riser": {
+      g.beginPath(); g.arc(0, 0, z * 0.9, 0, 7); white();
+      const a = z * 0.62; g.beginPath(); g.moveTo(-a, -a); g.lineTo(a, a); g.moveTo(a, -a); g.lineTo(-a, a); g.stroke();
+      if (kd.shape === "riser") {
+        g.beginPath(); g.arc(z * 0.95, -z * 0.95, z * 0.5, 0, 7); white();
+        g.font = `700 ${Math.round(z * 0.62)}px sans-serif`; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText("R", z * 0.95, -z * 0.92);
+      }
+      break;
+    }
+    case "ped": g.beginPath(); g.rect(-z * 0.85, -z * 0.85, z * 1.7, z * 1.7); white();
+      g.beginPath(); g.moveTo(-z * 0.85, -z * 0.85); g.lineTo(z * 0.85, z * 0.85); g.lineTo(-z * 0.85, z * 0.85); g.closePath(); g.fill(); break;
+    case "box": { const t = kd.letter || "", w = Math.max(1.7, 0.75 + t.length * 0.62) * z; g.beginPath(); g.rect(-w / 2, -z * 0.85, w, z * 1.7); white(); letters(t, z * 1.05); break; }
+    case "circ": g.beginPath(); g.arc(0, 0, z * 0.95, 0, 7); white(); letters(kd.letter || "", z * (String(kd.letter || "").length > 1 ? 0.8 : 1.05)); break;
+    case "valve": g.beginPath(); g.arc(0, 0, z * 0.95, 0, 7); white();
+      g.beginPath(); g.moveTo(-z * 0.6, -z * 0.5); g.lineTo(z * 0.6, z * 0.5); g.lineTo(z * 0.6, -z * 0.5); g.lineTo(-z * 0.6, z * 0.5); g.closePath(); g.fill(); break;
+    case "hydrant": g.fillRect(-z * 1.05, -z * 0.22, z * 2.1, z * 0.44); g.fillRect(-z * 0.22, -z * 1.05, z * 0.44, z * 0.5);
+      g.beginPath(); g.arc(0, 0, z * 0.62, 0, 7); g.fill(); break;
+    case "amp": g.beginPath(); g.moveTo(z * 1.05, 0); g.lineTo(-z * 0.8, -z * 0.95); g.lineTo(-z * 0.8, z * 0.95); g.closePath(); g.fill(); break;
+    case "light": g.beginPath(); g.arc(0, 0, z * 0.45, 0, 7); g.fill(); g.beginPath();
+      for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4; g.moveTo(Math.cos(a) * z * 0.65, Math.sin(a) * z * 0.65); g.lineTo(Math.cos(a) * z * 1.05, Math.sin(a) * z * 1.05); } g.stroke(); break;
+    case "diamond": g.beginPath(); g.moveTo(0, -z); g.lineTo(z, 0); g.lineTo(0, z); g.lineTo(-z, 0); g.closePath(); g.fill(); break;
+    default: g.beginPath(); g.arc(0, 0, z * 0.7, 0, 7); g.fill();
+  }
+}
+function paintIcon(g, it, p, z, selected) {
+  const kd = kindOf(it);
+  g.save(); g.translate(p.x, p.y); g.rotate((it.rot || 0) * Math.PI / 180);
+  if (selected) { g.save(); g.fillStyle = "rgba(255,210,0,.55)"; g.beginPath(); g.arc(0, 0, z * 1.9, 0, 7); g.fill(); g.restore(); }
+  iconShape(g, kd, z); g.restore();
+}
+function paintLabel(g, it, p, z, font) {
+  const t = label(it); g.font = `700 ${font}px sans-serif`; g.textAlign = "left"; g.textBaseline = "middle";
+  const x = p.x + z * (kindOf(it).shape === "riser" ? 1.8 : 1.45), y = p.y - z * 1.05;
+  g.lineWidth = Math.max(3, font * 0.28); g.strokeStyle = "rgba(255,255,255,.95)"; g.lineJoin = "round"; g.strokeText(t, x, y);
+  g.fillStyle = "#111"; g.fillText(t, x, y);
+}
+const itemById = id => doc.items.find(i => i.id === id);
+function linePts(ln) {   // print points, ends glued to the two icons
+  const a = itemById(ln.a), b = itemById(ln.b), out = [];
+  if (a) out.push({ x: a.x, y: a.y });
+  for (let i = 0; i < (ln.pts || []).length; i += 2) out.push({ x: ln.pts[i], y: ln.pts[i + 1] });
+  if (b) out.push({ x: b.x, y: b.y });
+  return out;
+}
+function paintLine(g, pts, lk, wmul, selected) {
+  if (pts.length < 2) return;
+  g.save(); g.lineCap = "round"; g.lineJoin = "round";
+  g.beginPath(); pts.forEach((q, i) => i ? g.lineTo(q.x, q.y) : g.moveTo(q.x, q.y));
+  if (selected) { g.strokeStyle = "rgba(255,210,0,.7)"; g.lineWidth = (lk.w + 8) * wmul; g.stroke(); }
+  g.strokeStyle = lk.color; g.lineWidth = lk.w * wmul; g.setLineDash((DASH[lk.dash] || []).map(v => v * wmul)); g.stroke();
+  g.restore();
+}
+const feet = pts => { if (!ppf) return null; let d = 0; for (let i = 1; i < pts.length; i++) d += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y); return d / ppf; };
+
+let mode = "view", placeKind = null, lineKind = LS.get("draw.lk", "c2"), lineStyle = LS.get("draw.ls", "free"), cur = null, sel = null, hover = null;
+let drawQueued = false, settleT = null;
+function drawSoon() {
+  clearTimeout(settleT); settleT = setTimeout(() => draw(), 180);
+  if (drawQueued) return; drawQueued = true; requestAnimationFrame(() => { drawQueued = false; draw(true); });
+}
+function draw(quick) {
+  if (!W) return;
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0); ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, W, H);
+  if (!doc) return;
+  if (!view.fitted) fit();
+  drawPlanLayer(quick);
+  const lks = lineKinds(), z = iconPx(view.s), font = Math.round(Math.max(11, Math.min(16, z * 0.95)));
+  for (const ln of doc.lines) paintLine(ctx, linePts(ln).map(toScreen), lks[ln.k] || DEF_LINES.c2, 1, sel && sel.type === "line" && sel.id === ln.id);
+  if (cur) {
+    const a = itemById(cur.a), pts = [a ? { x: a.x, y: a.y } : null, ...chunk(cur.pts)].filter(Boolean).map(toScreen);
+    if (hover) pts.push(hover);
+    paintLine(ctx, pts, lks[cur.k] || DEF_LINES.c2, 1, false);
+    ctx.fillStyle = (lks[cur.k] || DEF_LINES.c2).color;
+    if (lineStyle === "dots") for (const q of pts.slice(1, hover ? -1 : undefined)) { ctx.beginPath(); ctx.arc(q.x, q.y, 4.5, 0, 7); ctx.fill(); }
+  }
+  for (const it of doc.items) paintIcon(ctx, it, toScreen(it), z, (sel && sel.type === "icon" && sel.id === it.id) || (cur && cur.a === it.id));
+  for (const it of doc.items) paintLabel(ctx, it, toScreen(it), z, font);
+  if (ppf) scaleBar();
+}
+const chunk = a => { const o = []; for (let i = 0; i < (a || []).length; i += 2) o.push({ x: a[i], y: a[i + 1] }); return o; };
+function scaleBar() {
+  const per = view.s * ppf; let ft = 1; for (const f of [5, 10, 20, 25, 50, 100, 200, 250, 500, 1000]) { ft = f; if (f * per >= 70) break; }
+  const w = ft * per, x = 10, y = H - 14;
+  ctx.save(); ctx.fillStyle = "rgba(255,255,255,.85)"; ctx.fillRect(x - 4, y - 18, w + 50, 26);
+  ctx.strokeStyle = "#111"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x, y - 6); ctx.lineTo(x, y); ctx.lineTo(x + w, y); ctx.lineTo(x + w, y - 6); ctx.stroke();
+  ctx.fillStyle = "#111"; ctx.font = "600 12px sans-serif"; ctx.textBaseline = "alphabetic"; ctx.textAlign = "left"; ctx.fillText(ft + " ft", x + w + 6, y); ctx.restore();
+}
+
+/* ---------------------------------------------------------------- changes, undo, saving */
+let undo = [];
+const snap = () => JSON.stringify({ kinds: doc.kinds, lineKinds: doc.lineKinds, items: doc.items, lines: doc.lines });
+function before() { undo.push(snap()); if (undo.length > 60) undo.shift(); }
+function changed() {
+  kCache = lCache = null;
+  for (const it of doc.items) stamp(it);
+  doc.project = projName; doc.updated = Date.now(); LS.set("drawn." + slug, doc); scheduleSave(); draw(); renderSel();
+}
+$("t-undo").onclick = () => {
+  if (cur) { if (cur.pts.length) cur.pts.splice(-2, 2); else cur = null; showHint(); draw(); return; }
+  const s = undo.pop(); if (!s) { toast("Nothing to undo"); return; }
+  Object.assign(doc, JSON.parse(s)); sel = null; changed(); toast("Undone");
+};
+let sha = null, saveT = null, saving = false, again = false;
+function setSave(t) { $("save").textContent = t; }
+function scheduleSave() { setSave(gh.on() ? "Saving…" : "Saved on this device"); clearTimeout(saveT); saveT = setTimeout(saveNow, 1500); }
+async function saveNow() {
+  if (!gh.on()) { setSave("Saved on this device"); return; }
+  if (saving) { again = true; return; }
+  saving = true; const path = `gps/drawn/${slug}.json`, msg = `Draw as-built: ${projName}`;
+  try {
+    if (sha == null) { const m = await gh.get(path); sha = m ? m.sha : ""; }
+    let r;
+    try { r = await gh.put(path, doc, sha || undefined, msg); }
+    catch (e) { if (e.status !== 409 && e.status !== 422) throw e; const m = await gh.get(path); sha = m ? m.sha : ""; r = await gh.put(path, doc, sha || undefined, msg); }
+    sha = r.content.sha; setSave("Saved");
+  } catch (e) { setSave("Not sent yet · kept on this device"); clearTimeout(saveT); saveT = setTimeout(saveNow, 20000); }
+  saving = false; if (again) { again = false; saveNow(); }
+}
+
+/* ---------------------------------------------------------------- loading */
+async function loadPlanFromCustom(c) {
+  const pr = c && c.print; if (!pr) return null;
+  let got = await idbGet("print." + slug);
+  if ((!got || got.t !== pr.t) && gh.on()) {
+    try { got = pr.kind === "dxf" ? { t: pr.t, plan: await gh.get(pr.path, true) } : { t: pr.t, blob: await gh.get(pr.path, "blob") }; } catch { }
+  }
+  if (!got) return null;
+  if (got.plan) return got.plan;
+  const img = new Image(); await new Promise(ok => { img.onload = ok; img.onerror = ok; img.src = URL.createObjectURL(got.blob); });
+  return { size: pr.size, lines: [], texts: [], img };
+}
+function collectNames(job, rd) {
+  const out = [], add = (name, kind) => { if (name && !out.some(o => o.name === name)) out.push({ name, kind: kind || "" }); };
+  const ren = (rd && rd.printRen) || {}, del = (rd && rd.printDel) || {};
+  for (const i of (job && job.items) || []) { if (i.drawn || (del[i.name] && del[i.name].on)) continue; add(ren[i.name] && ren[i.name].to || i.name, i.kind); }
+  for (const e of (rd && rd.extra) || []) add(e.name, e.kind);
+  for (const [n, v] of Object.entries((rd && rd.items) || {})) if (!v.corner && !v.run) add(n, "");
+  names = out;
+}
+async function load() {
+  if (!slug) { $("proj").textContent = "Open a project in GPS Shots first"; return; }
+  const custom = LS.get("custom", []) || [], c = custom.find(x => x.slug === slug);
+  let job = LS.get("job." + slug, null);
+  projName = (job && job.name) || (c && c.name) || slug.replace(/-/g, " ");
+  $("proj").textContent = projName;
+  doc = LS.get("drawn." + slug, null) || newDoc(); kCache = lCache = null;
+  if (job && job.plan) { plan = job.plan; ppf = job.pt_per_ft || 0; }
+  else if (c && c.print) plan = await loadPlanFromCustom(c);
+  collectNames(job, LS.get("data." + slug, null));
+  view.fitted = false; planCache = null; draw();
+  if (!gh.on()) { setSave("No key: open from the Home Screen icon"); if (!plan) $("proj").textContent = projName + " · no print on this device"; return; }
+  setSave("Loading…");
+  try {
+    const [j, np, rd, dm] = await Promise.all([
+      c && !job ? null : gh.get(`gps/jobs/${slug}.json`, true).catch(() => null),
+      gh.get(`gps/prints/${slug}.plan.json`, true).catch(() => null),
+      gh.get(`gps/readings/${slug}.json`, true).catch(() => null),
+      gh.get(`gps/drawn/${slug}.json`),
+    ]);
+    if (j) { job = j; projName = j.name || projName; ppf = j.pt_per_ft || ppf; }
+    const p2 = np || (j && j.plan) || null;   // the replacement print (800 Sylvan page 1 for Garden Homes) wins, same as GPS Shots
+    if (p2 && (!plan || String(p2.origin) !== String(plan.origin) || p2.size[0] !== plan.size[0])) { plan = p2; view.fitted = false; planCache = null; }
+    if (!plan && c && c.print) { plan = await loadPlanFromCustom(c); view.fitted = false; }
+    collectNames(job, rd);
+    sha = dm ? dm.sha : "";
+    const remote = dm ? JSON.parse(decodeB64(dm.content)) : null;
+    if (remote && (remote.updated || 0) > (doc.updated || 0)) { doc = Object.assign(newDoc(), remote); kCache = lCache = null; LS.set("drawn." + slug, doc); setSave("Saved"); }
+    else if (doc.updated && (!remote || (remote.updated || 0) < doc.updated)) scheduleSave();
+    else setSave(remote ? "Saved" : "Nothing drawn yet");
+    $("proj").textContent = projName + (plan ? "" : " · no print found");
+  } catch (e) { setSave("Offline · using this device's copy"); }
+  draw();
+}
+
+/* ---------------------------------------------------------------- touch, mouse */
+const ptrs = new Map(); let gest = null, pinch = null;
+const pos = e => { const r = cv.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
+function hitIcon(p, skip) {
+  const z = iconPx(view.s), lim = Math.max(z * 1.5, 22); let best = null, bd = lim;
+  for (const it of doc.items) { if (it.id === skip) continue; const q = toScreen(it), d = Math.hypot(q.x - p.x, q.y - p.y); if (d < bd) { bd = d; best = it; } }
+  return best;
+}
+function segDist(p, a, b) { const dx = b.x - a.x, dy = b.y - a.y, L = dx * dx + dy * dy; let t = L ? ((p.x - a.x) * dx + (p.y - a.y) * dy) / L : 0; t = Math.max(0, Math.min(1, t)); return Math.hypot(p.x - a.x - t * dx, p.y - a.y - t * dy); }
+function hitLine(p) {
+  let best = null, bd = 14;
+  for (const ln of doc.lines) { const q = linePts(ln).map(toScreen); for (let i = 1; i < q.length; i++) { const d = segDist(p, q[i - 1], q[i]); if (d < bd) { bd = d; best = ln; } } }
+  return best;
+}
+cv.addEventListener("pointerdown", e => {
+  if (!doc) return;
+  try { cv.setPointerCapture(e.pointerId); } catch { }
+  const p = pos(e); ptrs.set(e.pointerId, p);
+  if (ptrs.size === 2) {   // two fingers: zoom and move, and whatever one finger started is dropped
+    if (gest && gest.type === "free" && cur) { if (gest.made) cur = null; else cur.pts.length = gest.n; }
+    if (gest && gest.type === "move" && gest.it) { gest.it.x = gest.ox; gest.it.y = gest.oy; }
+    gest = null; hover = null;
+    const [a, b] = [...ptrs.values()]; pinch = { d: Math.hypot(a.x - b.x, a.y - b.y) || 1, m: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, v: { x: view.x, y: view.y, s: view.s } };
+    return;
+  }
+  if (ptrs.size > 2) return;
+  gest = { type: "pan", start: p, last: p, moved: false, v: { x: view.x, y: view.y } };
+  if (mode === "line" && lineStyle === "free") {
+    const hit = hitIcon(p);
+    if (!cur && hit) { cur = { k: lineKind, a: hit.id, pts: [] }; gest.type = "free"; gest.made = true; gest.n = 0; showHint(); }
+    else if (cur) { gest.type = "free"; gest.n = cur.pts.length; }
+  } else if (mode === "view" && sel && sel.type === "icon") {
+    const hit = hitIcon(p);
+    if (hit && hit.id === sel.id) { const P = toPrint(p); Object.assign(gest, { type: "move", it: hit, ox: hit.x, oy: hit.y, dx: P.x - hit.x, dy: P.y - hit.y }); }
+  }
+});
+cv.addEventListener("pointermove", e => {
+  if (!doc) return;
+  const p = pos(e);
+  if (!ptrs.has(e.pointerId)) {   // mouse hovering while drawing dots: show the next piece
+    if (mode === "line" && cur && e.pointerType === "mouse") { hover = p; drawSoon(); }
+    return;
+  }
+  ptrs.set(e.pointerId, p);
+  if (pinch && ptrs.size >= 2) {
+    const [a, b] = [...ptrs.values()], d = Math.hypot(a.x - b.x, a.y - b.y) || 1, m = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    const s = Math.max(0.05, Math.min(60, pinch.v.s * d / pinch.d));
+    view.x = m.x - (pinch.m.x - pinch.v.x) * s / pinch.v.s; view.y = m.y - (pinch.m.y - pinch.v.y) * s / pinch.v.s; view.s = s;
+    drawSoon(); return;
+  }
+  if (!gest) return;
+  if (!gest.moved && Math.hypot(p.x - gest.start.x, p.y - gest.start.y) > 8) gest.moved = true;
+  if (!gest.moved) return;
+  if (gest.type === "pan") { view.x = gest.v.x + p.x - gest.start.x; view.y = gest.v.y + p.y - gest.start.y; drawSoon(); }
+  else if (gest.type === "move") { const P = toPrint(p); gest.it.x = P.x - gest.dx; gest.it.y = P.y - gest.dy; drawSoon(); }
+  else if (gest.type === "free") {
+    if (Math.hypot(p.x - gest.last.x, p.y - gest.last.y) >= 4) { const P = toPrint(p); cur.pts.push(P.x, P.y); gest.last = p; }
+    hover = null; drawSoon();
+  }
+});
+function endPtr(e) {
+  if (!ptrs.has(e.pointerId)) return;
+  const p = pos(e); ptrs.delete(e.pointerId);
+  if (pinch) { if (ptrs.size < 2) pinch = null; draw(); return; }
+  const g = gest; gest = null; if (!g) return;
+  if (!g.moved) { if (g.type === "free" && g.made && cur && !cur.pts.length) { showHint(); draw(); return; } tap(p); return; }
+  if (g.type === "move") {
+    const nx = g.it.x, ny = g.it.y; g.it.x = g.ox; g.it.y = g.oy; before(); g.it.x = nx; g.it.y = ny; changed();
+  } else if (g.type === "free") {
+    const end = hitIcon(p, cur.a);
+    if (end) finishLine(end); else { showHint(); toast("End the line on an icon. Keep drawing from where you stopped."); }
+  }
+  draw();
+}
+cv.addEventListener("pointerup", endPtr);
+cv.addEventListener("pointercancel", e => { ptrs.delete(e.pointerId); pinch = null; gest = null; draw(); });
+cv.addEventListener("wheel", e => {
+  e.preventDefault(); const p = pos(e), k = Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0018)), s = Math.max(0.05, Math.min(60, view.s * k));
+  view.x = p.x - (p.x - view.x) * s / view.s; view.y = p.y - (p.y - view.y) * s / view.s; view.s = s; drawSoon();
+}, { passive: false });
+
+function tap(p) {
+  const P = toPrint(p);
+  if (mode === "place") {
+    before();
+    const it = { id: uid(), k: placeKind, name: "", x: P.x, y: P.y, rot: 0 };
+    doc.items.push(it); draw();
+    nameDialog(it, true); return;
+  }
+  if (mode === "line") {
+    const hit = hitIcon(p, cur ? cur.a : null);
+    if (!cur) {
+      if (!hitIcon(p)) { toast("Start on an icon: tap the icon where the line begins"); return; }
+      cur = { k: lineKind, a: hitIcon(p).id, pts: [] }; showHint(); draw(); return;
+    }
+    if (hit) { finishLine(hit); return; }
+    cur.pts.push(P.x, P.y); showHint(); draw(); return;
+  }
+  const it = hitIcon(p);
+  if (it) { sel = { type: "icon", id: it.id }; renderSel(); draw(); return; }
+  const ln = hitLine(p);
+  if (ln) { sel = { type: "line", id: ln.id }; renderSel(); draw(); return; }
+  if (sel) { sel = null; renderSel(); draw(); }
+}
+function simplify(pts, tol) {   // fewer points from a finger drawing, same shape
+  if (pts.length <= 2) return pts;
+  const keep = new Uint8Array(pts.length); keep[0] = keep[pts.length - 1] = 1;
+  const st = [[0, pts.length - 1]];
+  while (st.length) {
+    const [i, j] = st.pop(); let md = 0, mi = -1;
+    for (let k = i + 1; k < j; k++) { const d = segDist(pts[k], pts[i], pts[j]); if (d > md) { md = d; mi = k; } }
+    if (md > tol) { keep[mi] = 1; st.push([i, mi], [mi, j]); }
+  }
+  return pts.filter((_, k) => keep[k]);
+}
+function finishLine(end) {
+  const a = itemById(cur.a); if (!a || end.id === a.id) return;
+  let pts = chunk(cur.pts);
+  if (lineStyle === "free" && pts.length) {
+    const r = iconPx(view.s) * 1.2 / view.s;   // drop the bits drawn inside the start and end icons
+    pts = pts.filter(q => Math.hypot(q.x - a.x, q.y - a.y) > r && Math.hypot(q.x - end.x, q.y - end.y) > r);
+    pts = simplify([{ x: a.x, y: a.y }, ...pts, { x: end.x, y: end.y }], 2 / view.s).slice(1, -1);
+  }
+  before();
+  const ln = { id: uid(), k: cur.k, a: a.id, b: end.id, pts: pts.flatMap(q => [Math.round(q.x * 10) / 10, Math.round(q.y * 10) / 10]) };
+  doc.lines.push(ln); cur = null; hover = null;
+  const f = feet(linePts(ln));
+  toast(`${(lineKinds()[ln.k] || {}).name} from ${label(a)} to ${label(end)}${f != null ? " · " + Math.round(f) + " ft" : ""}`);
+  changed(); showHint();
+}
+
+/* ---------------------------------------------------------------- modes and the hint bar */
+function setMode(m) { mode = m; if (m !== "line") { cur = null; hover = null; } if (m !== "view") { sel = null; renderSel(); } showHint(); draw(); }
+function showHint() {
+  const h = $("hint"), t = $("hint-t"), b = $("hint-b");
+  $("t-icon").classList.toggle("on", mode === "place"); $("t-line").classList.toggle("on", mode === "line");
+  if (mode === "view") { h.hidden = true; return; }
+  h.hidden = false; b.innerHTML = "";
+  const btn = (txt, fn, cls) => { const x = document.createElement("button"); x.textContent = txt; if (cls) x.className = cls; x.onclick = fn; b.appendChild(x); };
+  if (mode === "place") {
+    t.innerHTML = `Tap the print where the <b>${esc(kinds()[placeKind].name)}</b> goes. Two fingers to zoom.`;
+    btn("Done", () => setMode("view"));
+    return;
+  }
+  const ln = esc((lineKinds()[lineKind] || {}).name);
+  if (!cur) t.innerHTML = lineStyle === "free"
+    ? `<b>${ln}</b>: put your finger on the icon where it starts and draw to the icon where it ends.`
+    : `<b>${ln}</b>: tap the icon where it starts.`;
+  else t.innerHTML = lineStyle === "free"
+    ? `<b>${ln}</b>: keep drawing and end on an icon, or tap the end icon.`
+    : `<b>${ln}</b>: tap to add dots, then tap the icon where it ends.`;
+  btn(lineStyle === "free" ? "Switch to dots" : "Switch to freehand", () => { lineStyle = lineStyle === "free" ? "dots" : "free"; LS.set("draw.ls", lineStyle); showHint(); draw(); });
+  if (cur && cur.pts.length) btn("Undo last bit", () => { if (lineStyle === "dots") cur.pts.splice(-2, 2); else cur.pts.length = 0; showHint(); draw(); });
+  if (cur) btn("Cancel line", () => { cur = null; showHint(); draw(); });
+  btn("Done", () => setMode("view"), "primary");
+}
+document.addEventListener("keydown", e => {
+  if (!$("modal").hidden || /INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName)) return;
+  if (e.key === "Escape") { if (cur) { cur = null; showHint(); draw(); } else setMode("view"); }
+  else if ((e.key === "Delete" || e.key === "Backspace") && sel) { e.preventDefault(); delSel(); }
+  else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") { e.preventDefault(); $("t-undo").click(); }
+});
+
+/* ---------------------------------------------------------------- selected icon / line */
+function renderSel() {
+  const box = $("sel");
+  if (!sel || mode !== "view") { box.hidden = true; return; }
+  if (sel.type === "icon") {
+    const it = itemById(sel.id); if (!it) { sel = null; box.hidden = true; return; }
+    const link = it.gpsName && it.gpsName !== label(it) ? ` <span class="small">· same as ${esc(it.gpsName)}</span>` : "";
+    box.innerHTML = `<div class="row"><span class="nm">${esc(label(it))}${link}</span><span class="small">Drag the icon to move it</span></div>
+      <div class="row"><button id="r-l" aria-label="Turn left">⟲ 15°</button><input type="range" id="r-v" min="0" max="359" step="1" value="${Math.round(it.rot || 0)}"><button id="r-r" aria-label="Turn right">⟳ 15°</button><b id="r-t" style="min-width:44px;text-align:right">${Math.round(it.rot || 0)}°</b></div>
+      <div class="row"><button id="s-ren">Rename</button><button id="s-del" class="danger">Delete</button><button id="s-done" class="primary" style="margin-left:auto">Done</button></div>`;
+    let rotSnap = null;
+    const setRot = (v, commit) => { if (!rotSnap) rotSnap = snap(); it.rot = ((Math.round(v) % 360) + 360) % 360; $("r-t").textContent = it.rot + "°"; $("r-v").value = it.rot; draw();
+      if (commit) { undo.push(rotSnap); rotSnap = null; changed(); } };
+    $("r-l").onclick = () => setRot((it.rot || 0) - 15, true);
+    $("r-r").onclick = () => setRot((it.rot || 0) + 15, true);
+    $("r-v").oninput = e => setRot(+e.target.value, false);
+    $("r-v").onchange = e => setRot(+e.target.value, true);
+    $("s-ren").onclick = () => nameDialog(it, false);
+  } else {
+    const ln = doc.lines.find(l => l.id === sel.id); if (!ln) { sel = null; box.hidden = true; return; }
+    const lks = lineKinds(), a = itemById(ln.a), b = itemById(ln.b), f = feet(linePts(ln));
+    box.innerHTML = `<div class="row"><span class="nm">${esc((lks[ln.k] || {}).name || "Line")}</span><span class="small">${esc(a ? label(a) : "?")} to ${esc(b ? label(b) : "?")}${f != null ? " · " + Math.round(f) + " ft" : ""}</span></div>
+      <div class="row"><select id="s-lk" aria-label="Line type">${Object.entries(lks).map(([k, v]) => `<option value="${k}"${k === ln.k ? " selected" : ""}>${esc(v.name)}</option>`).join("")}</select>
+      <button id="s-del" class="danger">Delete</button><button id="s-done" class="primary" style="margin-left:auto">Done</button></div>`;
+    $("s-lk").onchange = e => { before(); ln.k = e.target.value; changed(); };
+  }
+  $("s-del").onclick = delSel;
+  $("s-done").onclick = () => { sel = null; renderSel(); draw(); };
+  box.hidden = false;
+}
+function delSel() {
+  if (!sel) return;
+  if (sel.type === "icon") {
+    const it = itemById(sel.id), n = doc.lines.filter(l => l.a === sel.id || l.b === sel.id).length;
+    if (!confirm(`Delete ${label(it)}${n ? ` and the ${n} line${n > 1 ? "s" : ""} attached to it` : ""}?`)) return;
+    before(); doc.items = doc.items.filter(i => i.id !== sel.id); doc.lines = doc.lines.filter(l => l.a !== sel.id && l.b !== sel.id);
+  } else { before(); doc.lines = doc.lines.filter(l => l.id !== sel.id); }
+  sel = null; changed();
+}
+
+/* ---------------------------------------------------------------- dialogs */
+function openCard(html, page) { $("card").innerHTML = `<div class="pg">Page ${page}</div>` + html; $("modal").hidden = false; $("pg").textContent = "Page " + page; }
+function closeCard() { $("modal").hidden = true; $("pg").textContent = "Page D-1"; }
+$("modal").addEventListener("click", e => { if (e.target === $("modal")) { const c = $("card").querySelector("[data-cancel]"); if (c) c.click(); else closeCard(); } });
+const iconImg = (kd, size = 44) => {
+  const c = document.createElement("canvas"); c.width = c.height = size * 2; const g = c.getContext("2d");
+  g.scale(2, 2); g.translate(size / 2, size / 2); iconShape(g, kd, size * 0.3); return c.toDataURL();
+};
+
+// D-2: pick an icon (or edit them)
+let editIcons = false;
+function iconPicker() {
+  const ks = kinds(), by = {};
+  for (const [k, v] of Object.entries(ks)) (by[v.grp || "My icons"] = by[v.grp || "My icons"] || []).push([k, v]);
+  let html = `<h2>${editIcons ? "Tap an icon to rename or recolor it" : "Pick an icon"}</h2>`;
+  for (const g of GROUPS) { if (!by[g]) continue;
+    html += `<h3>${g}</h3><div class="grid">` + by[g].map(([k, v]) => `<button data-k="${k}"><img alt="" src="${iconImg(v)}">${esc(v.name)}</button>`).join("") + `</div>`; }
+  html += `<div class="acts">${editIcons ? `<button id="ip-new">+ New icon</button>` : ""}<button id="ip-edit">${editIcons ? "Done editing" : "Rename / color"}</button><button data-cancel id="ip-x">Close</button></div>`;
+  openCard(html, "D-2");
+  for (const b of $("card").querySelectorAll("[data-k]")) b.onclick = () => {
+    if (editIcons) { iconEditor(b.dataset.k); return; }
+    placeKind = b.dataset.k; closeCard(); setMode("place");
+  };
+  $("ip-edit").onclick = () => { editIcons = !editIcons; iconPicker(); };
+  $("ip-x").onclick = closeCard;
+  if (editIcons) $("ip-new").onclick = () => iconEditor(null);
+}
+$("t-icon").onclick = () => { if (mode === "place") { setMode("view"); return; } editIcons = false; iconPicker(); };
+
+// D-4: rename / recolor an icon, or make a new one
+function iconEditor(k) {
+  const ks = kinds(), isNew = !k, base = DEF_KINDS[k], v = Object.assign({ name: "", color: "#7b3fbf", shape: "dot", letter: "" }, k ? ks[k] : {});
+  const used = k ? doc.items.filter(i => i.k === k).length : 0;
+  const swatches = () => COLORS.map(c => `<button data-c="${c}" class="${c === v.color ? "on" : ""}" style="background:${c}" aria-label="${c}"></button>`).join("") + `<input type="color" id="ie-c" value="${v.color}" style="width:46px;height:40px;border:0;background:none">`;
+  const draw1 = () => { $("ie-prev").innerHTML = `<img alt="" src="${iconImg(v, 56)}" style="vertical-align:middle"> <b>${esc(v.name || "New icon")} 18</b> <span class="small">is how it shows on the print</span>`;
+    $("ie-sw").innerHTML = swatches(); for (const b of $("ie-sw").querySelectorAll("[data-c]")) b.onclick = () => { v.color = b.dataset.c; draw1(); };
+    $("ie-c").oninput = e => { v.color = e.target.value; draw1(); };
+    $("ie-lt").hidden = !/^(box|circ)$/.test(v.shape); };
+  openCard(`<h2>${isNew ? "New icon" : "Edit " + esc(ks[k].name)}</h2>
+    <label class="f"><span>Name</span><input type="text" id="ie-n" value="${esc(v.name)}" autocomplete="off"></label>
+    <label class="f"><span>Color</span></label><div class="sw" id="ie-sw"></div>
+    ${!base ? `<label class="f"><span>Shape</span></label><div class="seg" id="ie-sh">${Object.entries(SHAPES).map(([s, t]) => `<button data-s="${s}" class="${s === v.shape ? "on" : ""}">${t}</button>`).join("")}</div>` : ""}
+    <label class="f" id="ie-lt"><span>Letters inside</span><input type="text" id="ie-l" value="${esc(v.letter || "")}" maxlength="3" autocomplete="off"></label>
+    <div class="preview" id="ie-prev"></div>
+    <div class="acts"><button class="primary" id="ie-ok">Save</button>${base && (doc.kinds || {})[k] ? `<button id="ie-reset">Put back original</button>` : ""}${!base && !isNew ? `<button class="danger" id="ie-del">Delete icon</button>` : ""}<button data-cancel id="ie-x">Cancel</button></div>`, "D-4");
+  draw1();
+  $("ie-n").oninput = e => { v.name = e.target.value; draw1(); };
+  $("ie-l").oninput = e => { v.letter = e.target.value.toUpperCase(); draw1(); };
+  for (const b of $("card").querySelectorAll("[data-s]")) b.onclick = () => { v.shape = b.dataset.s; for (const x of $("card").querySelectorAll("[data-s]")) x.classList.toggle("on", x === b); draw1(); };
+  $("ie-x").onclick = iconPicker;
+  $("ie-ok").onclick = () => {
+    const name = v.name.trim(); if (!name) { toast("Give it a name"); return; }
+    before(); doc.kinds = doc.kinds || {};
+    const key = k || "my-" + uid();
+    doc.kinds[key] = base ? { name, color: v.color, letter: v.letter } : { name, color: v.color, shape: v.shape, letter: v.letter, grp: "My icons", gk: name, gg: name };
+    if (base && !/^(box|circ)$/.test(base.shape)) delete doc.kinds[key].letter;
+    changed(); iconPicker();
+  };
+  if ($("ie-reset")) $("ie-reset").onclick = () => { before(); delete doc.kinds[k]; changed(); iconPicker(); };
+  if ($("ie-del")) $("ie-del").onclick = () => { if (used) { toast(`It's on the print ${used} time${used > 1 ? "s" : ""}. Delete those first.`); return; } before(); delete doc.kinds[k]; changed(); iconPicker(); };
+}
+
+// D-3: name the icon. The list offers the names the designer and GPS Shots already use for this type.
+function nameDialog(it, isNew) {
+  const kd = kindOf(it), mine = names.filter(n => (kd.match || []).includes(n.kind));
+  const taken = new Set(doc.items.filter(i => i !== it).map(i => i.gpsName));
+  openCard(`<h2>Name this ${esc(kd.name)}</h2>
+    <label class="f"><span>Name or number (for example 18)</span><input type="text" id="nd-n" value="${esc(it.name)}" autocomplete="off" autocapitalize="characters"></label>
+    <div class="preview" id="nd-p"></div>
+    ${mine.length ? `<h3>Names already in the designer</h3><div class="chips" id="nd-c"></div>` : ""}
+    <div class="acts"><button class="primary" id="nd-ok">${isNew ? "Place it" : "Save"}</button><button data-cancel id="nd-x">${isNew ? "Don't place it" : "Cancel"}</button></div>`, "D-3");
+  const inp = $("nd-n");
+  const upd = () => {
+    const t = { k: it.k, name: inp.value.trim() }, link = findName(t);
+    $("nd-p").innerHTML = t.name ? `On the print: <b>${esc(label(t))}</b><br><span class="small">${link ? (link === label(t) ? "Same location as in GPS Shots" : "Same location as <b>" + esc(link) + "</b> in the designer and GPS Shots") : "New location. GPS Shots will list it so you can GPS it."}</span>` : `<span class="small">Type the name. The print shows the type and the name, like “${esc(kd.name)} 18”.</span>`;
+    if ($("nd-c")) { const q = sq(t.name);
+      $("nd-c").innerHTML = mine.filter(n => !q || sq(n.name).includes(q)).slice(0, 60).map(n => `<button data-n="${esc(n.name)}"${taken.has(n.name) ? ' style="opacity:.5"' : ""}>${esc(n.name)}</button>`).join("");
+      for (const b of $("nd-c").querySelectorAll("[data-n]")) b.onclick = () => { inp.value = b.dataset.n; upd(); }; }
+  };
+  inp.oninput = upd; upd(); setTimeout(() => inp.focus(), 50);
+  inp.onkeydown = e => { if (e.key === "Enter") $("nd-ok").click(); };
+  $("nd-ok").onclick = () => {
+    const n = inp.value.trim(); if (!n) { toast("Type a name or number"); return; }
+    if (!isNew) before();
+    it.name = n; closeCard();
+    if (isNew) { setMode("view"); sel = { type: "icon", id: it.id }; toast(`${label(it)} placed. Turn it below or drag it.`); }
+    changed();
+  };
+  $("nd-x").onclick = () => {
+    closeCard();
+    if (isNew) { doc.items = doc.items.filter(i => i !== it); undo.pop(); draw(); }
+  };
+}
+
+// D-5: pick a line type and how to draw it (or edit the types)
+let editLines = false;
+function linePicker() {
+  const lks = lineKinds();
+  const sw = v => `<span class="swl" style="border-top-color:${v.color};border-top-style:${v.dash === "dot" ? "dotted" : v.dash === "dash" ? "dashed" : "solid"}"></span>`;
+  openCard(`<h2>${editLines ? "Tap a line to rename or recolor it" : "Pick a line"}</h2>
+    <div class="list">${Object.entries(lks).map(([k, v]) => `<button data-k="${k}" class="${!editLines && k === lineKind ? "on" : ""}">${sw(v)} ${esc(v.name)}</button>`).join("")}</div>
+    ${editLines ? "" : `<h3>How to draw it</h3><div class="seg"><button data-st="free" class="${lineStyle === "free" ? "on" : ""}">Freehand with finger</button><button data-st="dots" class="${lineStyle === "dots" ? "on" : ""}">Dot to dot</button></div>
+    <p class="small">Lines always start on one icon and end on another, and stay attached when you move an icon.</p>`}
+    <div class="acts">${editLines ? `<button id="lp-new">+ New line</button>` : ""}<button id="lp-edit">${editLines ? "Done editing" : "Rename / color"}</button><button data-cancel id="lp-x">Close</button></div>`, "D-5");
+  for (const b of $("card").querySelectorAll("[data-st]")) b.onclick = () => { lineStyle = b.dataset.st; LS.set("draw.ls", lineStyle); linePicker(); };
+  for (const b of $("card").querySelectorAll("[data-k]")) b.onclick = () => {
+    if (editLines) { lineEditor(b.dataset.k); return; }
+    lineKind = b.dataset.k; LS.set("draw.lk", lineKind); closeCard(); setMode("line");
+  };
+  $("lp-edit").onclick = () => { editLines = !editLines; linePicker(); };
+  $("lp-x").onclick = closeCard;
+  if (editLines) $("lp-new").onclick = () => lineEditor(null);
+}
+$("t-line").onclick = () => { if (mode === "line") { setMode("view"); return; } editLines = false; linePicker(); };
+
+// D-6: rename / recolor a line type, or make a new one
+function lineEditor(k) {
+  const lks = lineKinds(), base = DEF_LINES[k], v = Object.assign({ name: "", color: "#2e9d4f", w: 3, dash: "" }, k ? lks[k] : {});
+  const used = k ? doc.lines.filter(l => l.k === k).length : 0;
+  const prev = () => { const c = document.createElement("canvas"); c.width = 440; c.height = 40; const g = c.getContext("2d"); g.scale(2, 2);
+    paintLine(g, [{ x: 10, y: 10 }, { x: 210, y: 10 }], v, 1, false); $("le-prev").innerHTML = `<img alt="" src="${c.toDataURL()}" style="width:220px;height:20px;vertical-align:middle"> <b>${esc(v.name || "New line")}</b>`;
+    $("le-sw").innerHTML = COLORS.map(c => `<button data-c="${c}" class="${c === v.color ? "on" : ""}" style="background:${c}" aria-label="${c}"></button>`).join("") + `<input type="color" id="le-c" value="${v.color}" style="width:46px;height:40px;border:0;background:none">`;
+    for (const b of $("le-sw").querySelectorAll("[data-c]")) b.onclick = () => { v.color = b.dataset.c; prev(); };
+    $("le-c").oninput = e => { v.color = e.target.value; prev(); };
+    for (const b of $("card").querySelectorAll("[data-d]")) b.classList.toggle("on", b.dataset.d === v.dash); };
+  openCard(`<h2>${k ? "Edit " + esc(lks[k].name) : "New line"}</h2>
+    <label class="f"><span>Name</span><input type="text" id="le-n" value="${esc(v.name)}" autocomplete="off"></label>
+    <label class="f"><span>Color</span></label><div class="sw" id="le-sw"></div>
+    <label class="f"><span>Style</span></label><div class="seg"><button data-d="">Solid</button><button data-d="dash">Dashes</button><button data-d="dot">Dots</button></div>
+    <div class="preview" id="le-prev"></div>
+    <div class="acts"><button class="primary" id="le-ok">Save</button>${base && (doc.lineKinds || {})[k] ? `<button id="le-reset">Put back original</button>` : ""}${!base && k ? `<button class="danger" id="le-del">Delete line type</button>` : ""}<button data-cancel id="le-x">Cancel</button></div>`, "D-6");
+  prev();
+  $("le-n").oninput = e => { v.name = e.target.value; prev(); };
+  for (const b of $("card").querySelectorAll("[data-d]")) b.onclick = () => { v.dash = b.dataset.d; prev(); };
+  $("le-x").onclick = linePicker;
+  $("le-ok").onclick = () => {
+    const name = v.name.trim(); if (!name) { toast("Give it a name"); return; }
+    before(); doc.lineKinds = doc.lineKinds || {}; doc.lineKinds[k || "my-" + uid()] = { name, color: v.color, w: v.w || 3, dash: v.dash }; changed(); linePicker();
+  };
+  if ($("le-reset")) $("le-reset").onclick = () => { before(); delete doc.lineKinds[k]; changed(); linePicker(); };
+  if ($("le-del")) $("le-del").onclick = () => { if (used) { toast(`${used} line${used > 1 ? "s use" : " uses"} it. Delete those first.`); return; } before(); delete doc.lineKinds[k]; changed(); linePicker(); };
+}
+
+/* ---------------------------------------------------------------- print on/off, fit, picture */
+const PM = { normal: "Print: normal", faded: "Print: faded", off: "Print: hidden" };
+$("t-print").textContent = PM[printMode] || PM.faded;
+$("t-print").onclick = () => { printMode = printMode === "faded" ? "off" : printMode === "off" ? "normal" : "faded"; LS.set("draw.print", printMode); $("t-print").textContent = PM[printMode]; planCache = null; draw(); };
+$("t-fit").onclick = () => { fit(); draw(); };
+$("t-save").onclick = async () => {
+  if (!doc) return;
+  const b = bounds(), bw = b.x1 - b.x0, bh = b.y1 - b.y0, k = Math.min(4200 / Math.max(bw, bh), 6), head = 70;
+  const c = document.createElement("canvas"); c.width = Math.round(bw * k); c.height = Math.round(bh * k) + head; const g = c.getContext("2d");
+  g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height);
+  g.fillStyle = "#111"; g.font = "700 30px sans-serif"; g.textBaseline = "middle"; g.textAlign = "left";
+  g.fillText(`${projName} · As-built (drawn) · ${new Date().toLocaleDateString()}`, 20, head / 2);
+  g.save(); g.translate(0, head); g.save(); g.scale(k, k); g.translate(-b.x0, -b.y0); paintPlan(g, k, printMode === "off" ? 0 : printMode === "faded" ? 0.4 : 1); g.restore();
+  const T = p => ({ x: (p.x - b.x0) * k, y: (p.y - b.y0) * k }), z = Math.max(ICON * k, 26), wm = Math.max(2.2, k), lks = lineKinds();
+  for (const ln of doc.lines) paintLine(g, linePts(ln).map(T), lks[ln.k] || DEF_LINES.c2, wm, false);
+  for (const it of doc.items) paintIcon(g, it, T(it), z, false);
+  for (const it of doc.items) paintLabel(g, it, T(it), z, Math.round(z * 1.05));
+  // legend: only what is used
+  const usedK = [...new Set(doc.items.map(i => i.k))], usedL = [...new Set(doc.lines.map(l => l.k))], rows = usedK.length + usedL.length;
+  if (rows) {
+    const lh = 44, w = 420, h = rows * lh + 20, x = c.width - w - 20, y = c.height - head - h - 20;
+    g.fillStyle = "rgba(255,255,255,.95)"; g.strokeStyle = "#111"; g.lineWidth = 2; g.fillRect(x, y, w, h); g.strokeRect(x, y, w, h);
+    let yy = y + 10 + lh / 2; g.font = "600 24px sans-serif"; g.textAlign = "left";
+    for (const kk of usedK) { const kd = kinds()[kk]; if (!kd) continue; g.save(); g.translate(x + 40, yy); iconShape(g, kd, 14); g.restore(); g.fillStyle = "#111"; g.fillText(kd.name, x + 80, yy); yy += lh; }
+    for (const lk of usedL) { const v = lks[lk]; if (!v) continue; paintLine(g, [{ x: x + 16, y: yy }, { x: x + 66, y: yy }], v, 2, false); g.fillStyle = "#111"; g.fillText(v.name, x + 80, yy); yy += lh; }
+  }
+  g.restore();
+  const blob = await new Promise(ok => c.toBlob(ok, "image/png"));
+  const fname = `${slug}-as-built-drawn.png`, file = new File([blob], fname, { type: "image/png" });
+  try { if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: projName + " as-built" }); return; } } catch (e) { if (e.name === "AbortError") return; }
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = fname; document.body.appendChild(a); a.click(); a.remove();
+  toast("Picture saved");
+};
+
+load();
+</script>
+</body>
+</html>
