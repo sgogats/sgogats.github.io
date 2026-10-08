@@ -593,6 +593,7 @@ html.big #z-full { display: block; }
     </details>
     <button class="btn big" id="proj-print" style="margin-top:18px" hidden>Plot on print</button>
     <a class="btn big maplink" id="proj-map" href="map.html" style="margin-top:10px" hidden>Plot on Google Maps</a>
+    <a class="btn big maplink" id="proj-draw" href="draw.html" style="margin-top:10px" hidden>Draw as-built</a>
     <a class="btn big maplink" id="proj-3d" href="site3d.html" style="margin-top:10px" hidden>See it in 3D</a>
     <button class="btn big" id="proj-status-btn" style="margin-top:10px" hidden>Change project status</button>
     <div id="proj-pics-box" hidden>
@@ -769,7 +770,7 @@ html.big #z-full { display: block; }
 </div></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-08.01";
+const APP_VERSION = "2026-10-08.02";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -1246,7 +1247,7 @@ async function loadPrint(s) {   // an uploaded print turns a plain project into 
 }
 
 async function openProject(s) {
-  current = s; LS.set("current", s); group = null; selected = null; cat = null; stopShot(true);
+  current = s; LS.set("current", s); drawnDoc = LS.get("drawn." + s, null); group = null; selected = null; cat = null; stopShot(true);
   const p = s === RANDOM ? { name: "System locations", slug: RANDOM, job: false } : allProjects().find(x => x.slug === s);
   job = p && p.job ? LS.get("job." + s, null) : null;
   data = LS.get("data." + s, null) || { project: p ? p.name : s, slug: s, items: {}, extra: [], controls: {}, lockScale: true };
@@ -1266,7 +1267,7 @@ async function openProject(s) {
     catch (e) { setSync("err", "Offline"); }
   }
   if (p && !p.job && p.print) loadPrint(s);
-  pull(); loadPool();
+  loadDrawn(s); pull(); loadPool();
 }
 
 /* Steven 2026-10-06: boxes that came from the designer can be renamed or deleted on the phone too (two-way street).
@@ -1276,7 +1277,24 @@ function applyPrintEdits() {
   if (!job || !Array.isArray(job.items)) return;
   if (!job.raw) job.raw = job.items;
   const ren = data.printRen || {}, del = data.printDel || {};
-  job.items = job.raw.filter(i => !(del[i.name] && del[i.name].on)).map(i => { const r = ren[i.name]; return r && r.to && r.to !== i.name ? Object.assign({}, i, { name: r.to, orig: i.name }) : i; });
+  job.items = job.raw.concat(drawnItems()).filter(i => !(del[i.name] && del[i.name].on)).map(i => { const r = ren[i.name]; return r && r.to && r.to !== i.name ? Object.assign({}, i, { name: r.to, orig: i.name }) : i; });
+}
+/* Steven 2026-10-08: icons placed in Draw as-built (draw.html, ASBUILT_MAKER gps/drawn/<slug>.json) are locations too.
+   One whose name is already a designer location is that location; a new name is added here at its drawn spot, so it can be GPSed and plotted. */
+let drawnDoc = null;
+function drawnItems() {
+  const d = drawnDoc; if (!d || d.slug !== current || !Array.isArray(d.items)) return [];
+  const have = new Set(job.raw.map(i => i.name));
+  return d.items.filter(i => i.gpsName && !have.has(i.gpsName)).map(i => ({ name: i.gpsName, kind: i.gk || "Other", group: i.gg || "Drawn as-built", x: i.x, y: i.y, drawn: true }));
+}
+async function loadDrawn(s) {
+  drawnDoc = LS.get("drawn." + s, null);
+  if (!gh.on()) return;
+  try {
+    const d = await gh.raw(`gps/drawn/${s}.json`);
+    if (d && (!drawnDoc || (d.updated || 0) >= (drawnDoc.updated || 0))) { drawnDoc = d; LS.set("drawn." + s, d); }
+    if (current === s) { applyPrintEdits(); render(); if (!$("tab-print").hidden) drawPrint(); }
+  } catch {}
 }
 const printOrig = n => { const it = job && job.items.find(i => i.name === n); return it ? it.orig || it.name : null; };
 function itemsList() {
@@ -2870,12 +2888,13 @@ function applyDesign() {
   const d = design || {}, th = d.theme || {};
   let css = "";
   const sn = screenNow();
-  $("proj-status-btn").hidden = $("proj-map").hidden = $("proj-print").hidden = $("proj-3d").hidden = $("proj-edit").hidden = sn !== "project";
+  $("proj-status-btn").hidden = $("proj-map").hidden = $("proj-print").hidden = $("proj-3d").hidden = $("proj-draw").hidden = $("proj-edit").hidden = sn !== "project";
   $("proj-pics-box").hidden = sn !== "project"; if (sn === "project") renderPics(true);
-  if (sn === "project" && !(jobs.some(j => j.slug === current) || (custom.find(c => c.slug === current) || {}).print)) $("proj-3d").hidden = true;   // no print, no 3D button (Steven 2026-10-05)
+  if (sn === "project" && !(jobs.some(j => j.slug === current) || (custom.find(c => c.slug === current) || {}).print)) $("proj-3d").hidden = $("proj-draw").hidden = true;   // no print, no 3D button (Steven 2026-10-05)
   $("change-proj").hidden = sn === "addloc" || sn === "capture";   // a page with a big bottom Cancel gets no small top Cancel (Steven)
   $("proj-map").href = "map.html?p=" + encodeURIComponent(current || "");
   $("proj-3d").href = "site3d.html?p=" + encodeURIComponent(current || "");
+  $("proj-draw").href = "draw.html?p=" + encodeURIComponent(current || "");
   const sr = selected && data.items && data.items[selected];
   $("shot-map").hidden = !(sn === "capture" && sr && sr.lat != null && !shot.running);
   if (sr) $("shot-map").href = `map.html?p=${encodeURIComponent(current)}&n=${encodeURIComponent(selected)}`;
