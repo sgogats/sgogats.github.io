@@ -85,6 +85,7 @@
   <button class="primary" id="t-icon">Add icon</button>
   <button class="primary" id="t-line">Draw line</button>
   <button id="t-words">Move words</button>
+  <button id="t-size">Icon size</button>
   <button id="t-undo">Undo</button>
   <button id="t-print">Print: faded</button>
   <button id="t-fit">Whole print</button>
@@ -100,7 +101,7 @@
    GPS Shots use: a typed name that matches one (18 for a lockbox = LB-18) is that location; any other becomes a new
    location GPS Shots lists and can plot (gpsName / gk / gg below are what GPS Shots reads). Lines start on one icon
    and end on another and stay attached when an icon moves. */
-const APP_VERSION = "V 01.03";
+const APP_VERSION = "V 01.04";
 // phones keep an old copy of this page for a while: load the newest one when it changes (same as GPS Shots)
 (async () => {
   try {
@@ -252,8 +253,11 @@ new ResizeObserver(resize).observe($("wrap"));
 
 /* ---------------------------------------------------------------- drawing */
 let printMode = LS.get("draw.print", "faded");   // normal / faded / off
-const ICON = 6;   // icon half-size in print units (about 4 ft) before the on-screen limits
-const iconPx = s => Math.max(8, Math.min(20, ICON * s));
+/* Steven 2026-10-08: icons are part of the print, so they grow and shrink with it when zooming. Their size is set once
+   per print with "Icon size" (asked after the first icon is placed) and kept in doc.iconSize (half-size in print units). */
+const ICON = 6;
+const iconSize = () => (doc && doc.iconSize) || ICON;
+const iconPx = s => Math.max(1.5, iconSize() * s);
 let planPaths = null, planCache = null;
 function planGroups() {
   if (planPaths && planPaths.plan === plan) return planPaths.g;
@@ -367,6 +371,7 @@ function paintIcon(g, it, p, z, selected) {
   iconShape(g, kd, z); g.restore();
 }
 function paintLabel(g, it, p, z, font) {
+  if (font < 5) return;   // too small to read when zoomed far out
   const t = label(it); g.font = `700 ${font}px sans-serif`; g.textAlign = "left"; g.textBaseline = "middle";
   const x = p.x + z * (kindOf(it).shape === "riser" ? 1.8 : 1.45), y = p.y - z * 1.05;
   g.lineWidth = Math.max(3, font * 0.28); g.strokeStyle = "rgba(255,255,255,.95)"; g.lineJoin = "round"; g.strokeText(t, x, y);
@@ -402,7 +407,7 @@ function draw(quick) {
   if (!doc) return;
   if (!view.fitted) fit();
   drawPlanLayer(quick);
-  const lks = lineKinds(), z = iconPx(view.s), font = Math.round(Math.max(11, Math.min(16, z * 0.95)));
+  const lks = lineKinds(), z = iconPx(view.s), font = z * 0.95;
   for (const ln of doc.lines) paintLine(ctx, linePts(ln).map(toScreen), lks[ln.k] || DEF_LINES.c2, 1, sel && sel.type === "line" && sel.id === ln.id);
   if (cur) {
     const a = itemById(cur.a), pts = [a ? { x: a.x, y: a.y } : null, ...chunk(cur.pts)].filter(Boolean).map(toScreen);
@@ -428,7 +433,7 @@ function scaleBar() {
 
 /* ---------------------------------------------------------------- changes, undo, saving */
 let undo = [];
-const snap = () => JSON.stringify({ kinds: doc.kinds, lineKinds: doc.lineKinds, items: doc.items, lines: doc.lines, textMoves: doc.textMoves || {} });
+const snap = () => JSON.stringify({ kinds: doc.kinds, lineKinds: doc.lineKinds, items: doc.items, lines: doc.lines, textMoves: doc.textMoves || {}, iconSize: doc.iconSize || null });
 function before() { undo.push(snap()); if (undo.length > 60) undo.shift(); }
 function changed() {
   kCache = lCache = null; wordsVer++;
@@ -606,6 +611,7 @@ cv.addEventListener("wheel", e => {
 
 function tap(p) {
   const P = toPrint(p);
+  if (mode === "size") return;
   if (mode === "words") { if (!hitWord(p)) toast("Drag a word in a dotted box"); return; }
   if (mode === "place") {
     before();
@@ -656,13 +662,32 @@ function finishLine(end) {
 }
 
 /* ---------------------------------------------------------------- modes and the hint bar */
-function setMode(m) { mode = m; if (m !== "line") { cur = null; hover = null; } if (m !== "view") { sel = null; renderSel(); } showHint(); draw(); }
+function setMode(m) {
+  if (m === "size" && doc.items.length) {   // show the newest icon big enough to judge, below the size bar
+    const it = doc.items[doc.items.length - 1];
+    if (iconPx(view.s) < 18) view.s = 24 / iconSize();
+    view.x = W / 2 - it.x * view.s; view.y = H * 0.65 - it.y * view.s;
+  }
+  mode = m; if (m !== "line") { cur = null; hover = null; } if (m !== "view") { sel = null; renderSel(); } showHint(); draw(); }
 function showHint() {
   const h = $("hint"), t = $("hint-t"), b = $("hint-b");
-  $("t-icon").classList.toggle("on", mode === "place"); $("t-words").classList.toggle("on", mode === "words"); $("t-line").classList.toggle("on", mode === "line");
+  $("t-icon").classList.toggle("on", mode === "place"); $("t-size").classList.toggle("on", mode === "size"); $("t-words").classList.toggle("on", mode === "words"); $("t-line").classList.toggle("on", mode === "line");
   if (mode === "view") { h.hidden = true; return; }
   h.hidden = false; b.innerHTML = "";
   const btn = (txt, fn, cls) => { const x = document.createElement("button"); x.textContent = txt; if (cls) x.className = cls; x.onclick = fn; b.appendChild(x); };
+  if (mode === "size") {
+    const ft = () => ppf ? ` <span class="small">(about ${Math.max(1, Math.round(iconSize() * 2 / ppf))} ft across)</span>` : "";
+    t.innerHTML = `<b>Icon size for this print.</b> Make the icons the size you want. They then grow and shrink with the print when you zoom.<span id="sz-ft">${ft()}</span>`;
+    let s0 = null;
+    const setSz = (v, commit) => { if (s0 == null) s0 = snap(); doc.iconSize = Math.max(0.5, Math.min(80, v)); $("sz-r").value = Math.log(doc.iconSize); $("sz-ft").innerHTML = ft(); draw();
+      if (commit) { undo.push(s0); s0 = null; changed(); } };
+    btn("Smaller", () => setSz(iconSize() / 1.2, true));
+    const r = document.createElement("input"); r.type = "range"; r.id = "sz-r"; r.min = Math.log(0.5); r.max = Math.log(80); r.step = 0.01; r.value = Math.log(iconSize()); r.style.minWidth = "140px"; r.style.flex = "1";
+    r.oninput = () => setSz(Math.exp(+r.value), false); r.onchange = () => setSz(Math.exp(+r.value), true); b.appendChild(r);
+    btn("Bigger", () => setSz(iconSize() * 1.2, true));
+    btn("Done", () => setMode("view"), "primary");
+    return;
+  }
   if (mode === "words") {
     t.innerHTML = `Drag a street name or any word to move it. This only changes your drawing, not the GPS print.`;
     if (Object.keys(doc.textMoves || {}).length) btn("Put all words back", () => { if (!confirm("Put every word back where the print had it?")) return; before(); doc.textMoves = {}; wordsVer++; changed(); showHint(); });
@@ -818,6 +843,7 @@ function nameDialog(it, isNew) {
     const n = inp.value.trim(); if (!n) { toast("Type a name or number"); return; }
     if (!isNew) before();
     it.name = n; closeCard();
+    if (isNew && !doc.iconSize) { doc.iconSize = ICON; changed(); setMode("size"); sel = null; return; }   // first icon on this print: set how big icons are
     if (isNew) { setMode("view"); sel = { type: "icon", id: it.id }; toast(`${label(it)} placed. Turn it below or drag it.`); }
     changed();
   };
@@ -881,6 +907,7 @@ const PM = { normal: "Print: normal", faded: "Print: faded", off: "Print: hidden
 $("t-print").textContent = PM[printMode] || PM.faded;
 $("t-print").onclick = () => { printMode = printMode === "faded" ? "off" : printMode === "off" ? "normal" : "faded"; LS.set("draw.print", printMode); $("t-print").textContent = PM[printMode]; planCache = null; draw(); };
 $("t-words").onclick = () => { if (!plan || !(plan.texts || []).length) { toast("This print has no words to move"); return; } setMode(mode === "words" ? "view" : "words"); };
+$("t-size").onclick = () => setMode(mode === "size" ? "view" : "size");
 $("t-fit").onclick = () => { fit(); draw(); };
 $("t-save").onclick = async () => {
   if (!doc) return;
@@ -890,7 +917,7 @@ $("t-save").onclick = async () => {
   g.fillStyle = "#111"; g.font = "700 30px sans-serif"; g.textBaseline = "middle"; g.textAlign = "left";
   g.fillText(`${projName} · As-built (drawn) · ${new Date().toLocaleDateString()}`, 20, head / 2);
   g.save(); g.translate(0, head); g.save(); g.scale(k, k); g.translate(-b.x0, -b.y0); paintPlan(g, k, printMode === "off" ? 0 : printMode === "faded" ? 0.4 : 1); g.restore();
-  const T = p => ({ x: (p.x - b.x0) * k, y: (p.y - b.y0) * k }), z = Math.max(ICON * k, 26), wm = Math.max(2.2, k), lks = lineKinds();
+  const T = p => ({ x: (p.x - b.x0) * k, y: (p.y - b.y0) * k }), z = iconSize() * k, wm = Math.max(2.2, k), lks = lineKinds();
   for (const ln of doc.lines) paintLine(g, linePts(ln).map(T), lks[ln.k] || DEF_LINES.c2, wm, false);
   for (const it of doc.items) paintIcon(g, it, T(it), z, false);
   for (const it of doc.items) paintLabel(g, it, T(it), z, Math.round(z * 1.05));
