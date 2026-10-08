@@ -101,7 +101,7 @@
    GPS Shots use: a typed name that matches one (18 for a lockbox = LB-18) is that location; any other becomes a new
    location GPS Shots lists and can plot (gpsName / gk / gg below are what GPS Shots reads). Lines start on one icon
    and end on another and stay attached when an icon moves. */
-const APP_VERSION = "V 01.04";
+const APP_VERSION = "V 01.05";
 // phones keep an old copy of this page for a while: load the newest one when it changes (same as GPS Shots)
 (async () => {
   try {
@@ -288,7 +288,8 @@ function textGroups() {
   }
   tgCache = { plan, g }; return g;
 }
-const moveOf = w => ((doc && doc.textMoves) || {})[w.key] || [0, 0];
+const moveOf = w => { const m = ((doc && doc.textMoves) || {})[w.key] || []; return [m[0] || 0, m[1] || 0, m[2] || 0]; };   // [dx, dy, turn in degrees]
+const wCenter = w => ({ x: (w.box.x0 + w.box.x1) / 2, y: (w.box.y0 + w.box.y1) / 2 });
 function paintPlan(g, s, alpha, skip) {   // g is already set to print units; skip = a word being dragged (drawn on its own)
   if (!plan || alpha <= 0) return;
   g.save(); g.globalAlpha = alpha;
@@ -300,12 +301,15 @@ function paintPlan(g, s, alpha, skip) {   // g is already set to print units; sk
   g.restore();
 }
 function paintWord(g, w) {
-  const [dx, dy] = moveOf(w);
+  const [dx, dy, r] = moveOf(w), c = wCenter(w);
+  g.save(); g.translate(dx, dy);
+  if (r) { g.translate(c.x, c.y); g.rotate(r * Math.PI / 180); g.translate(-c.x, -c.y); }
   for (const i of w.idx) {
     const [x, y, t, size, col, rot] = plan.texts[i];
     g.save(); g.translate(x + dx, y + dy); if (rot) g.rotate(-rot * Math.PI / 180);
     g.fillStyle = col || "#333"; g.font = `${size || 8}px sans-serif`; g.textAlign = "left"; g.textBaseline = "alphabetic"; g.fillText(t, 0, 0); g.restore();
   }
+  g.restore();
 }
 const printAlpha = () => printMode === "off" ? 0 : printMode === "faded" ? 0.35 : 1;
 function drawPlanLayer(quick) {
@@ -325,7 +329,12 @@ function drawPlanLayer(quick) {
   if (dragWord) { ctx.save(); ctx.setTransform(DPR, 0, 0, DPR, 0, 0); ctx.translate(view.x, view.y); ctx.scale(view.s, view.s); ctx.globalAlpha = Math.max(printAlpha(), 0.6); paintWord(ctx, dragWord); ctx.restore(); }
 }
 let wordsVer = 0, dragWord = null;
-function wordBoxS(w) { const [dx, dy] = moveOf(w), a = toScreen({ x: w.box.x0 + dx, y: w.box.y0 + dy }), b = toScreen({ x: w.box.x1 + dx, y: w.box.y1 + dy }); return { x0: a.x, y0: a.y, x1: b.x, y1: b.y }; }
+function wordCorners(w) {   // the word's box on screen, turned with the word
+  const [dx, dy, r] = moveOf(w), c = wCenter(w), a = r * Math.PI / 180, cs = Math.cos(a), sn = Math.sin(a), B = w.box;
+  return [[B.x0, B.y0], [B.x1, B.y0], [B.x1, B.y1], [B.x0, B.y1]].map(([x, y]) => toScreen({ x: c.x + (x - c.x) * cs - (y - c.y) * sn + dx, y: c.y + (x - c.x) * sn + (y - c.y) * cs + dy }));
+}
+function wordBoxS(w) { const q = wordCorners(w), xs = q.map(p => p.x), ys = q.map(p => p.y); return { x0: Math.min(...xs), y0: Math.min(...ys), x1: Math.max(...xs), y1: Math.max(...ys) }; }
+let selWord = null;
 function hitWord(p) {
   let best = null, ba = Infinity;
   for (const w of textGroups()) { const b = wordBoxS(w), pad = 6;
@@ -417,7 +426,10 @@ function draw(quick) {
     if (lineStyle === "dots") for (const q of pts.slice(1, hover ? -1 : undefined)) { ctx.beginPath(); ctx.arc(q.x, q.y, 4.5, 0, 7); ctx.fill(); }
   }
   if (mode === "words" && plan) { ctx.save(); ctx.strokeStyle = "rgba(11,110,79,.55)"; ctx.lineWidth = 1.5; ctx.setLineDash([4, 3]);
-    for (const w of textGroups()) { const b = wordBoxS(w); if (b.x1 - b.x0 < 6 && b.y1 - b.y0 < 6) continue; ctx.strokeRect(b.x0 - 2, b.y0 - 2, b.x1 - b.x0 + 4, b.y1 - b.y0 + 4); } ctx.restore(); }
+    for (const w of textGroups()) { const b = wordBoxS(w); if (b.x1 - b.x0 < 6 && b.y1 - b.y0 < 6 && w !== selWord) continue;
+      const q = wordCorners(w); ctx.beginPath(); q.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)); ctx.closePath();
+      if (w === selWord) { ctx.save(); ctx.setLineDash([]); ctx.fillStyle = "rgba(255,210,0,.35)"; ctx.fill(); ctx.strokeStyle = "#0b6e4f"; ctx.lineWidth = 2.5; ctx.stroke(); ctx.restore(); } else ctx.stroke(); }
+    ctx.restore(); }
   for (const it of doc.items) paintIcon(ctx, it, toScreen(it), z, (sel && sel.type === "icon" && sel.id === it.id) || (cur && cur.a === it.id));
   for (const it of doc.items) paintLabel(ctx, it, toScreen(it), z, font);
   if (ppf) scaleBar();
@@ -550,7 +562,7 @@ cv.addEventListener("pointerdown", e => {
     else if (cur) { gest.type = "free"; gest.n = cur.pts.length; }
   } else if (mode === "words") {
     const w = hitWord(p);
-    if (w) { const m = moveOf(w); Object.assign(gest, { type: "word", w, m0: [m[0], m[1]] }); }
+    if (w) Object.assign(gest, { type: "word", w, m0: moveOf(w) });
   } else if (mode === "view" && sel && sel.type === "icon") {
     const hit = hitIcon(p);
     if (hit && hit.id === sel.id) { const P = toPrint(p); Object.assign(gest, { type: "move", it: hit, ox: hit.x, oy: hit.y, dx: P.x - hit.x, dy: P.y - hit.y }); }
@@ -576,7 +588,7 @@ cv.addEventListener("pointermove", e => {
   if (gest.type === "pan") { view.x = gest.v.x + p.x - gest.start.x; view.y = gest.v.y + p.y - gest.start.y; drawSoon(); }
   else if (gest.type === "word") {
     doc.textMoves = doc.textMoves || {}; dragWord = gest.w;
-    doc.textMoves[gest.w.key] = [gest.m0[0] + (p.x - gest.start.x) / view.s, gest.m0[1] + (p.y - gest.start.y) / view.s]; drawSoon();
+    doc.textMoves[gest.w.key] = [gest.m0[0] + (p.x - gest.start.x) / view.s, gest.m0[1] + (p.y - gest.start.y) / view.s, gest.m0[2]]; drawSoon();
   }
   else if (gest.type === "move") { const P = toPrint(p); gest.it.x = P.x - gest.dx; gest.it.y = P.y - gest.dy; drawSoon(); }
   else if (gest.type === "free") {
@@ -592,7 +604,7 @@ function endPtr(e) {
   if (!g.moved) { if (g.type === "free" && g.made && cur && !cur.pts.length) { showHint(); draw(); return; } tap(p); return; }
   if (g.type === "word") {
     const now = doc.textMoves[g.w.key]; doc.textMoves[g.w.key] = g.m0; before(); doc.textMoves[g.w.key] = now;
-    dragWord = null; wordsVer++; changed(); return;
+    dragWord = null; wordsVer++; selWord = g.w; changed(); showHint(); return;
   }
   if (g.type === "move") {
     const nx = g.it.x, ny = g.it.y; g.it.x = g.ox; g.it.y = g.oy; before(); g.it.x = nx; g.it.y = ny; changed();
@@ -612,7 +624,7 @@ cv.addEventListener("wheel", e => {
 function tap(p) {
   const P = toPrint(p);
   if (mode === "size") return;
-  if (mode === "words") { if (!hitWord(p)) toast("Drag a word in a dotted box"); return; }
+  if (mode === "words") { selWord = hitWord(p); if (!selWord) toast("Tap or drag a word in a dotted box"); showHint(); draw(); return; }
   if (mode === "place") {
     before();
     const it = { id: uid(), k: placeKind, name: "", x: P.x, y: P.y, rot: 0 };
@@ -663,6 +675,7 @@ function finishLine(end) {
 
 /* ---------------------------------------------------------------- modes and the hint bar */
 function setMode(m) {
+  selWord = null;
   if (m === "size" && doc.items.length) {   // show the newest icon big enough to judge, below the size bar
     const it = doc.items[doc.items.length - 1];
     if (iconPx(view.s) < 18) view.s = 24 / iconSize();
@@ -689,7 +702,23 @@ function showHint() {
     return;
   }
   if (mode === "words") {
-    t.innerHTML = `Drag a street name or any word to move it. This only changes your drawing, not the GPS print.`;
+    if (selWord) {   // Steven 2026-10-08: turn a word so it lines up with its road
+      const w = selWord;
+      t.innerHTML = `<b>${esc(w.text)}</b>: drag it to move it, or turn it to line up with the road.`;
+      let s0 = null;
+      const setR = (v, commit) => { if (s0 == null) s0 = snap(); const m = moveOf(w); let r = ((Math.round(v) + 180) % 360 + 360) % 360 - 180;
+        doc.textMoves = doc.textMoves || {}; doc.textMoves[w.key] = [m[0], m[1], r]; $("wr-t").textContent = r + "°"; $("wr-r").value = r; wordsVer++; draw();
+        if (commit) { undo.push(s0); s0 = null; changed(); } };
+      btn("⟲ 5°", () => setR(moveOf(w)[2] - 5, true));
+      const r = document.createElement("input"); r.type = "range"; r.id = "wr-r"; r.min = -180; r.max = 180; r.step = 1; r.value = moveOf(w)[2]; r.style.minWidth = "120px"; r.style.flex = "1";
+      r.oninput = () => setR(+r.value, false); r.onchange = () => setR(+r.value, true); b.appendChild(r);
+      btn("⟳ 5°", () => setR(moveOf(w)[2] + 5, true));
+      const tt = document.createElement("b"); tt.id = "wr-t"; tt.textContent = moveOf(w)[2] + "°"; b.appendChild(tt);
+      btn("Put this word back", () => { before(); delete doc.textMoves[w.key]; wordsVer++; changed(); showHint(); });
+      btn("Done", () => { selWord = null; showHint(); draw(); }, "primary");
+      return;
+    }
+    t.innerHTML = `Tap a street name or any word to turn it, or drag it to move it. This only changes your drawing, not the GPS print.`;
     if (Object.keys(doc.textMoves || {}).length) btn("Put all words back", () => { if (!confirm("Put every word back where the print had it?")) return; before(); doc.textMoves = {}; wordsVer++; changed(); showHint(); });
     btn("Done", () => setMode("view"), "primary");
     return;
