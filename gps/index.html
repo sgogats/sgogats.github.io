@@ -769,7 +769,7 @@ html.big #z-full { display: block; }
 </div></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-07.03";
+const APP_VERSION = "2026-10-08.01";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -1254,7 +1254,15 @@ async function openProject(s) {
   try { dropOldRuns(); } catch {}
   render();
   if (p && p.job && gh.on()) {
-    try { const j = await gh.raw(`gps/jobs/${s}.json`); if (j) { job = j; LS.set("job." + s, j) || null; applyPrintEdits(); render(); } }
+    try {
+      const [j, np] = await Promise.all([gh.raw(`gps/jobs/${s}.json`), gh.raw(`gps/prints/${s}.plan.json`).catch(() => undefined)]);
+      if (j) {
+        const was = LS.get("job." + s, null);   // a replacement print (Steven 2026-10-08) wins over the designer's drawing; if it can't load, keep the one already on the phone
+        if (np) j.plan = np; else if (np === undefined && was && was.plan && was.plan.origin) j.plan = was.plan;
+        if (String(job && job.plan && job.plan.origin) !== String(j.plan && j.plan.origin)) view.fitted = false;   // print swapped: fit the new one
+        job = j; LS.set("job." + s, j) || null; applyPrintEdits(); render();
+      }
+    }
     catch (e) { setSync("err", "Offline"); }
   }
   if (p && !p.job && p.print) loadPrint(s);
@@ -2094,7 +2102,7 @@ function sizeCanvas() {
   ctx.setTransform(d, 0, 0, d, 0, 0);
 }
 function extent() {
-  if (job && job.plan && job.plan.size) return { x0: 0, y0: 0, x1: job.plan.size[0], y1: job.plan.size[1] };
+  if (job && job.plan && job.plan.size) { const [ox, oy] = job.plan.origin || [0, 0]; return { x0: ox, y0: oy, x1: ox + job.plan.size[0], y1: oy + job.plan.size[1] }; }   // origin: a replacement print can reach past the designer's 0,0
   const g = gsheet(); if (!g) return null;
   const q = Object.values(data.items).filter(r => r.lat != null).map(g.map), xs = q.map(p => p.x), ys = q.map(p => p.y);
   const pad = Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)) * 0.08 + 20;
