@@ -84,6 +84,7 @@
 <div id="tools">
   <button class="primary" id="t-icon">Add icon</button>
   <button class="primary" id="t-line">Draw line</button>
+  <button id="t-words">Move words</button>
   <button id="t-undo">Undo</button>
   <button id="t-print">Print: faded</button>
   <button id="t-fit">Whole print</button>
@@ -99,7 +100,7 @@
    GPS Shots use: a typed name that matches one (18 for a lockbox = LB-18) is that location; any other becomes a new
    location GPS Shots lists and can plot (gpsName / gk / gg below are what GPS Shots reads). Lines start on one icon
    and end on another and stay attached when an icon moves. */
-const APP_VERSION = "V 01.01";
+const APP_VERSION = "V 01.02";
 const $ = id => document.getElementById(id);
 const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const LS = {
@@ -253,22 +254,48 @@ function planGroups() {
   }
   planPaths = { plan, g: [...m.values()] }; return planPaths.g;
 }
-function paintPlan(g, s, alpha) {   // g is already set to print units
+/* Steven 2026-10-08: street names (and any other words on the print) can be moved on this drawing only.
+   Letters stacked one above the other (R I V E R B E N D) move together as one word. Moves are kept in doc.textMoves {key: [dx, dy]}. */
+let tgCache = null;
+function textGroups() {
+  if (tgCache && tgCache.plan === plan) return tgCache.g;
+  const T = (plan && plan.texts) || [], g = [];
+  for (let i = 0; i < T.length; i++) {
+    const t = T[i], last = g[g.length - 1], lt = last && T[last.idx[last.idx.length - 1]];
+    const stacked = lt && String(t[2]).length === 1 && String(lt[2]).length === 1 && t[4] === lt[4] && t[3] === lt[3] && Math.abs(t[0] - lt[0]) < t[3] * 0.4 && t[1] > lt[1] && t[1] - lt[1] < t[3] * 2.4;
+    if (stacked) last.idx.push(i); else g.push({ key: i + "|" + t[2], idx: [i] });
+  }
+  for (const w of g) {   // a box around the word, in print units
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const i of w.idx) { const [x, y, t, size, , rot] = T[i], z = size || 8, len = String(t).length * z * 0.62, a = -(rot || 0) * Math.PI / 180;
+      for (const [px, py] of [[0, 0], [len, 0], [0, -z], [len, -z]]) { const qx = x + px * Math.cos(a) - py * Math.sin(a), qy = y + px * Math.sin(a) + py * Math.cos(a); x0 = Math.min(x0, qx); y0 = Math.min(y0, qy); x1 = Math.max(x1, qx); y1 = Math.max(y1, qy); } }
+    w.box = { x0, y0, x1, y1 };
+    w.text = w.idx.map(i => T[i][2]).join(w.idx.length > 1 ? "" : " ");
+  }
+  tgCache = { plan, g }; return g;
+}
+const moveOf = w => ((doc && doc.textMoves) || {})[w.key] || [0, 0];
+function paintPlan(g, s, alpha, skip) {   // g is already set to print units; skip = a word being dragged (drawn on its own)
   if (!plan || alpha <= 0) return;
   g.save(); g.globalAlpha = alpha;
   if (plan.img) g.drawImage(plan.img, 0, 0, plan.size[0], plan.size[1]);
   g.lineCap = "butt"; g.lineJoin = "bevel";
   for (const e of planGroups()) { g.strokeStyle = e.col; g.lineWidth = Math.max(e.w, 0.7 / s); g.stroke(e.p); }
-  g.textBaseline = "alphabetic";
-  for (const [x, y, t, size, col, rot] of plan.texts || []) {
-    g.save(); g.translate(x, y); if (rot) g.rotate(-rot * Math.PI / 180);
-    g.fillStyle = col || "#333"; g.font = `${size || 8}px sans-serif`; g.fillText(t, 0, 0); g.restore();
-  }
+  g.textBaseline = "alphabetic"; g.textAlign = "left";
+  for (const w of textGroups()) { if (w !== skip) paintWord(g, w); }
   g.restore();
+}
+function paintWord(g, w) {
+  const [dx, dy] = moveOf(w);
+  for (const i of w.idx) {
+    const [x, y, t, size, col, rot] = plan.texts[i];
+    g.save(); g.translate(x + dx, y + dy); if (rot) g.rotate(-rot * Math.PI / 180);
+    g.fillStyle = col || "#333"; g.font = `${size || 8}px sans-serif`; g.textAlign = "left"; g.textBaseline = "alphabetic"; g.fillText(t, 0, 0); g.restore();
+  }
 }
 const printAlpha = () => printMode === "off" ? 0 : printMode === "faded" ? 0.35 : 1;
 function drawPlanLayer(quick) {
-  const key = [view.x, view.y, view.s, W, H, printMode].join("|");
+  const key = [view.x, view.y, view.s, W, H, printMode, wordsVer, dragWord ? dragWord.key : ""].join("|");
   if (quick && planCache && planCache.key !== key && planCache.mode === printMode) {   // fingers moving: slide the last picture, the sharp one follows
     const L = planCache.v, k = view.s / L.s;
     ctx.drawImage(planCache.c, view.x - L.x * k, view.y - L.y * k, W * k, H * k); return;
@@ -277,10 +304,19 @@ function drawPlanLayer(quick) {
     const c = planCache && planCache.c.width === cv.width && planCache.c.height === cv.height ? planCache.c : Object.assign(document.createElement("canvas"), { width: cv.width, height: cv.height });
     const g = c.getContext("2d"); g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, c.width, c.height);
     g.setTransform(DPR, 0, 0, DPR, 0, 0); g.translate(view.x, view.y); g.scale(view.s, view.s);
-    paintPlan(g, view.s, printAlpha());
+    paintPlan(g, view.s, printAlpha(), dragWord);
     planCache = { key, c, mode: printMode, v: { x: view.x, y: view.y, s: view.s } };
   }
   ctx.drawImage(planCache.c, 0, 0, W, H);
+  if (dragWord) { ctx.save(); ctx.setTransform(DPR, 0, 0, DPR, 0, 0); ctx.translate(view.x, view.y); ctx.scale(view.s, view.s); ctx.globalAlpha = Math.max(printAlpha(), 0.6); paintWord(ctx, dragWord); ctx.restore(); }
+}
+let wordsVer = 0, dragWord = null;
+function wordBoxS(w) { const [dx, dy] = moveOf(w), a = toScreen({ x: w.box.x0 + dx, y: w.box.y0 + dy }), b = toScreen({ x: w.box.x1 + dx, y: w.box.y1 + dy }); return { x0: a.x, y0: a.y, x1: b.x, y1: b.y }; }
+function hitWord(p) {
+  let best = null, ba = Infinity;
+  for (const w of textGroups()) { const b = wordBoxS(w), pad = 6;
+    if (p.x >= b.x0 - pad && p.x <= b.x1 + pad && p.y >= b.y0 - pad && p.y <= b.y1 + pad) { const ar = (b.x1 - b.x0) * (b.y1 - b.y0); if (ar < ba) { ba = ar; best = w; } } }
+  return best;
 }
 
 function iconShape(g, kd, z) {
@@ -365,6 +401,8 @@ function draw(quick) {
     ctx.fillStyle = (lks[cur.k] || DEF_LINES.c2).color;
     if (lineStyle === "dots") for (const q of pts.slice(1, hover ? -1 : undefined)) { ctx.beginPath(); ctx.arc(q.x, q.y, 4.5, 0, 7); ctx.fill(); }
   }
+  if (mode === "words" && plan) { ctx.save(); ctx.strokeStyle = "rgba(11,110,79,.55)"; ctx.lineWidth = 1.5; ctx.setLineDash([4, 3]);
+    for (const w of textGroups()) { const b = wordBoxS(w); if (b.x1 - b.x0 < 6 && b.y1 - b.y0 < 6) continue; ctx.strokeRect(b.x0 - 2, b.y0 - 2, b.x1 - b.x0 + 4, b.y1 - b.y0 + 4); } ctx.restore(); }
   for (const it of doc.items) paintIcon(ctx, it, toScreen(it), z, (sel && sel.type === "icon" && sel.id === it.id) || (cur && cur.a === it.id));
   for (const it of doc.items) paintLabel(ctx, it, toScreen(it), z, font);
   if (ppf) scaleBar();
@@ -380,10 +418,10 @@ function scaleBar() {
 
 /* ---------------------------------------------------------------- changes, undo, saving */
 let undo = [];
-const snap = () => JSON.stringify({ kinds: doc.kinds, lineKinds: doc.lineKinds, items: doc.items, lines: doc.lines });
+const snap = () => JSON.stringify({ kinds: doc.kinds, lineKinds: doc.lineKinds, items: doc.items, lines: doc.lines, textMoves: doc.textMoves || {} });
 function before() { undo.push(snap()); if (undo.length > 60) undo.shift(); }
 function changed() {
-  kCache = lCache = null;
+  kCache = lCache = null; wordsVer++;
   for (const it of doc.items) stamp(it);
   doc.project = projName; doc.updated = Date.now(); LS.set("drawn." + slug, doc); scheduleSave(); draw(); renderSel();
 }
@@ -456,7 +494,7 @@ async function load() {
     collectNames(job, rd);
     sha = dm ? dm.sha : "";
     const remote = dm ? JSON.parse(decodeB64(dm.content)) : null;
-    if (remote && (remote.updated || 0) > (doc.updated || 0)) { doc = Object.assign(newDoc(), remote); kCache = lCache = null; LS.set("drawn." + slug, doc); setSave("Saved"); }
+    if (remote && (remote.updated || 0) > (doc.updated || 0)) { doc = Object.assign(newDoc(), remote); kCache = lCache = null; wordsVer++; LS.set("drawn." + slug, doc); setSave("Saved"); }
     else if (doc.updated && (!remote || (remote.updated || 0) < doc.updated)) scheduleSave();
     else setSave(remote ? "Saved" : "Nothing drawn yet");
     $("proj").textContent = projName + (plan ? "" : " · no print found");
@@ -495,6 +533,9 @@ cv.addEventListener("pointerdown", e => {
     const hit = hitIcon(p);
     if (!cur && hit) { cur = { k: lineKind, a: hit.id, pts: [] }; gest.type = "free"; gest.made = true; gest.n = 0; showHint(); }
     else if (cur) { gest.type = "free"; gest.n = cur.pts.length; }
+  } else if (mode === "words") {
+    const w = hitWord(p);
+    if (w) { const m = moveOf(w); Object.assign(gest, { type: "word", w, m0: [m[0], m[1]] }); }
   } else if (mode === "view" && sel && sel.type === "icon") {
     const hit = hitIcon(p);
     if (hit && hit.id === sel.id) { const P = toPrint(p); Object.assign(gest, { type: "move", it: hit, ox: hit.x, oy: hit.y, dx: P.x - hit.x, dy: P.y - hit.y }); }
@@ -518,6 +559,10 @@ cv.addEventListener("pointermove", e => {
   if (!gest.moved && Math.hypot(p.x - gest.start.x, p.y - gest.start.y) > 8) gest.moved = true;
   if (!gest.moved) return;
   if (gest.type === "pan") { view.x = gest.v.x + p.x - gest.start.x; view.y = gest.v.y + p.y - gest.start.y; drawSoon(); }
+  else if (gest.type === "word") {
+    doc.textMoves = doc.textMoves || {}; dragWord = gest.w;
+    doc.textMoves[gest.w.key] = [gest.m0[0] + (p.x - gest.start.x) / view.s, gest.m0[1] + (p.y - gest.start.y) / view.s]; drawSoon();
+  }
   else if (gest.type === "move") { const P = toPrint(p); gest.it.x = P.x - gest.dx; gest.it.y = P.y - gest.dy; drawSoon(); }
   else if (gest.type === "free") {
     if (Math.hypot(p.x - gest.last.x, p.y - gest.last.y) >= 4) { const P = toPrint(p); cur.pts.push(P.x, P.y); gest.last = p; }
@@ -530,6 +575,10 @@ function endPtr(e) {
   if (pinch) { if (ptrs.size < 2) pinch = null; draw(); return; }
   const g = gest; gest = null; if (!g) return;
   if (!g.moved) { if (g.type === "free" && g.made && cur && !cur.pts.length) { showHint(); draw(); return; } tap(p); return; }
+  if (g.type === "word") {
+    const now = doc.textMoves[g.w.key]; doc.textMoves[g.w.key] = g.m0; before(); doc.textMoves[g.w.key] = now;
+    dragWord = null; wordsVer++; changed(); return;
+  }
   if (g.type === "move") {
     const nx = g.it.x, ny = g.it.y; g.it.x = g.ox; g.it.y = g.oy; before(); g.it.x = nx; g.it.y = ny; changed();
   } else if (g.type === "free") {
@@ -547,6 +596,7 @@ cv.addEventListener("wheel", e => {
 
 function tap(p) {
   const P = toPrint(p);
+  if (mode === "words") { if (!hitWord(p)) toast("Drag a word in a dotted box"); return; }
   if (mode === "place") {
     before();
     const it = { id: uid(), k: placeKind, name: "", x: P.x, y: P.y, rot: 0 };
@@ -599,10 +649,16 @@ function finishLine(end) {
 function setMode(m) { mode = m; if (m !== "line") { cur = null; hover = null; } if (m !== "view") { sel = null; renderSel(); } showHint(); draw(); }
 function showHint() {
   const h = $("hint"), t = $("hint-t"), b = $("hint-b");
-  $("t-icon").classList.toggle("on", mode === "place"); $("t-line").classList.toggle("on", mode === "line");
+  $("t-icon").classList.toggle("on", mode === "place"); $("t-words").classList.toggle("on", mode === "words"); $("t-line").classList.toggle("on", mode === "line");
   if (mode === "view") { h.hidden = true; return; }
   h.hidden = false; b.innerHTML = "";
   const btn = (txt, fn, cls) => { const x = document.createElement("button"); x.textContent = txt; if (cls) x.className = cls; x.onclick = fn; b.appendChild(x); };
+  if (mode === "words") {
+    t.innerHTML = `Drag a street name or any word to move it. This only changes your drawing, not the GPS print.`;
+    if (Object.keys(doc.textMoves || {}).length) btn("Put all words back", () => { if (!confirm("Put every word back where the print had it?")) return; before(); doc.textMoves = {}; wordsVer++; changed(); showHint(); });
+    btn("Done", () => setMode("view"), "primary");
+    return;
+  }
   if (mode === "place") {
     t.innerHTML = `Tap the print where the <b>${esc(kinds()[placeKind].name)}</b> goes. Two fingers to zoom.`;
     btn("Done", () => setMode("view"));
@@ -814,6 +870,7 @@ function lineEditor(k) {
 const PM = { normal: "Print: normal", faded: "Print: faded", off: "Print: hidden" };
 $("t-print").textContent = PM[printMode] || PM.faded;
 $("t-print").onclick = () => { printMode = printMode === "faded" ? "off" : printMode === "off" ? "normal" : "faded"; LS.set("draw.print", printMode); $("t-print").textContent = PM[printMode]; planCache = null; draw(); };
+$("t-words").onclick = () => { if (!plan || !(plan.texts || []).length) { toast("This print has no words to move"); return; } setMode(mode === "words" ? "view" : "words"); };
 $("t-fit").onclick = () => { fit(); draw(); };
 $("t-save").onclick = async () => {
   if (!doc) return;
