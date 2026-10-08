@@ -101,7 +101,7 @@
    GPS Shots use: a typed name that matches one (18 for a lockbox = LB-18) is that location; any other becomes a new
    location GPS Shots lists and can plot (gpsName / gk / gg below are what GPS Shots reads). Lines start on one icon
    and end on another and stay attached when an icon moves. */
-const APP_VERSION = "V 01.06";
+const APP_VERSION = "V 01.07";
 // phones keep an old copy of this page for a while: load the newest one when it changes (same as GPS Shots)
 (async () => {
   try {
@@ -954,7 +954,7 @@ $("t-save").onclick = async () => {
   g.fillText(`${projName} · As-built`, M, M + head / 2);
   g.textAlign = "right"; g.font = "500 40px sans-serif"; g.fillText(new Date().toLocaleDateString(), PW - M, M + head / 2);
   g.save(); g.translate(ox, oy); g.scale(k, k); g.translate(-b.x0, -b.y0); paintPlan(g, k, printMode === "off" ? 0 : printMode === "faded" ? 0.4 : 1); g.restore();
-  const T = p => ({ x: (p.x - b.x0) * k + ox, y: (p.y - b.y0) * k + oy }), z = iconSize() * k, wm = Math.max(2.5, k * 0.9), lks = lineKinds();
+  const T = p => ({ x: (p.x - b.x0) * k + ox, y: (p.y - b.y0) * k + oy }), z = iconSize() * k, wm = 0.9, lks = lineKinds();
   for (const ln of doc.lines) paintLine(g, linePts(ln).map(T), lks[ln.k] || DEF_LINES.c2, wm, false);
   for (const it of doc.items) paintIcon(g, it, T(it), z, false);
   for (const it of doc.items) paintLabel(g, it, T(it), z, z * 1.05);
@@ -970,7 +970,7 @@ $("t-save").onclick = async () => {
     g.fillStyle = "rgba(255,255,255,.95)"; g.strokeStyle = "#111"; g.lineWidth = 3; g.fillRect(x, y, w, h); g.strokeRect(x, y, w, h);
     let yy = y + 15 + lh / 2; g.font = "600 40px sans-serif"; g.textAlign = "left"; g.textBaseline = "middle";
     for (const kk of usedK) { const kd = kinds()[kk]; if (!kd) continue; g.save(); g.translate(x + 60, yy); iconShape(g, kd, 22); g.restore(); g.fillStyle = "#111"; g.fillText(kd.name, x + 120, yy); yy += lh; }
-    for (const lk of usedL) { const v = lks[lk]; if (!v) continue; paintLine(g, [{ x: x + 20, y: yy }, { x: x + 100, y: yy }], v, 3, false); g.fillStyle = "#111"; g.fillText(v.name, x + 120, yy); yy += lh; }
+    for (const lk of usedL) { const v = lks[lk]; if (!v) continue; paintLine(g, [{ x: x + 20, y: yy }, { x: x + 100, y: yy }], v, 2, false); g.fillStyle = "#111"; g.fillText(v.name, x + 120, yy); yy += lh; }
   }
   try {
     if (!window.jspdf) await loadScript(JSPDF);
