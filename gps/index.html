@@ -770,7 +770,7 @@ html.big #z-full { display: block; }
 </div></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-08.02";
+const APP_VERSION = "2026-10-08.03";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -2894,7 +2894,7 @@ function applyDesign() {
   $("change-proj").hidden = sn === "addloc" || sn === "capture";   // a page with a big bottom Cancel gets no small top Cancel (Steven)
   $("proj-map").href = "map.html?p=" + encodeURIComponent(current || "");
   $("proj-3d").href = "site3d.html?p=" + encodeURIComponent(current || "");
-  $("proj-draw").href = "draw.html?p=" + encodeURIComponent(current || "");
+  $("proj-draw").href = "draw.html?p=" + encodeURIComponent(current || "") + "&v=" + APP_VERSION;   // new GPS Shots version = fresh Draw page too
   const sr = selected && data.items && data.items[selected];
   $("shot-map").hidden = !(sn === "capture" && sr && sr.lat != null && !shot.running);
   if (sr) $("shot-map").href = `map.html?p=${encodeURIComponent(current)}&n=${encodeURIComponent(selected)}`;

@@ -22,7 +22,7 @@
   button.on { outline:3px solid var(--accent); outline-offset:-3px; font-weight:600; }
   #bar { display:flex; align-items:center; gap:8px; padding:6px 10px; padding-top:max(6px, env(safe-area-inset-top)); background:var(--panel); border-bottom:1px solid var(--line); }
   #bar .ttl { flex:1; min-width:0; line-height:1.15; }
-  #bar .ttl b { display:block; font-size:17px; }
+  #bar .ttl b { display:block; font-size:17px; white-space:nowrap; }
   #bar .ttl span { display:block; font-size:13px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   #bar .meta { text-align:right; font-size:12px; color:var(--muted); line-height:1.25; white-space:nowrap; max-width:42vw; overflow:hidden; text-overflow:ellipsis; }
   #bar .meta div { overflow:hidden; text-overflow:ellipsis; }
@@ -38,8 +38,8 @@
   #sel .nm { font-weight:700; font-size:17px; flex:1; }
   #sel input[type=range] { flex:1; min-width:120px; height:34px; }
   #sel select { font:inherit; min-height:44px; border-radius:10px; border:1px solid var(--line); background:var(--panel); color:var(--ink); padding:0 8px; }
-  #tools { display:flex; gap:6px; padding:8px 10px; padding-bottom:max(8px, env(safe-area-inset-bottom)); background:var(--panel); border-top:1px solid var(--line); overflow-x:auto; }
-  #tools button { flex:1 0 auto; }
+  #tools { display:flex; gap:6px; padding:8px 10px; padding-bottom:max(8px, env(safe-area-inset-bottom)); background:var(--panel); border-top:1px solid var(--line); flex-wrap:wrap; }
+  #tools button { flex:1 0 auto; padding:8px 10px; }
   .small { font-size:13px; color:var(--muted); }
   #modal { position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:20; display:flex; align-items:flex-end; justify-content:center; }
   #card { background:var(--panel); color:var(--ink); width:100%; max-width:640px; max-height:92dvh; overflow:auto; border-radius:16px 16px 0 0; padding:14px 14px max(14px, env(safe-area-inset-bottom)); position:relative; }
@@ -100,7 +100,17 @@
    GPS Shots use: a typed name that matches one (18 for a lockbox = LB-18) is that location; any other becomes a new
    location GPS Shots lists and can plot (gpsName / gk / gg below are what GPS Shots reads). Lines start on one icon
    and end on another and stay attached when an icon moves. */
-const APP_VERSION = "V 01.02";
+const APP_VERSION = "V 01.03";
+// phones keep an old copy of this page for a while: load the newest one when it changes (same as GPS Shots)
+(async () => {
+  try {
+    const r = await fetch(location.pathname + "?check=" + Date.now(), { cache: "no-store" });
+    const m = (await r.text()).match(/APP_VERSION = "([^"]+)"/);
+    if (m && m[1] !== APP_VERSION && sessionStorage.getItem("draw.upd") !== m[1]) {
+      sessionStorage.setItem("draw.upd", m[1]); const q = new URLSearchParams(location.search); q.set("v", m[1]); location.replace(location.pathname + "?" + q);
+    }
+  } catch {}
+})();
 const $ = id => document.getElementById(id);
 const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const LS = {
