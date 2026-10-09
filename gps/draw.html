@@ -101,7 +101,7 @@
    GPS Shots use: a typed name that matches one (18 for a lockbox = LB-18) is that location; any other becomes a new
    location GPS Shots lists and can plot (gpsName / gk / gg below are what GPS Shots reads). Lines start on one icon
    and end on another and stay attached when an icon moves. */
-const APP_VERSION = "V 01.08";
+const APP_VERSION = "V 01.09";
 // phones keep an old copy of this page for a while: load the newest one when it changes (same as GPS Shots)
 (async () => {
   try {
@@ -161,6 +161,7 @@ const DEF_KINDS = {
   pole:    { name: "Pole", color: "#222222", shape: "pole", grp: "Telecom", gk: "Pole line", gg: "Pole line", match: ["Pole line", "Pole"], pre: "" },
   riser:   { name: "Riser pole", color: "#222222", shape: "riser", grp: "Telecom", gk: "Riser pole", gg: "Vaults, cans and poles", match: ["Riser pole"], pre: "rp" },
   ped:     { name: "Pedestal", color: "#4b5563", shape: "ped", grp: "Telecom", gk: "Pedestal", gg: "Pedestal", match: ["Pedestal"] },
+  nid:     { name: "NID panel", color: "#1f6feb", shape: "box", letter: "NID", grp: "Telecom", gk: "NID panel", gg: "NID panels" },
   xfmr:    { name: "Transformer", color: "#c1121f", shape: "box", letter: "T", grp: "Electric" },
   emeter:  { name: "Electric meter", color: "#c1121f", shape: "circ", letter: "M", grp: "Electric" },
   ebox:    { name: "Electric handhole", color: "#c1121f", shape: "box", letter: "E", grp: "Electric" },
