@@ -101,7 +101,7 @@
    GPS Shots use: a typed name that matches one (18 for a lockbox = LB-18) is that location; any other becomes a new
    location GPS Shots lists and can plot (gpsName / gk / gg below are what GPS Shots reads). Lines start on one icon
    and end on another and stay attached when an icon moves. */
-const APP_VERSION = "V 01.10";
+const APP_VERSION = "V 01.11";
 // phones keep an old copy of this page for a while: load the newest one when it changes (same as GPS Shots)
 (async () => {
   try {
@@ -403,6 +403,19 @@ function paintLine(g, pts, lk, wmul, selected) {
   g.strokeStyle = lk.color; g.lineWidth = lk.w * wmul; g.setLineDash((DASH[lk.dash] || []).map(v => v * wmul)); g.stroke();
   g.restore();
 }
+/* Steven 2026-10-09: tap a line and type its length; it shows on the middle of the line (screen and PDF). */
+const lenText = ln => { const t = String(ln.len || "").trim(); return !t ? "" : /^[\d.,]+$/.test(t) ? t + " ft" : t; };
+function paintLen(g, pts, t, font, color) {
+  if (!t || pts.length < 2 || font < 5) return;
+  let tot = 0; for (let i = 1; i < pts.length; i++) tot += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+  let half = tot / 2, i = 1;
+  for (; i < pts.length - 1; i++) { const d = Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y); if (half <= d) break; half -= d; }
+  const p = pts[i - 1], q = pts[i], d = Math.hypot(q.x - p.x, q.y - p.y) || 1, x = p.x + (q.x - p.x) * half / d, y = p.y + (q.y - p.y) * half / d;
+  let a = Math.atan2(q.y - p.y, q.x - p.x); if (a > Math.PI / 2) a -= Math.PI; if (a < -Math.PI / 2) a += Math.PI;   // never upside down
+  g.save(); g.translate(x, y); g.rotate(a); g.font = `700 ${font}px sans-serif`; g.textAlign = "center"; g.textBaseline = "bottom";
+  const off = -font * 0.25; g.lineWidth = Math.max(3, font * 0.28); g.strokeStyle = "rgba(255,255,255,.95)"; g.lineJoin = "round"; g.strokeText(t, 0, off);
+  g.fillStyle = color || "#111"; g.fillText(t, 0, off); g.restore();
+}
 const feet = pts => { if (!ppf) return null; let d = 0; for (let i = 1; i < pts.length; i++) d += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y); return d / ppf; };
 
 let mode = "view", placeKind = null, lineKind = LS.get("draw.lk", "c2"), lineStyle = LS.get("draw.ls", "free"), cur = null, sel = null, hover = null;
@@ -431,6 +444,7 @@ function draw(quick) {
       const q = wordCorners(w); ctx.beginPath(); q.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)); ctx.closePath();
       if (w === selWord) { ctx.save(); ctx.setLineDash([]); ctx.fillStyle = "rgba(255,210,0,.35)"; ctx.fill(); ctx.strokeStyle = "#0b6e4f"; ctx.lineWidth = 2.5; ctx.stroke(); ctx.restore(); } else ctx.stroke(); }
     ctx.restore(); }
+  for (const ln of doc.lines) paintLen(ctx, linePts(ln).map(toScreen), lenText(ln), font, "#111");
   for (const it of doc.items) paintIcon(ctx, it, toScreen(it), z, (sel && sel.type === "icon" && sel.id === it.id) || (cur && cur.a === it.id));
   for (const it of doc.items) paintLabel(ctx, it, toScreen(it), z, font);
   if (ppf) scaleBar();
@@ -778,8 +792,12 @@ function renderSel() {
     const lks = lineKinds(), a = itemById(ln.a), b = itemById(ln.b), f = feet(linePts(ln));
     box.innerHTML = `<div class="row"><span class="nm">${esc((lks[ln.k] || {}).name || "Line")}</span><span class="small">${esc(a ? label(a) : "?")} to ${esc(b ? label(b) : "?")}${f != null ? " · " + Math.round(f) + " ft" : ""}</span></div>
       <div class="row"><select id="s-lk" aria-label="Line type">${Object.entries(lks).map(([k, v]) => `<option value="${k}"${k === ln.k ? " selected" : ""}>${esc(v.name)}</option>`).join("")}</select>
+      <label class="small" style="display:flex;align-items:center;gap:6px">Length <input type="text" id="s-len" inputmode="decimal" value="${esc(ln.len || "")}" placeholder="${f != null ? Math.round(f) : "ft"}" autocomplete="off" style="width:90px;font:inherit;min-height:44px;border-radius:10px;border:1px solid var(--line);padding:0 8px"> ft</label>
       <button id="s-del" class="danger">Delete</button><button id="s-done" class="primary" style="margin-left:auto">Done</button></div>`;
     $("s-lk").onchange = e => { before(); ln.k = e.target.value; changed(); };
+    let lenSnap = null;   // one undo step for the whole typed length
+    $("s-len").oninput = e => { if (!lenSnap) { before(); lenSnap = 1; } const v = e.target.value.trim(); if (v) ln.len = v; else delete ln.len; doc.updated = Date.now(); LS.set("drawn." + slug, doc); scheduleSave(); draw(); };   // not changed(): that redraws this box and drops the keyboard
+    $("s-len").onblur = () => { lenSnap = null; };
   }
   $("s-del").onclick = delSel;
   $("s-done").onclick = () => { sel = null; renderSel(); draw(); };
@@ -899,7 +917,7 @@ function linePicker() {
     <div class="list">${Object.entries(lks).map(([k, v]) => `<button data-k="${k}" class="${!editLines && k === lineKind ? "on" : ""}">${sw(v)} ${esc(v.name)}</button>`).join("")}</div>
     ${editLines ? "" : `<h3>How to draw it</h3><div class="seg"><button data-st="free" class="${lineStyle === "free" ? "on" : ""}">Freehand with finger</button><button data-st="dots" class="${lineStyle === "dots" ? "on" : ""}">Dot to dot</button></div>
     <p class="small">Lines always start on one icon and end on another, and stay attached when you move an icon.</p>`}
-    <div class="acts">${editLines ? `<button id="lp-new">+ New line</button>` : ""}<button id="lp-edit">${editLines ? "Done editing" : "Rename / color"}</button><button data-cancel id="lp-x">Close</button></div>`, "D-5");
+    <div class="acts"><button id="lp-new">+ New conduit / line</button><button id="lp-edit">${editLines ? "Done editing" : "Rename / color"}</button><button data-cancel id="lp-x">Close</button></div>`, "D-5");
   for (const b of $("card").querySelectorAll("[data-st]")) b.onclick = () => { lineStyle = b.dataset.st; LS.set("draw.ls", lineStyle); linePicker(); };
   for (const b of $("card").querySelectorAll("[data-k]")) b.onclick = () => {
     if (editLines) { lineEditor(b.dataset.k); return; }
@@ -907,7 +925,7 @@ function linePicker() {
   };
   $("lp-edit").onclick = () => { editLines = !editLines; linePicker(); };
   $("lp-x").onclick = closeCard;
-  if (editLines) $("lp-new").onclick = () => lineEditor(null);
+  $("lp-new").onclick = () => lineEditor(null);
 }
 $("t-line").onclick = () => { if (mode === "line") { setMode("view"); return; } editLines = false; linePicker(); };
 
@@ -964,6 +982,7 @@ $("t-save").onclick = async () => {
   g.save(); g.translate(ox, oy); g.scale(k, k); g.translate(-b.x0, -b.y0); paintPlan(g, k, printMode === "off" ? 0 : printMode === "faded" ? 0.4 : 1); g.restore();
   const T = p => ({ x: (p.x - b.x0) * k + ox, y: (p.y - b.y0) * k + oy }), z = iconSize() * k, wm = Math.max(0.2, z * 0.11), lks = lineKinds();
   for (const ln of doc.lines) paintLine(g, linePts(ln).map(T), lks[ln.k] || DEF_LINES.c2, wm, false);
+  for (const ln of doc.lines) paintLen(g, linePts(ln).map(T), lenText(ln), z * 1.05, "#111");
   for (const it of doc.items) paintIcon(g, it, T(it), z, false);
   for (const it of doc.items) paintLabel(g, it, T(it), z, z * 1.05);
   if (ppf) {   // scale bar
