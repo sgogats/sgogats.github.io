@@ -1999,13 +1999,13 @@ function saveLocal() { data.updated = Date.now(); if (!LS.set("data." + current,
    data.nameFix {old: {to, t}} renames a location's GPS, spot on the print, second name, conduit ends and pictures; merge() applies it
    to every phone's copy, so an older copy can't bring the dashed name back. Boxes from the designer also get a printRen entry,
    so the designer renames them on its next "Pull GPS spots from phone". Runs once per project (data.dashFix). Two names that would
-   end up the same (V-22 and V – 22) are left alone for Steven to decide. */
+   end up the same (V-22 and V – 22) become one: the copy placed on the print keeps its GPS (Steven 2026-10-09). */
 const undash = n => String(n).replace(/\s*[-\u2010-\u2015\u2212]\s*/g, " ").replace(/\s+/g, " ").trim();
 function fixNames(d) {
   for (const [old, v] of Object.entries(d.nameFix || {})) {
     const nu = v && v.to; if (!nu || nu === old) continue;
     const it = d.items || {};
-    if (it[old]) { if (!it[nu] || (it[nu].t || 0) < (it[old].t || 0)) it[nu] = it[old]; delete it[old]; }
+    if (it[old]) { if (!v.drop && (!it[nu] || (it[nu].t || 0) < (it[old].t || 0))) it[nu] = it[old]; delete it[old]; }   // drop: a doubled copy whose GPS gives way to the one placed on the print
     const c = d.controls || {};
     if (c[old] && c[old].x != null) { if (!c[nu] || c[nu].x == null) c[nu] = c[old]; c[old] = {}; }
     if (d.labels && d.labels[old]) { if (!d.labels[nu]) d.labels[nu] = d.labels[old]; d.labels[old] = ""; }
@@ -2027,12 +2027,18 @@ function dashFixOnce() {
     ...Object.keys(data.controls || {}).filter(n => data.controls[n] && data.controls[n].x != null), ...Object.keys(data.labels || {}).filter(n => data.labels[n]),
     ...Object.values(data.runs || {}).flatMap(r => [r.from, r.to]), ...((drawnDoc && drawnDoc.slug === current && drawnDoc.items) || []).map(i => i.gpsName)];
   for (const n of more) if (n && !shown.has(n)) shown.set(n, null);
-  const lower = new Map(); for (const n of shown.keys()) { const k = undash(n).toLowerCase(); lower.set(k, (lower.get(k) || 0) + 1); }
+  const same = new Map(); for (const n of shown.keys()) { const k = undash(n).toLowerCase(); same.set(k, [...(same.get(k) || []), n]); }
+  const placed = n => data.controls && data.controls[n] && data.controls[n].x != null;
   const now = Date.now(), fix = Object.assign({}, data.nameFix);
   let n = 0;
   for (const [name, orig] of shown) {
-    const nu = undash(name); if (nu === name || !nu || lower.get(nu.toLowerCase()) > 1) continue;
-    fix[name] = { to: nu, t: now }; n++;
+    let nu = undash(name), drop = false; if (nu === name || !nu) continue;
+    const grp = same.get(nu.toLowerCase());
+    if (grp.length > 1) {   // Steven 2026-10-09: a location saved twice (V-22 and V – 22) becomes one, keeping the copy placed on the print and every picture and conduit run
+      const keep = grp.filter(placed); if (grp.length !== 2 || keep.length !== 1) continue;
+      const des = grp.find(x => shown.get(x)); nu = undash(des || keep[0]); drop = name !== keep[0];
+    }
+    fix[name] = drop ? { to: nu, t: now, drop: true } : { to: nu, t: now }; n++;
     if (orig) { const was = ren[orig] || {}; data.printRen = Object.assign({}, data.printRen, { [orig]: { to: nu, prev: [...new Set([...(was.prev || []), name])].filter(x => x !== nu), t: now } }); }
   }
   data.dashFix = now; data.nameFix = fix; fixNames(data); saveLocal();
