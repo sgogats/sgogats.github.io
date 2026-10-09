@@ -92,7 +92,7 @@
    by look (same color + thickness) or with AI. His fixes are kept as examples for next time. Pages with match lines are
    pieced together into one whole-project sheet. NOTHING outside this page changes until he presses "Add to project".
    Work is kept in ASBUILT_MAKER gps/cleanup/<id>.json (+ <id>-page<n>.json / .jpg); the original print is never changed. */
-const APP_VERSION = "V 01.01";
+const APP_VERSION = "V 01.02";
 (async () => {   // phones keep an old copy of this page for a while: load the newest one when it changes (same as GPS Shots)
   try {
     const r = await fetch(location.pathname + "?check=" + Date.now(), { cache: "no-store" });
@@ -393,13 +393,23 @@ async function fromProject() {
     await startWork(name + " print", { kind: "project", slug: projSlug, name, job: isJob, print: c && c.print || null }, raw);
   } catch (e) { toast("Couldn't get the print: " + e.message); }
 }
+/* Steven 2026-10-09 (iPhone): after picking the file the screen went blank gray. iPhones can take a while to hand over a big
+   file from Files / iCloud, so the screen now says it's waiting, and the file box lives on the page (iPhones can drop one that doesn't). */
+let fileBox = null;
 function pickFile() {
-  const inp = document.createElement("input"); inp.type = "file"; inp.accept = "application/pdf,.pdf,image/*";
+  if (fileBox) fileBox.remove();
+  const inp = fileBox = document.createElement("input"); inp.type = "file"; inp.accept = "application/pdf,.pdf,image/*";
+  inp.style.cssText = "position:fixed;left:-1000px;top:0;width:1px;height:1px;opacity:0"; document.body.appendChild(inp);
+  modal(`<span class="pg">Page C-1</span><h2>Waiting for your file</h2><p>Pick the print in the box that opens.</p>
+    <p class="note">A big set coming from Files or iCloud can take a minute or two to arrive. Keep this screen open.</p>
+    <div class="acts"><button id="w-x">Cancel</button></div>`, true);
+  $("w-x").onclick = () => { inp.remove(); showStart(); };
+  inp.addEventListener("cancel", () => { inp.remove(); showStart(); });
   inp.onchange = async () => {
-    const f = inp.files[0]; if (!f) return;
+    const f = inp.files[0]; if (!f) { showStart(); return; }
     try {
       const isPdf = /\.pdf$/i.test(f.name) || f.type === "application/pdf";
-      modal(`<span class="pg">Page C-1</span><h2>Reading your print</h2><p id="rd-t">Opening the file…</p><p class="note">When it's done you'll see every page, and you pick the ones you want.</p>`);
+      modal(`<span class="pg">Page C-1</span><h2>Reading your print</h2><p id="rd-t">Opening the file (${Math.round(f.size / 1e6)} MB)…</p><p class="note">When it's done you'll see every page, and you pick the ones you want.</p>`);
       const raw = isPdf ? await pdfQuick(f, (n, of) => { if ($("rd-t")) $("rd-t").textContent = `Looking at page ${n} of ${of}…`; }) : [await picturePage(f)];
       if (isPdf) srcFile = f;
       await startWork(f.name.replace(/\.[a-z0-9]+$/i, ""), { kind: "upload", file: f.name }, raw);
@@ -425,7 +435,7 @@ async function showStart() {
     </div>
     <h3>Started before</h3><div class="list" id="s-list">${list.length ? list.map(w => `<button data-w="${esc(w.id)}">${esc(w.name)}<span class="note" style="margin-left:auto">${new Date(w.updated).toLocaleDateString()}</span></button>`).join("") : `<p class="note">None yet.</p>`}</div>
     <h3>AI helper</h3><div class="list"><button id="s-ai">${aiKey() ? "AI key is saved on this device" : "Add AI key (later, when your account is ready)"}</button></div>`, true);
-  $("s-up").onclick = () => { closeModal(); pickFile(); };
+  $("s-up").onclick = () => pickFile();
   if ($("s-proj")) $("s-proj").onclick = () => { closeModal(); fromProject(); };
   $("s-ai").onclick = showKey;
   for (const b of document.querySelectorAll("[data-w]")) b.onclick = () => openWork(b.dataset.w);
