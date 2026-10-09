@@ -92,7 +92,7 @@
    by look (same color + thickness) or with AI. His fixes are kept as examples for next time. Pages with match lines are
    pieced together into one whole-project sheet. NOTHING outside this page changes until he presses "Add to project".
    Work is kept in ASBUILT_MAKER gps/cleanup/<id>.json (+ <id>-page<n>.json / .jpg); the original print is never changed. */
-const APP_VERSION = "V 01.02";
+const APP_VERSION = "V 01.03";
 (async () => {   // phones keep an old copy of this page for a while: load the newest one when it changes (same as GPS Shots)
   try {
     const r = await fetch(location.pathname + "?check=" + Date.now(), { cache: "no-store" });
@@ -195,16 +195,27 @@ let saveT = null, saving = false, again = false;
 function touch() { ver++; work.updated = Date.now(); LS.set("cleanup.w." + work.id, work); listAdd(work); clearTimeout(saveT); setSave("Saving…"); saveT = setTimeout(saveNow, 2500); }
 function listAdd(w) { const L = (LS.get("cleanup.list", []) || []).filter(x => x.id !== w.id); L.unshift({ id: w.id, name: w.name, updated: w.updated }); LS.set("cleanup.list", L.slice(0, 40)); }
 const sent = {};   // page files already on GitHub for this work
+const SRC_PART = 15e6;
 async function saveNow() {
   if (!work) return;
   if (!gh.on()) { setSave("Kept on this device (no key)"); return; }
   if (saving) { again = true; return; }
   saving = true;
   try {
+    await gh.put(`gps/cleanup/${work.id}.json`, work, `Cleanup print: ${work.name}`);   // his picks first, they're small
     if (work.src && work.src.kind === "upload" && !work.srcSent) {   // the PDF itself, so another device can read its pages
       const blob = await idb.get(`cleanup.${work.id}.src`);
-      if (blob && blob.size < 60e6) { await gh.putRaw(`gps/cleanup/${work.id}.pdf`, await blobB64(blob), `Cleanup print: ${work.name} (the PDF)`); work.srcSent = true; }
+      if (blob) {   // Steven 2026-10-09: picked pages on the iPhone, pressed Next on the iPad, and the PDF wasn't there. Big PDFs go up in 15 MB pieces.
+        const parts = Math.ceil(blob.size / SRC_PART);
+        for (let i = work.srcDone || 0; i < parts; i++) {
+          setSave(`Sending the PDF to GitHub ${i + 1} of ${parts}…`);
+          await gh.putRaw(`gps/cleanup/${work.id}.pdf.${i + 1}`, await blobB64(blob.slice(i * SRC_PART, (i + 1) * SRC_PART)), `Cleanup print: ${work.name} (the PDF, piece ${i + 1} of ${parts})`);
+          work.srcDone = i + 1; LS.set("cleanup.w." + work.id, work);
+        }
+        work.srcParts = parts; work.srcSent = true;
+      }
     }
+    if (!work.thumbsSent && Object.keys(thumbs).length && work.src && work.src.kind === "upload") { await gh.put(`gps/cleanup/${work.id}-thumbs.json`, thumbs, `Cleanup print: ${work.name} (page pictures)`); work.thumbsSent = true; }
     for (const p of work.pages) {
       const k = work.id + "|" + p.n; if (sent[k] || p.sent) continue;
       const d = pageData[p.n]; if (!d) continue;
@@ -305,7 +316,13 @@ let srcPdf = null;   // the uploaded PDF, open while pages are read in full
 async function openSrc() {
   if (srcPdf && srcPdf.id === work.id) return srcPdf.pdf;
   let blob = await idb.get(`cleanup.${work.id}.src`);
-  if (!blob && gh.on()) { try { blob = await gh.get(`gps/cleanup/${work.id}.pdf`, "blob"); if (blob) idb.set(`cleanup.${work.id}.src`, blob); } catch {} }
+  if (!blob && gh.on() && work.srcParts && work.srcSent) {   // put the pieces back together
+    try {
+      const parts = [];
+      for (let i = 1; i <= work.srcParts; i++) { if ($("rd-t")) $("rd-t").textContent = `Getting the PDF from GitHub, piece ${i} of ${work.srcParts}…`; const b = await gh.get(`gps/cleanup/${work.id}.pdf.${i}`, "blob"); if (!b) throw new Error("piece missing"); parts.push(b); }
+      blob = new Blob(parts, { type: "application/pdf" }); idb.set(`cleanup.${work.id}.src`, blob);
+    } catch { blob = null; }
+  }
   if (!blob) return null;
   const lib = await pdfLib(), pdf = await lib.getDocument({ data: new Uint8Array(await blob.arrayBuffer()) }).promise;
   srcPdf = { id: work.id, pdf }; return pdf;
@@ -325,7 +342,7 @@ async function ensurePages(list) {   // full read of the pages he picked, with a
   let i = 0;
   for (const p of list) {
     i++; if (pageData[p.n]) continue;
-    modal(`<h2>Getting the pages ready</h2><p>Reading page ${p.n} (${i} of ${list.length})…</p>`);
+    modal(`<h2>Getting the pages ready</h2><p id="rd-t">Reading page ${p.n} (${i} of ${list.length})…</p>`);
     let d = await loadPage(work, p).catch(() => null);
     if (!d && work.src && work.src.kind === "upload") d = await readFull(p).catch(e => { toast("Couldn't read page " + p.n + ": " + e.message, 5000); return null; });
     if (d) pageData[p.n] = d;
@@ -443,7 +460,7 @@ async function showStart() {
     try {
       const dir = await gh.get("gps/cleanup", false);
       if (Array.isArray(dir) && screen === "start" && $("s-list")) {
-        const have = new Set(list.map(w => w.id)), more = dir.filter(f => /^[^/]+\.json$/.test(f.name) && !/-page\d+\.json$|-backup\.plan\.json$|\.pdf$/.test(f.name)).map(f => f.name.replace(/\.json$/, "")).filter(id => !have.has(id));
+        const have = new Set(list.map(w => w.id)), more = dir.filter(f => /^[^/]+\.json$/.test(f.name) && !/-page\d+\.json$|-backup\.plan\.json$|-thumbs\.json$|\.pdf$/.test(f.name)).map(f => f.name.replace(/\.json$/, "")).filter(id => !have.has(id));
         if (more.length) {
           if (!list.length) $("s-list").innerHTML = "";
           $("s-list").insertAdjacentHTML("beforeend", more.map(id => `<button data-w="${esc(id)}">${esc(id.replace(/-[a-z0-9]+$/, "").replace(/-/g, " "))}<span class="note" style="margin-left:auto">other device</span></button>`).join(""));
@@ -459,9 +476,41 @@ async function openWork(id) {
   if (gh.on()) { try { const r = await gh.get(`gps/cleanup/${id}.json`, true); if (r && (!w || (r.updated || 0) > (w.updated || 0))) w = r; } catch {} }
   if (!w) { toast("Couldn't open it"); return; }
   work = w; pageData = {}; thumbs = (await idb.get(`cleanup.${work.id}.thumbs`)) || {};
+  if (!Object.keys(thumbs).length && work.thumbsSent && gh.on()) { try { thumbs = (await gh.get(`gps/cleanup/${work.id}-thumbs.json`, true)) || {}; idb.set(`cleanup.${work.id}.thumbs`, thumbs); } catch {} }
   for (const p of usedPages()) { const d = await loadPage(work, p).catch(() => null); if (d) pageData[p.n] = d; }
   $("toast").hidden = true; listAdd(work);
   showPages();
+  if (!work.srcSent && await idb.get(`cleanup.${work.id}.src`)) saveNow();   // this is the device with the PDF: send it up for the others
+}
+
+function noSource() {   // the PDF is on another device and hasn't reached GitHub yet
+  modal(`<span class="pg">Page C-2</span><h2>The PDF isn't on this device</h2>
+    <p>This print was brought in on another device (your iPhone?), and the PDF itself hasn't been sent to GitHub yet. Your page picks are saved.</p>
+    <p><b>Easiest:</b> pick the same PDF here. Your picks stay as they are.</p>
+    <p class="note">Or open this print on the other device once. It sends the PDF up, then it opens here too.</p>
+    <div class="acts"><button id="ns-x">Back</button><button class="primary" id="ns-pick">Pick the PDF on this device</button></div>`, true);
+  $("ns-x").onclick = showPages;
+  $("ns-pick").onclick = () => {
+    if (fileBox) fileBox.remove();
+    const inp = fileBox = document.createElement("input"); inp.type = "file"; inp.accept = "application/pdf,.pdf";
+    inp.style.cssText = "position:fixed;left:-1000px;top:0;width:1px;height:1px;opacity:0"; document.body.appendChild(inp);
+    modal(`<h2>Waiting for your file</h2><p>Pick the same PDF: ${esc(work.src.file || work.name)}.</p><p class="note">A big set can take a minute or two to arrive.</p><div class="acts"><button id="w-x">Cancel</button></div>`, true);
+    $("w-x").onclick = () => { inp.remove(); showPages(); };
+    inp.addEventListener("cancel", () => { inp.remove(); showPages(); });
+    inp.onchange = async () => {
+      const f = inp.files[0]; if (!f) { showPages(); return; }
+      try {
+        modal(`<h2>Reading your print</h2><p id="rd-t">Opening the file (${Math.round(f.size / 1e6)} MB)…</p>`, true);
+        const q = await pdfQuick(f, (n, of) => { if ($("rd-t")) $("rd-t").textContent = `Looking at page ${n} of ${of}…`; });
+        if (q.length !== work.pages.length) { toast(`That PDF has ${q.length} pages, this print has ${work.pages.length}. Pick the same file.`, 6000); noSource(); return; }
+        q.forEach((r, i) => { thumbs[i + 1] = r.th; });
+        await idb.set(`cleanup.${work.id}.src`, f); idb.set(`cleanup.${work.id}.thumbs`, thumbs); srcPdf = null; work.thumbsSent = false;
+        touch(); showPages();
+        if (await ensurePages(usedPages())) { showPages(); $("p-next").click(); } else noSource();
+      } catch (e) { toast("Couldn't read that file: " + e.message, 6000); noSource(); }
+    };
+    inp.click();
+  };
 }
 
 /* ---------------------------------------------------------------- C-2 pages: use as-is / clean up / leave out */
@@ -491,7 +540,7 @@ function showPages() {
   $("p-start").onclick = () => { work = null; showStart(); };
   $("p-next").onclick = async () => {
     const used = usedPages(); if (!used.length) { toast("Pick at least one page first"); return; }
-    if (!(await ensurePages(used))) { showPages(); toast("Some pages couldn't be read on this device", 5000); return; }
+    if (!(await ensurePages(used))) { noSource(); return; }
     const clean = used.findIndex(p => p.use === "clean");
     closeModal();
     if (clean >= 0) openClean(work.pages.indexOf(used[clean])); else if (used.length > 1) openSheet(); else showAdd();
