@@ -594,6 +594,7 @@ html.big #z-full { display: block; }
     <button class="btn big" id="proj-print" style="margin-top:18px" hidden>Plot on print</button>
     <a class="btn big maplink" id="proj-map" href="map.html" style="margin-top:10px" hidden>Plot on Google Maps</a>
     <a class="btn big maplink" id="proj-draw" href="draw.html" style="margin-top:10px" hidden>Draw as-built</a>
+    <a class="btn big maplink" id="proj-cleanup" href="cleanup.html" style="margin-top:10px" hidden>Cleanup print</a>
     <a class="btn big maplink" id="proj-3d" href="site3d.html" style="margin-top:10px" hidden>See it in 3D</a>
     <button class="btn big" id="proj-status-btn" style="margin-top:10px" hidden>Change project status</button>
     <div id="proj-pics-box" hidden>
@@ -770,7 +771,7 @@ html.big #z-full { display: block; }
 </div></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-08.03";
+const APP_VERSION = "2026-10-09.01";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -2888,13 +2889,14 @@ function applyDesign() {
   const d = design || {}, th = d.theme || {};
   let css = "";
   const sn = screenNow();
-  $("proj-status-btn").hidden = $("proj-map").hidden = $("proj-print").hidden = $("proj-3d").hidden = $("proj-draw").hidden = $("proj-edit").hidden = sn !== "project";
+  $("proj-status-btn").hidden = $("proj-map").hidden = $("proj-print").hidden = $("proj-3d").hidden = $("proj-draw").hidden = $("proj-cleanup").hidden = $("proj-edit").hidden = sn !== "project";
   $("proj-pics-box").hidden = sn !== "project"; if (sn === "project") renderPics(true);
   if (sn === "project" && !(jobs.some(j => j.slug === current) || (custom.find(c => c.slug === current) || {}).print)) $("proj-3d").hidden = $("proj-draw").hidden = true;   // no print, no 3D button (Steven 2026-10-05)
   $("change-proj").hidden = sn === "addloc" || sn === "capture";   // a page with a big bottom Cancel gets no small top Cancel (Steven)
   $("proj-map").href = "map.html?p=" + encodeURIComponent(current || "");
   $("proj-3d").href = "site3d.html?p=" + encodeURIComponent(current || "");
   $("proj-draw").href = "draw.html?p=" + encodeURIComponent(current || "") + "&v=" + APP_VERSION;   // new GPS Shots version = fresh Draw page too
+  $("proj-cleanup").href = "cleanup.html?p=" + encodeURIComponent(current || "") + "&v=" + APP_VERSION;   // Cleanup print (Steven 2026-10-09): its own module, changes nothing until "Add to project"
   const sr = selected && data.items && data.items[selected];
   $("shot-map").hidden = !(sn === "capture" && sr && sr.lat != null && !shot.running);
   if (sr) $("shot-map").href = `map.html?p=${encodeURIComponent(current)}&n=${encodeURIComponent(selected)}`;

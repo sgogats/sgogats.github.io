@@ -1,0 +1,1090 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Cleanup Print</title>
+<style>
+  :root { --bg:#f3f5f4; --panel:#ffffff; --ink:#14201b; --muted:#3d4a44; --line:#c9d2ce; --accent:#0b6e4f; --accent-ink:#fff; --red:#c62828; --warn:#8a5a00;
+          --body:-apple-system, "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { --bg:#111417; --panel:#1d2227; --ink:#f1f4f6; --muted:#d0d7dd; --line:#3c454e; --accent:#3dbe8b; --accent-ink:#06130e; --red:#ff6b6b; --warn:#ffc266; }
+  }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  [hidden] { display:none !important; }
+  html, body { margin:0; height:100%; background:var(--bg); color:var(--ink); font:16px/1.3 var(--body); overflow:hidden; }
+  body { display:flex; flex-direction:column; height:100dvh; }
+  button, a.btn { font:inherit; border-radius:10px; padding:10px 13px; min-height:44px; cursor:pointer; text-decoration:none;
+                  background:var(--panel); color:var(--ink); border:1px solid var(--line); display:inline-flex; align-items:center; justify-content:center; gap:6px; }
+  button.primary { background:var(--accent); color:var(--accent-ink); border-color:var(--accent); font-weight:600; }
+  button.danger { background:var(--red); color:#fff; border-color:var(--red); }
+  button.on { outline:3px solid var(--accent); outline-offset:-3px; font-weight:600; }
+  button:disabled { opacity:.5; }
+  #bar { display:flex; align-items:center; gap:8px; padding:6px 10px; padding-top:max(6px, env(safe-area-inset-top)); background:var(--panel); border-bottom:1px solid var(--line); }
+  #bar .ttl { flex:1; min-width:0; line-height:1.15; }
+  #bar .ttl b { display:block; font-size:17px; white-space:nowrap; }
+  #bar .ttl span { display:block; font-size:13px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  #bar .meta { text-align:right; font-size:12px; color:var(--muted); line-height:1.25; white-space:nowrap; max-width:42vw; overflow:hidden; text-overflow:ellipsis; }
+  #wrap { position:relative; flex:1; min-height:0; background:#fff; }
+  #cv { position:absolute; inset:0; width:100%; height:100%; touch-action:none; display:block; }
+  #hint { position:absolute; left:8px; right:8px; top:8px; background:var(--panel); color:var(--ink); border:2px solid var(--accent); border-radius:12px;
+          padding:8px 10px; display:flex; flex-wrap:wrap; gap:8px; align-items:center; box-shadow:0 2px 10px rgba(0,0,0,.18); }
+  #hint-t { flex:1 1 220px; font-size:15px; }
+  #hint .hb { display:flex; gap:6px; flex-wrap:wrap; }
+  #hint button { min-height:38px; padding:6px 11px; }
+  #tools { display:flex; gap:6px; padding:8px 10px; padding-bottom:max(8px, env(safe-area-inset-bottom)); background:var(--panel); border-top:1px solid var(--line); flex-wrap:wrap; }
+  #tools button { flex:1 0 auto; padding:8px 10px; }
+  #modal { position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:20; display:flex; align-items:flex-end; justify-content:center; }
+  #modal.full { background:var(--bg); align-items:stretch; }
+  #card { background:var(--panel); color:var(--ink); width:100%; max-width:640px; max-height:92dvh; overflow:auto; border-radius:16px 16px 0 0; padding:14px 14px max(14px, env(safe-area-inset-bottom)); position:relative; }
+  #modal.full #card { max-height:none; height:100%; border-radius:0; padding-top:max(14px, env(safe-area-inset-top)); }
+  @media (min-width:700px) { #modal { align-items:center; } #card { border-radius:16px; } #modal.full #card { border-radius:0; } }
+  #card h2 { margin:0 0 6px; font-size:21px; padding-right:80px; }
+  #card h3 { margin:16px 0 6px; font-size:15px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; }
+  #card p { margin:6px 0; }
+  #card .pg { position:absolute; top:12px; right:14px; font-size:12px; color:var(--muted); }
+  .list { display:flex; flex-direction:column; gap:8px; }
+  .list > button { justify-content:flex-start; text-align:left; }
+  .acts { display:flex; gap:8px; flex-wrap:wrap; margin-top:14px; }
+  .acts button { flex:1 1 auto; }
+  .seg { display:flex; gap:6px; flex-wrap:wrap; }
+  .seg button { flex:1 1 auto; min-height:40px; padding:6px 10px; }
+  label.f { display:block; margin-top:10px; }
+  label.f span { display:block; font-size:14px; color:var(--muted); margin-bottom:4px; }
+  label.f input { width:100%; font:inherit; font-size:18px; padding:10px; border-radius:10px; border:1px solid var(--line); background:var(--bg); color:var(--ink); }
+  .pgrow { display:flex; gap:10px; align-items:flex-start; padding:10px 0; border-top:1px solid var(--line); }
+  .pgrow canvas { width:110px; height:84px; border:1px solid var(--line); border-radius:6px; background:#fff; flex:none; }
+  .pgrow .bd { flex:1; min-width:0; display:flex; flex-direction:column; gap:6px; }
+  .flag { color:var(--warn); font-weight:600; font-size:14px; }
+  .lyr { display:flex; align-items:center; gap:8px; padding:6px 0; border-top:1px solid var(--line); }
+  .lyr .dot { width:18px; height:18px; border-radius:50%; flex:none; border:1px solid rgba(0,0,0,.3); }
+  .lyr .nm { flex:1; min-width:0; text-align:left; justify-content:flex-start; }
+  .lyr .ct { font-size:13px; color:var(--muted); white-space:nowrap; }
+  .lyr .sw { min-width:64px; }
+  .note { font-size:14px; color:var(--muted); }
+  .warn { color:var(--warn); font-weight:600; }
+  #toast { position:fixed; left:50%; bottom:110px; transform:translateX(-50%); background:#14201b; color:#fff; padding:10px 16px; border-radius:22px; z-index:30; font-size:15px; max-width:90vw; text-align:center; }
+  #pg { position:absolute; right:6px; bottom:4px; font-size:11px; color:#333; background:rgba(255,255,255,.8); padding:1px 5px; border-radius:6px; pointer-events:none; }
+</style>
+</head>
+<body>
+<div id="bar">
+  <a class="btn" id="back" href="./">Back</a>
+  <div class="ttl"><b>Cleanup print</b><span id="sub">Loading…</span></div>
+  <div class="meta"><div id="save"></div><div id="ver"></div></div>
+</div>
+<div id="wrap">
+  <canvas id="cv"></canvas>
+  <div id="hint" hidden><span id="hint-t"></span><span class="hb" id="hint-b"></span></div>
+  <div id="pg">Page C-3</div>
+</div>
+<div id="tools"></div>
+<div id="modal" hidden><div id="card"></div></div>
+<div id="toast" hidden></div>
+
+<script>
+"use strict";
+/* Cleanup print (Steven 2026-10-09): its own module, separate from the as-built designer, GPS Shots and Draw as-built.
+   Bring a print in (the project's print, or upload a PDF or picture), pick per page: use as-is, clean up, or leave out.
+   Clean up = sort what's on the print into named layers (streets, curbs, poles, extra stuff ...) that turn on and off,
+   by look (same color + thickness) or with AI. His fixes are kept as examples for next time. Pages with match lines are
+   pieced together into one whole-project sheet. NOTHING outside this page changes until he presses "Add to project".
+   Work is kept in ASBUILT_MAKER gps/cleanup/<id>.json (+ <id>-page<n>.json / .jpg); the original print is never changed. */
+const APP_VERSION = "V 01.00";
+(async () => {   // phones keep an old copy of this page for a while: load the newest one when it changes (same as GPS Shots)
+  try {
+    const r = await fetch(location.pathname + "?check=" + Date.now(), { cache: "no-store" });
+    const m = (await r.text()).match(/APP_VERSION = "([^"]+)"/);
+    if (m && m[1] !== APP_VERSION && sessionStorage.getItem("cleanup.upd") !== m[1]) {
+      sessionStorage.setItem("cleanup.upd", m[1]); const q = new URLSearchParams(location.search); q.set("v", m[1]); location.replace(location.pathname + "?" + q);
+    }
+  } catch {}
+})();
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const LS = {
+  get(k, d) { try { const v = localStorage.getItem("gps." + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { localStorage.setItem("gps." + k, JSON.stringify(v)); return true; } catch { return false; } },
+  del(k) { try { localStorage.removeItem("gps." + k); } catch {} },
+};
+$("ver").textContent = APP_VERSION;
+const qs = new URLSearchParams(location.search);
+const projSlug = qs.get("p") || LS.get("current", "");
+const cfg = Object.assign({ token: "", repo: "sgogats/ASBUILT_MAKER", branch: "main" }, LS.get("cfg", {}) || {});
+$("back").onclick = e => { if (history.length > 1) { e.preventDefault(); history.back(); } };
+const GARDEN = "garden-homes-unilever-englewood-cliffs";   // real job: an uploaded print can never replace its print
+const slugify = s => (String(s).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "job");
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+
+/* ---------------------------------------------------------------- GitHub (same key GPS Shots keeps on this device) */
+function b64(str) { const bytes = new TextEncoder().encode(str); let s = ""; for (let i = 0; i < bytes.length; i += 8192) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 8192)); return btoa(s); }
+function decodeB64(s) { const bin = atob(s.replace(/\n/g, "")); return new TextDecoder().decode(Uint8Array.from(bin, c => c.charCodeAt(0))); }
+function blobB64(blob) { return new Promise((ok, no) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(",")[1]); r.onerror = () => no(r.error); r.readAsDataURL(blob); }); }
+const gh = {
+  on() { return !!cfg.token; },
+  url(path) { return `https://api.github.com/repos/${cfg.repo}/contents/${path.split("/").map(encodeURIComponent).join("/")}`; },
+  headers(raw) { return { Authorization: "Bearer " + cfg.token, Accept: raw ? "application/vnd.github.raw+json" : "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" }; },
+  async get(path, raw) {   // raw: true = JSON, "blob" = file, false = info (sha)
+    const r = await fetch(this.url(path) + "?ref=" + encodeURIComponent(cfg.branch) + "&t=" + Date.now(), { headers: this.headers(raw), cache: "no-store" });
+    if (r.status === 404) return null;
+    if (!r.ok) { const e = new Error("GitHub said " + r.status); e.status = r.status; throw e; }
+    return raw === "blob" ? r.blob() : r.json();
+  },
+  async putRaw(path, content64, message) {
+    for (let a = 0; a < 3; a++) {
+      const m = await this.get(path, false).catch(() => null), body = { message, branch: cfg.branch, content: content64 };
+      if (m && m.sha) body.sha = m.sha;
+      const r = await fetch(this.url(path), { method: "PUT", headers: this.headers(false), body: JSON.stringify(body) });
+      if (r.ok) return r.json();
+      if (r.status !== 409 && r.status !== 422) { const e = new Error("GitHub said " + r.status); e.status = r.status; throw e; }
+    }
+    throw new Error("GitHub kept refusing the save");
+  },
+  put(path, obj, message) { return this.putRaw(path, b64(JSON.stringify(obj)), message); },
+  async del(path, message) {
+    const m = await this.get(path, false); if (!m) return;
+    const r = await fetch(this.url(path), { method: "DELETE", headers: this.headers(false), body: JSON.stringify({ message, branch: cfg.branch, sha: m.sha }) });
+    if (!r.ok) throw new Error("GitHub said " + r.status);
+  },
+};
+const idb = (() => {   // pages are too big for localStorage
+  let dbp; const open = () => dbp || (dbp = new Promise((ok, no) => { const r = indexedDB.open("gps", 1); r.onupgradeneeded = () => r.result.createObjectStore("kv"); r.onsuccess = () => ok(r.result); r.onerror = () => no(r.error); }));
+  return {
+    async get(k) { try { const db = await open(); return await new Promise(ok => { const q = db.transaction("kv").objectStore("kv").get(k); q.onsuccess = () => ok(q.result || null); q.onerror = () => ok(null); }); } catch { return null; } },
+    async set(k, v) { try { const db = await open(); db.transaction("kv", "readwrite").objectStore("kv").put(v, k); } catch {} },
+    async del(k) { try { const db = await open(); db.transaction("kv", "readwrite").objectStore("kv").delete(k); } catch {} },
+  };
+})();
+function loadScript(src) { return new Promise((ok, no) => { const s = document.createElement("script"); s.src = src; s.onload = ok; s.onerror = () => no(new Error("could not load " + src)); document.head.appendChild(s); }); }
+const PDFJS = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/";
+async function pdfLib() { if (!window.pdfjsLib) await loadScript(PDFJS + "pdf.min.js"); pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS + "pdf.worker.min.js"; return pdfjsLib; }
+
+let toastT = null;
+function toast(t, ms) { const el = $("toast"); el.textContent = t; el.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => el.hidden = true, ms || 2800); }
+function setSave(t) { $("save").textContent = t; }
+
+/* ---------------------------------------------------------------- the work
+   work = { id, name, created, updated, src: {kind:"project", slug, name, print} | {kind:"upload", file},
+            layers: [{id, name, on, col}], pages: [page], sheet: {fitted}, added: {...} after Add to project }
+   page = { n, use: "clean" | "asis" | "skip", kind: "vec" | "img", size, origin, match: [texts], ai: bool,
+            groups: {look key: layer id}, over: {line index: layer id}, tover: {text index: layer id}, boxes: [{id, x0, y0, x1, y1, layer}],
+            place: {x, y, r, s} on the whole-project sheet }
+   page contents (lines / texts / picture) live in pageData[n]: {plan} or {img, blob} */
+let work = null, pageData = {}, cur = 0;   // cur = index into work.pages of the page being cleaned
+let screen = "start";                      // start / clean / sheet
+const LCOL = ["#d62828", "#1f5fd6", "#2e9d4f", "#e07000", "#7b3fbf", "#00838f", "#b8860b", "#c2185b", "#4b5563", "#6d4c41", "#0b6e4f", "#f2c500"];
+const UNSORTED = "unsorted";
+const layerById = id => work.layers.find(l => l.id === id);
+function addLayer(name, col) {
+  const have = work.layers.find(l => l.name.toLowerCase() === String(name).trim().toLowerCase()); if (have) return have;
+  const l = { id: uid(), name: String(name).trim() || "New layer", on: true, col: col || LCOL[work.layers.length % LCOL.length] };
+  work.layers.push(l); return l;
+}
+const lookKey = l => l[0] + "|" + l[1];
+const textKey = t => "t|" + Math.round(t[3] || 8);
+function lineLayer(pg, i, l) { return pg.over[i] || pg.groups[lookKey(l)] || UNSORTED; }
+function textLayer(pg, i, t) { return pg.tover[i] || pg.groups[textKey(t)] || UNSORTED; }
+const layerOn = id => { if (id === UNSORTED) return true; const l = layerById(id); return !l || l.on; };
+const usedPages = () => work.pages.filter(p => p.use !== "skip");
+let ver = 0;   // bumps on every change, so the cached drawing is rebuilt
+
+/* ---------------------------------------------------------------- saving (this device right away, GitHub a moment later) */
+let saveT = null, saving = false, again = false;
+function touch() { ver++; work.updated = Date.now(); LS.set("cleanup.w." + work.id, work); listAdd(work); clearTimeout(saveT); setSave("Saving…"); saveT = setTimeout(saveNow, 2500); }
+function listAdd(w) { const L = (LS.get("cleanup.list", []) || []).filter(x => x.id !== w.id); L.unshift({ id: w.id, name: w.name, updated: w.updated }); LS.set("cleanup.list", L.slice(0, 40)); }
+const sent = {};   // page files already on GitHub for this work
+async function saveNow() {
+  if (!work) return;
+  if (!gh.on()) { setSave("Kept on this device (no key)"); return; }
+  if (saving) { again = true; return; }
+  saving = true;
+  try {
+    for (const p of work.pages) {
+      const k = work.id + "|" + p.n; if (sent[k] || p.sent) continue;
+      const d = pageData[p.n]; if (!d) continue;
+      if (d.plan) await gh.put(`gps/cleanup/${work.id}-page${p.n}.json`, d.plan, `Cleanup print: ${work.name} page ${p.n}`);
+      else if (d.blob) await gh.putRaw(`gps/cleanup/${work.id}-page${p.n}.jpg`, await blobB64(d.blob), `Cleanup print: ${work.name} page ${p.n}`);
+      sent[k] = true; p.sent = true;
+    }
+    await gh.put(`gps/cleanup/${work.id}.json`, work, `Cleanup print: ${work.name}`);
+    LS.set("cleanup.w." + work.id, work); setSave("Saved");
+  } catch (e) { setSave("Not sent yet · kept on this device"); clearTimeout(saveT); saveT = setTimeout(saveNow, 20000); }
+  saving = false; if (again) { again = false; saveNow(); }
+}
+async function keepPage(n, d) { pageData[n] = d; await idb.set(`cleanup.${work.id}.page${n}`, d.plan ? { plan: d.plan } : { blob: d.blob }); }
+async function loadPage(w, p) {
+  let d = await idb.get(`cleanup.${w.id}.page${p.n}`);
+  if (!d && gh.on()) {
+    try { d = p.kind === "vec" ? { plan: await gh.get(`gps/cleanup/${w.id}-page${p.n}.json`, true) } : { blob: await gh.get(`gps/cleanup/${w.id}-page${p.n}.jpg`, "blob") }; } catch { d = null; }
+    if (d && (d.plan || d.blob)) idb.set(`cleanup.${w.id}.page${p.n}`, d);
+  }
+  if (!d || !(d.plan || d.blob)) return null;
+  if (d.blob) d.img = await blobImg(d.blob);
+  return d;
+}
+function blobImg(blob) { return new Promise(ok => { const img = new Image(); img.onload = () => ok(img); img.onerror = () => ok(null); img.src = URL.createObjectURL(blob); }); }
+
+/* ---------------------------------------------------------------- reading a print */
+/* PDF page -> plan {size, origin, lines: [[color, width, [x, y, ...]]], texts: [[x, y, words, size, color, turn]]} in page points, y down (same shape as the GPS Shots print) */
+async function pageToPlan(pdfjsLib, pg) {
+  const OPS = pdfjsLib.OPS, vp = pg.getViewport({ scale: 1 }), V = vp.transform;
+  const mul = (a, b) => [a[0]*b[0]+a[2]*b[1], a[1]*b[0]+a[3]*b[1], a[0]*b[2]+a[2]*b[3], a[1]*b[2]+a[3]*b[3], a[0]*b[4]+a[2]*b[5]+a[4], a[1]*b[4]+a[3]*b[5]+a[5]];
+  const hex = a => { if (typeof a[0] === "string") return a[0]; const v = Array.from(a).slice(0, 3), big = a instanceof Uint8ClampedArray || v.some(x => x > 1); return "#" + v.map(x => Math.max(0, Math.min(255, Math.round(big ? x : x * 255))).toString(16).padStart(2, "0")).join(""); };
+  const ol = await pg.getOperatorList(), lines = [], fills = [];
+  let st = { m: V, sc: "#000000", fc: "#000000", w: 1 }; const stack = [];
+  let pending = null;   // paths built by constructPath, waiting for stroke/fill
+  const r1 = v => Math.round(v * 10) / 10;
+  for (let i = 0; i < ol.fnArray.length; i++) {
+    const f = ol.fnArray[i], a = ol.argsArray[i];
+    if (f === OPS.save) stack.push(Object.assign({}, st));
+    else if (f === OPS.restore) { if (stack.length) st = stack.pop(); }
+    else if (f === OPS.transform) st.m = mul(st.m, a);
+    else if (f === OPS.setLineWidth) st.w = a[0];
+    else if (f === OPS.setStrokeRGBColor || f === OPS.setStrokeColor) st.sc = hex(a);
+    else if (f === OPS.setFillRGBColor || f === OPS.setFillColor) st.fc = hex(a);
+    else if (f === OPS.setStrokeGray) st.sc = hex([a[0], a[0], a[0]]);
+    else if (f === OPS.setFillGray) st.fc = hex([a[0], a[0], a[0]]);
+    else if (f === OPS.constructPath) {
+      const ops = a[0], c = a[1], m = st.m, P = (x, y) => [r1(m[0]*x + m[2]*y + m[4]), r1(m[1]*x + m[3]*y + m[5])];
+      const subs = pending && pending.m === m ? pending.subs : []; let cur = null, k = 0, start = null;
+      for (const op of ops) {
+        if (op === OPS.moveTo) { cur = [...P(c[k], c[k+1])]; start = cur.slice(0, 2); subs.push(cur); k += 2; }
+        else if (op === OPS.lineTo) { if (!cur) { cur = []; subs.push(cur); } cur.push(...P(c[k], c[k+1])); k += 2; }
+        else if (op === OPS.curveTo) { if (cur) { const x0 = cur[cur.length-2], y0 = cur[cur.length-1]; const p1 = P(c[k],c[k+1]), p2 = P(c[k+2],c[k+3]), p3 = P(c[k+4],c[k+5]); for (let t = 0.25; t <= 1.001; t += 0.25) { const u = 1-t; cur.push(r1(u*u*u*x0+3*u*u*t*p1[0]+3*u*t*t*p2[0]+t*t*t*p3[0]), r1(u*u*u*y0+3*u*u*t*p1[1]+3*u*t*t*p2[1]+t*t*t*p3[1])); } } k += 6; }
+        else if (op === OPS.curveTo2 || op === OPS.curveTo3) { if (cur) cur.push(...P(c[k+2], c[k+3])); k += 4; }
+        else if (op === OPS.closePath) { if (cur && start) cur.push(...start); }
+        else if (op === OPS.rectangle) { const [x, y, w, h] = [c[k], c[k+1], c[k+2], c[k+3]]; cur = [...P(x, y), ...P(x+w, y), ...P(x+w, y+h), ...P(x, y+h), ...P(x, y)]; subs.push(cur); cur = null; k += 4; }
+      }
+      pending = { m, subs };
+    }
+    else if (f === OPS.stroke || f === OPS.closeStroke || f === OPS.fillStroke || f === OPS.eoFillStroke || f === OPS.closeFillStroke || f === OPS.closeEOFillStroke) {
+      if (pending) { const sw = Math.max(0.1, st.w * Math.hypot(st.m[0], st.m[1])); for (const s of pending.subs) if (s.length >= 4) lines.push([st.sc, r1(sw), s]); }
+      pending = null;
+    }
+    else if (f === OPS.fill || f === OPS.eoFill) {
+      if (pending) for (const s of pending.subs) if (s.length >= 6) fills.push([st.fc, 0, s]);
+      pending = null;
+    }
+    else if (f === OPS.endPath) pending = null;
+  }
+  for (const s of fills) lines.push([s[0], 0.5, s[2]]);   // filled shapes drawn as outlines
+  const tc = await pg.getTextContent(), texts = [];
+  for (const it of tc.items) {
+    if (!it.str || !it.str.trim()) continue;
+    const t = mul(V, it.transform), size = Math.hypot(t[2], t[3]), rot = Math.round(-Math.atan2(t[1], t[0]) * 180 / Math.PI);
+    texts.push([r1(t[4]), r1(t[5]), it.str, r1(size), "#000000", rot]);
+  }
+  return { size: [Math.round(vp.width), Math.round(vp.height)], origin: [0, 0], lines, texts };
+}
+async function pdfPages(file, progress) {
+  const lib = await pdfLib(), pdf = await lib.getDocument({ data: await file.arrayBuffer() }).promise, out = [];
+  for (let n = 1; n <= pdf.numPages; n++) {
+    progress(`Reading page ${n} of ${pdf.numPages}…`);
+    const pg = await pdf.getPage(n), ol = await pg.getOperatorList();
+    const pics = ol.fnArray.filter(f => f === lib.OPS.paintImageXObject || f === lib.OPS.paintJpegXObject || f === lib.OPS.paintInlineImageXObject).length;
+    const plan = await pageToPlan(lib, pg);
+    if (plan.lines.length >= 200 || (!pics && plan.lines.length + plan.texts.length > 0)) out.push({ kind: "vec", plan });
+    else out.push({ kind: "img", ...(await pageJpeg(pg)) });   // a scanned page: keep it as a picture
+  }
+  return out;
+}
+async function pageJpeg(pg) {
+  const v1 = pg.getViewport({ scale: 1 }), k = Math.min(5000 / Math.max(v1.width, v1.height), Math.sqrt(15e6 / (v1.width * v1.height)));   // phones can't hold a bigger picture
+  const v = pg.getViewport({ scale: k }), c = document.createElement("canvas"); c.width = Math.round(v.width); c.height = Math.round(v.height);
+  const x = c.getContext("2d"); x.fillStyle = "#fff"; x.fillRect(0, 0, c.width, c.height);
+  await pg.render({ canvasContext: x, viewport: v }).promise;
+  const blob = await new Promise(ok => c.toBlob(ok, "image/jpeg", 0.85));
+  return { blob, size: [c.width, c.height] };
+}
+async function picturePage(file) {
+  const img = await blobImg(file); if (!img) throw new Error("this picture could not be opened");
+  let w = img.naturalWidth, h = img.naturalHeight, k = Math.min(1, Math.sqrt(15e6 / (w * h)));
+  const c = document.createElement("canvas"); c.width = Math.round(w * k); c.height = Math.round(h * k);
+  const x = c.getContext("2d"); x.fillStyle = "#fff"; x.fillRect(0, 0, c.width, c.height); x.drawImage(img, 0, 0, c.width, c.height);
+  return { kind: "img", blob: await new Promise(ok => c.toBlob(ok, "image/jpeg", 0.88)), size: [c.width, c.height] };
+}
+const MATCH_RE = /match\s*-?\s*line|see\s+(sheet|dwg|drawing)/i;
+function newPage(n, kind, size, origin) {
+  return { n, use: "clean", kind, size, origin: origin || [0, 0], match: [], groups: {}, over: {}, tover: {}, boxes: [], place: null };
+}
+async function startWork(name, src, raw) {   // raw = [{kind, plan} | {kind, blob, size}]
+  work = { id: slugify(name).slice(0, 40) + "-" + Date.now().toString(36), name, created: Date.now(), updated: Date.now(), src, layers: [], pages: [] };
+  pageData = {};
+  for (let i = 0; i < raw.length; i++) {
+    const r = raw[i], n = i + 1;
+    const p = newPage(n, r.kind, r.kind === "vec" ? r.plan.size : r.size, r.kind === "vec" ? (r.plan.origin || [0, 0]) : [0, 0]);
+    if (r.kind === "vec") { p.match = [...new Set(r.plan.texts.filter(t => MATCH_RE.test(t[2])).map(t => String(t[2]).trim()))].slice(0, 6); await keepPage(n, { plan: r.plan }); }
+    else await keepPage(n, { blob: r.blob, img: await blobImg(r.blob) });
+    work.pages.push(p);
+  }
+  touch(); showPages();
+}
+async function fromProject() {
+  const custom = LS.get("custom", []) || [], c = custom.find(x => x.slug === projSlug), job = LS.get("job." + projSlug, null);
+  const lj = (LS.get("jobs", []) || []).find(j => j.slug === projSlug), isJob = !!lj, name = (job && job.name) || (lj && lj.name) || (c && c.name) || projSlug;
+  toast("Getting the project's print…", 8000);
+  try {
+    let plan = null, blob = null, size = null;
+    if (gh.on()) {
+      plan = await gh.get(`gps/prints/${projSlug}.plan.json`, true).catch(() => null);
+      if (!plan && !(c && c.print)) { const j = await gh.get(`gps/jobs/${projSlug}.json`, true).catch(() => null); plan = j && j.plan; }
+    }
+    if (!plan && job && job.plan) plan = job.plan;
+    if (!plan && c && c.print) {
+      const got = await idb.get("print." + projSlug);
+      if (got && got.t === c.print.t) { plan = got.plan || null; blob = got.blob || null; }
+      else if (gh.on()) { if (c.print.kind === "dxf") plan = await gh.get(c.print.path, true); else blob = await gh.get(c.print.path, "blob"); }
+      size = c.print.size;
+    }
+    if (!plan && !blob) { toast("This project has no print yet. Upload one instead."); return; }
+    const raw = plan ? [{ kind: "vec", plan: { size: plan.size, origin: plan.origin || [0, 0], lines: plan.lines || [], texts: plan.texts || [] } }] : [{ kind: "img", blob, size }];
+    $("toast").hidden = true;
+    await startWork(name + " print", { kind: "project", slug: projSlug, name, job: isJob, print: c && c.print || null }, raw);
+  } catch (e) { toast("Couldn't get the print: " + e.message); }
+}
+function pickFile() {
+  const inp = document.createElement("input"); inp.type = "file"; inp.accept = "application/pdf,.pdf,image/*";
+  inp.onchange = async () => {
+    const f = inp.files[0]; if (!f) return;
+    try {
+      const raw = /\.pdf$/i.test(f.name) || f.type === "application/pdf" ? await pdfPages(f, t => toast(t, 60000)) : [await picturePage(f)];
+      $("toast").hidden = true;
+      await startWork(f.name.replace(/\.[a-z0-9]+$/i, ""), { kind: "upload", file: f.name }, raw);
+    } catch (e) { toast("Couldn't read that file: " + e.message, 5000); }
+  };
+  inp.click();
+}
+
+/* ---------------------------------------------------------------- C-1 start */
+function modal(html, full) { $("card").innerHTML = html; $("modal").hidden = false; $("modal").classList.toggle("full", !!full); $("card").scrollTop = 0; }
+function closeModal() { $("modal").hidden = true; }
+$("modal").onclick = e => { if (e.target === $("modal") && !$("modal").classList.contains("full")) closeModal(); };
+async function showStart() {
+  screen = "start"; setTools(); $("sub").textContent = "Bring a print in"; history.replaceState(null, "", location.pathname + location.search);
+  const custom = LS.get("custom", []) || [], c = custom.find(x => x.slug === projSlug), job = LS.get("job." + projSlug, null);
+  const lj = (LS.get("jobs", []) || []).find(j => j.slug === projSlug), pname = projSlug ? (job && job.name) || (lj && lj.name) || (c && c.name) || "" : "";
+  const list = LS.get("cleanup.list", []) || [];
+  modal(`<span class="pg">Page C-1</span><h2>Cleanup print</h2>
+    <p class="note">Nothing here changes your projects until you press <b>Add to project</b> at the end.</p>
+    <div class="list" style="margin-top:12px">
+      <button class="primary" id="s-up">Upload a print (PDF or picture)</button>
+      ${pname ? `<button id="s-proj">Use this project's print: ${esc(pname)}</button>` : ""}
+    </div>
+    <h3>Started before</h3><div class="list" id="s-list">${list.length ? list.map(w => `<button data-w="${esc(w.id)}">${esc(w.name)}<span class="note" style="margin-left:auto">${new Date(w.updated).toLocaleDateString()}</span></button>`).join("") : `<p class="note">None yet.</p>`}</div>
+    <h3>AI helper</h3><div class="list"><button id="s-ai">${aiKey() ? "AI key is saved on this device" : "Add AI key (later, when your account is ready)"}</button></div>`, true);
+  $("s-up").onclick = () => { closeModal(); pickFile(); };
+  if ($("s-proj")) $("s-proj").onclick = () => { closeModal(); fromProject(); };
+  $("s-ai").onclick = showKey;
+  for (const b of document.querySelectorAll("[data-w]")) b.onclick = () => openWork(b.dataset.w);
+  if (gh.on()) {   // cleanups started on another device
+    try {
+      const dir = await gh.get("gps/cleanup", false);
+      if (Array.isArray(dir) && screen === "start" && $("s-list")) {
+        const have = new Set(list.map(w => w.id)), more = dir.filter(f => /^[^/]+\.json$/.test(f.name) && !/-page\d+\.json$|-backup\.plan\.json$/.test(f.name)).map(f => f.name.replace(/\.json$/, "")).filter(id => !have.has(id));
+        if (more.length) {
+          if (!list.length) $("s-list").innerHTML = "";
+          $("s-list").insertAdjacentHTML("beforeend", more.map(id => `<button data-w="${esc(id)}">${esc(id.replace(/-[a-z0-9]+$/, "").replace(/-/g, " "))}<span class="note" style="margin-left:auto">other device</span></button>`).join(""));
+          for (const b of document.querySelectorAll("[data-w]")) b.onclick = () => openWork(b.dataset.w);
+        }
+      }
+    } catch {}
+  }
+}
+async function openWork(id) {
+  toast("Opening…", 20000);
+  let w = LS.get("cleanup.w." + id, null);
+  if (gh.on()) { try { const r = await gh.get(`gps/cleanup/${id}.json`, true); if (r && (!w || (r.updated || 0) > (w.updated || 0))) w = r; } catch {} }
+  if (!w) { toast("Couldn't open it"); return; }
+  work = w; pageData = {};
+  for (const p of work.pages) { const d = await loadPage(work, p); if (d) pageData[p.n] = d; }
+  $("toast").hidden = true; listAdd(work);
+  showPages();
+}
+
+/* ---------------------------------------------------------------- C-2 pages: use as-is / clean up / leave out */
+function showPages() {
+  screen = "pages"; setTools(); $("sub").textContent = work.name;
+  const many = work.pages.length > 1;
+  modal(`<span class="pg">Page C-2</span><h2>${esc(work.name)}</h2>
+    <p class="note">${many ? `This print has ${work.pages.length} pages.` : "One page."} For each page pick: use it as it is, clean it up, or leave it out.</p>
+    ${work.pages.map(p => `<div class="pgrow"><canvas data-th="${p.n}" width="220" height="168"></canvas><div class="bd">
+      <b>Page ${p.n}${pageData[p.n] ? "" : " · not on this device yet"}</b>
+      ${p.match.length ? `<span class="flag">Has match lines: ${esc(p.match.slice(0, 2).join(", "))}</span>` : ""}
+      ${p.kind === "img" ? `<span class="note">Picture page (scanned)</span>` : ""}
+      <div class="seg">${[["asis", "Use as-is"], ["clean", "Clean up"], ["skip", "Leave out"]].map(([k, t]) => `<button data-u="${p.n}|${k}" class="${p.use === k ? "on" : ""}">${t}</button>`).join("")}</div>
+    </div></div>`).join("")}
+    <div class="acts"><button id="p-start">Start over</button><button class="primary" id="p-next">Next</button></div>`, true);
+  for (const c of document.querySelectorAll("[data-th]")) thumb(c, work.pages.find(p => p.n === +c.dataset.th));
+  for (const b of document.querySelectorAll("[data-u]")) b.onclick = () => { const [n, u] = b.dataset.u.split("|"); work.pages.find(p => p.n === +n).use = u; touch(); showPages(); };
+  $("p-start").onclick = () => { work = null; showStart(); };
+  $("p-next").onclick = () => {
+    const used = usedPages(); if (!used.length) { toast("Pick at least one page"); return; }
+    const clean = used.findIndex(p => p.use === "clean");
+    closeModal();
+    if (clean >= 0) openClean(work.pages.indexOf(used[clean])); else if (used.length > 1) openSheet(); else showAdd();
+  };
+}
+function thumb(c, p) {
+  const d = pageData[p.n], g = c.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height); if (!d) return;
+  const k = Math.min(c.width / p.size[0], c.height / p.size[1]);
+  g.save(); g.translate((c.width - p.size[0] * k) / 2, (c.height - p.size[1] * k) / 2); g.scale(k, k); g.translate(-p.origin[0], -p.origin[1]);
+  paintPage(g, p, d, k, { all: p.use !== "clean" }); g.restore();
+}
+
+/* ---------------------------------------------------------------- painting a page */
+let colorsOn = LS.get("cleanup.colors", false);   // each layer in its own color, to check the sorting
+const pathCache = new Map();
+function pagePaths(p, d) {   // Path2D per (layer, color, width), rebuilt only when something moved layers
+  const key = work.id + "|" + p.n, c = pathCache.get(key);
+  if (c && c.ver === ver && c.plan === d.plan) return c.g;
+  const m = new Map();
+  (d.plan.lines || []).forEach((l, i) => {
+    const lay = lineLayer(p, i, l), k = lay + "|" + l[0] + "|" + l[1]; let e = m.get(k);
+    if (!e) { e = { lay, col: l[0], w: l[1], p: new Path2D() }; m.set(k, e); }
+    const pts = l[2]; e.p.moveTo(pts[0], pts[1]); for (let j = 2; j < pts.length; j += 2) e.p.lineTo(pts[j], pts[j + 1]);
+  });
+  const g = [...m.values()]; pathCache.set(key, { ver, plan: d.plan, g }); return g;
+}
+function layerCol(id) { const l = layerById(id); return l ? l.col : "#9aa3a8"; }
+/* o.all = draw everything (as-is), o.faint = hidden layers drawn faint (while fixing), o.colors = layer colors */
+function paintPage(g, p, d, s, o) {
+  o = o || {};
+  const show = id => o.all || layerOn(id);
+  if (d.img) g.drawImage(d.img, 0, 0, p.size[0], p.size[1]);
+  if (d.plan) {
+    g.lineCap = "round"; g.lineJoin = "round";
+    for (const e of pagePaths(p, d)) {
+      const on = show(e.lay); if (!on && !o.faint) continue;
+      g.globalAlpha = on ? 1 : 0.12;
+      g.strokeStyle = o.colors && !o.all ? layerCol(e.lay) : e.col; g.lineWidth = Math.max(e.w, 0.7 / s); g.stroke(e.p);
+    }
+    g.globalAlpha = 1;
+    (d.plan.texts || []).forEach((t, i) => {
+      const lay = textLayer(p, i, t), on = show(lay); if (!on && !o.faint) return;
+      const [x, y, str, size, col, rot] = t;
+      g.save(); g.globalAlpha = on ? 1 : 0.15; g.translate(x, y); if (rot) g.rotate(-rot * Math.PI / 180);
+      g.fillStyle = o.colors && !o.all ? layerCol(lay) : (col || "#333"); g.font = `${size || 8}px sans-serif`; g.textBaseline = "alphabetic"; g.fillText(str, 0, 0); g.restore();
+    });
+  }
+  for (const b of p.boxes) {   // boxes drawn over a picture page: hidden layer = whited out
+    const on = show(b.layer);
+    if (!on) { g.fillStyle = "#fff"; g.globalAlpha = o.faint ? 0.75 : 1; g.fillRect(b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0); g.globalAlpha = 1; }
+    if (o.colors && !o.all || o.faint) { g.strokeStyle = layerCol(b.layer); g.lineWidth = 2 / s; g.setLineDash([6 / s, 4 / s]); g.strokeRect(b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0); g.setLineDash([]); }
+  }
+}
+
+/* ---------------------------------------------------------------- view */
+const cv = $("cv"), ctx = cv.getContext("2d");
+let W = 0, H = 0, DPR = 1;
+const view = { x: 0, y: 0, s: 1, fitted: false };
+const toScreen = q => ({ x: q.x * view.s + view.x, y: q.y * view.s + view.y });
+const toWorld = q => ({ x: (q.x - view.x) / view.s, y: (q.y - view.y) / view.s });
+function boundsNow() {
+  if (screen === "clean") { const p = work.pages[cur]; return { x0: p.origin[0], y0: p.origin[1], x1: p.origin[0] + p.size[0], y1: p.origin[1] + p.size[1] }; }
+  if (screen === "sheet") return sheetBounds();
+  return { x0: 0, y0: 0, x1: 100, y1: 100 };
+}
+function fit() {
+  const b = boundsNow(), pad = 12;
+  view.s = Math.min((W - 2 * pad) / (b.x1 - b.x0 || 1), (H - 2 * pad) / (b.y1 - b.y0 || 1));
+  view.x = (W - (b.x1 - b.x0) * view.s) / 2 - b.x0 * view.s; view.y = (H - (b.y1 - b.y0) * view.s) / 2 - b.y0 * view.s; view.fitted = true;
+}
+function resize() {
+  const r = $("wrap").getBoundingClientRect(); DPR = Math.min(window.devicePixelRatio || 1, 3);
+  if (r.width === W && r.height === H) { draw(); return; }
+  W = r.width; H = r.height; cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR); cache = null;
+  if (!view.fitted && work && screen !== "start") fit();
+  draw();
+}
+new ResizeObserver(resize).observe($("wrap"));
+let cache = null, drawQ = false;
+function draw(quick) {
+  if (drawQ) return; drawQ = true;
+  requestAnimationFrame(() => { drawQ = false; paint(quick); });
+}
+function paint(quick) {
+  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.fillStyle = "#e9eceb"; ctx.fillRect(0, 0, cv.width, cv.height);
+  if (!work || (screen !== "clean" && screen !== "sheet")) return;
+  const key = [view.x, view.y, view.s, W, H, ver, colorsOn, mode, screen, cur, sel, seeThru].join("|");
+  if (quick && cache && cache.key !== key) {   // fingers moving: slide the last picture, the sharp one follows
+    const L = cache.v, k = view.s / L.s; ctx.drawImage(cache.c, view.x * DPR - L.x * DPR * k, view.y * DPR - L.y * DPR * k, cv.width * k, cv.height * k); clearTimeout(sharpT); sharpT = setTimeout(() => draw(), 120); return;
+  }
+  if (!cache || cache.key !== key) {
+    const c = cache && cache.c.width === cv.width && cache.c.height === cv.height ? cache.c : Object.assign(document.createElement("canvas"), { width: cv.width, height: cv.height });
+    const g = c.getContext("2d"); g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, c.width, c.height);
+    g.setTransform(DPR, 0, 0, DPR, 0, 0); g.translate(view.x, view.y); g.scale(view.s, view.s);
+    if (screen === "clean") {
+      const p = work.pages[cur], d = pageData[p.n];
+      g.fillStyle = "#fff"; g.fillRect(p.origin[0], p.origin[1], p.size[0], p.size[1]);
+      if (d) paintPage(g, p, d, view.s, { faint: mode === "fix" || mode === "box", colors: colorsOn });
+    } else paintSheet(g, view.s);
+    cache = { key, c, v: { x: view.x, y: view.y, s: view.s } };
+  }
+  ctx.drawImage(cache.c, 0, 0);
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  if (boxDrag) { const a = toScreen(boxDrag.a), b = toScreen(boxDrag.b); ctx.strokeStyle = "#0b6e4f"; ctx.lineWidth = 2; ctx.setLineDash([6, 4]); ctx.strokeRect(a.x, a.y, b.x - a.x, b.y - a.y); ctx.setLineDash([]); }
+  if (picked) { ctx.strokeStyle = "#ffd200"; ctx.lineWidth = 6; ctx.globalAlpha = 0.8; ctx.beginPath(); for (const seg of picked.shape) { seg.forEach((q, i) => { const s = toScreen(q); i ? ctx.lineTo(s.x, s.y) : ctx.moveTo(s.x, s.y); }); } ctx.stroke(); ctx.globalAlpha = 1; }
+  for (const m of linePts) { const s = toScreen(m); ctx.fillStyle = "#d62828"; ctx.beginPath(); ctx.arc(s.x, s.y, 7, 0, 7); ctx.fill(); ctx.fillStyle = "#fff"; ctx.font = "bold 10px sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(m.lbl, s.x, s.y); }
+}
+let sharpT = null;
+
+/* ---------------------------------------------------------------- bottom buttons per screen */
+let mode = "look";   // look / fix / box (clean); move / line (sheet)
+function setTools() {
+  const t = $("tools"); $("pg").hidden = !(screen === "clean" || screen === "sheet");
+  if (screen === "clean") {
+    $("pg").textContent = "Page C-3";
+    const p = work.pages[cur], cleanPages = work.pages.filter(x => x.use === "clean");
+    t.innerHTML = `<button id="t-lay" class="primary">Layers</button><button id="t-sort">Sort by look</button><button id="t-ai">Sort with AI</button>
+      <button id="t-fix" class="${mode === "fix" ? "on" : ""}">Tap to fix</button><button id="t-box" class="${mode === "box" ? "on" : ""}">Box to fix</button>
+      <button id="t-col" class="${colorsOn ? "on" : ""}">Layer colors</button><button id="t-undo">Undo</button><button id="t-fit">Whole page</button>
+      ${cleanPages.length > 1 ? `<button id="t-pgs">Page ${p.n} ▸</button>` : ""}<button id="t-next" class="primary">Done with page</button>`;
+    $("t-lay").onclick = showLayers; $("t-sort").onclick = sortByLook; $("t-ai").onclick = sortWithAI;
+    $("t-fix").onclick = () => setMode(mode === "fix" ? "look" : "fix"); $("t-box").onclick = () => setMode(mode === "box" ? "look" : "box");
+    $("t-col").onclick = () => { colorsOn = !colorsOn; LS.set("cleanup.colors", colorsOn); setTools(); draw(); };
+    $("t-undo").onclick = undo; $("t-fit").onclick = () => { fit(); draw(); };
+    if ($("t-pgs")) $("t-pgs").onclick = () => { const i = cleanPages.indexOf(p); openClean(work.pages.indexOf(cleanPages[(i + 1) % cleanPages.length])); };
+    $("t-next").onclick = doneWithPage;
+  } else if (screen === "sheet") {
+    $("pg").textContent = "Page C-4";
+    const used = usedPages();
+    t.innerHTML = used.map(p => `<button data-sp="${p.n}" class="${sel === p.n ? "on" : ""}">Page ${p.n}</button>`).join("") +
+      `<button id="t-rot">Turn 90°</button><button id="t-line" class="${mode === "line" ? "on" : ""}">Line up 2 points</button>
+       <button id="t-see" class="${seeThru ? "on" : ""}">See through</button><button id="t-fit">Whole sheet</button><button id="t-back2">Back to pages</button><button id="t-next" class="primary">Next</button>`;
+    for (const b of t.querySelectorAll("[data-sp]")) b.onclick = () => { sel = +b.dataset.sp; setMode("move"); };
+    $("t-rot").onclick = () => turnSel(90); $("t-line").onclick = () => setMode(mode === "line" ? "move" : "line");
+    $("t-see").onclick = () => { seeThru = !seeThru; setTools(); draw(); };
+    $("t-fit").onclick = () => { fit(); draw(); }; $("t-back2").onclick = showPages; $("t-next").onclick = showAdd;
+  } else t.innerHTML = "";
+}
+function setMode(m) { mode = m; picked = null; boxDrag = null; linePts = []; setTools(); hint(); draw(); }
+function hint(text, btns) {
+  if (text == null) {
+    if (screen === "clean" && mode === "fix") text = "Tap a line or word to see its layer and move it. Hidden layers show faint.";
+    else if (screen === "clean" && mode === "box") text = "Drag a box around things to move them all to one layer.";
+    else if (screen === "sheet" && mode === "move") text = sel ? `Drag to move page ${sel}. Pick another page below.` : "Pick a page below, then drag it into place.";
+    else if (screen === "sheet" && mode === "line") text = lineHint();
+  }
+  $("hint").hidden = !text; $("hint-t").textContent = text || "";
+  $("hint-b").innerHTML = ""; for (const [lbl, fn, cls] of btns || []) { const b = document.createElement("button"); b.textContent = lbl; if (cls) b.className = cls; b.onclick = fn; $("hint-b").appendChild(b); }
+}
+
+/* ---------------------------------------------------------------- C-3 clean a page */
+function openClean(i) {
+  cur = i; screen = "clean"; view.fitted = false; cache = null; mode = "look"; picked = null;
+  const p = work.pages[cur]; $("sub").textContent = `${work.name} · page ${p.n}`;
+  work.pages.forEach((x, i) => { if (x.use === "clean" && pageData[x.n] && (pageData[x.n].plan ? !Object.keys(x.groups).length : !work.layers.length)) { cur = i; sortByLook(true); } });   // every page starts sorted by look
+  cur = i;
+  setTools(); hint(); fit(); draw();
+}
+function doneWithPage() {
+  const rest = work.pages.filter(x => x.use === "clean"), i = rest.indexOf(work.pages[cur]);
+  if (i < rest.length - 1) { openClean(work.pages.indexOf(rest[i + 1])); toast(`Page ${rest[i + 1].n}`); return; }
+  if (usedPages().length > 1) openSheet(); else showAdd();
+}
+const undos = [];
+function snap() { undos.push(JSON.stringify({ layers: work.layers, pages: work.pages.map(p => ({ groups: p.groups, over: p.over, tover: p.tover, boxes: p.boxes })) })); if (undos.length > 40) undos.shift(); }
+function undo() {
+  const s = undos.pop(); if (!s) { toast("Nothing to undo"); return; }
+  const o = JSON.parse(s); work.layers = o.layers; work.pages.forEach((p, i) => Object.assign(p, o.pages[i])); picked = null; touch(); draw(); toast("Undone");
+}
+/* colors by name, so a layer made "by look" gets a name he can read */
+const CNAMES = [["Black", 0, 0, 0], ["Gray", 128, 128, 128], ["Red", 210, 35, 35], ["Orange", 230, 125, 20], ["Yellow", 230, 200, 0], ["Green", 30, 140, 70], ["Teal", 20, 120, 120],
+  ["Blue", 20, 90, 215], ["Purple", 120, 50, 150], ["Pink", 190, 40, 130], ["Brown", 120, 80, 50]];
+function colorName(hex) {
+  const v = parseInt(String(hex).slice(1).padEnd(6, "0").slice(0, 6), 16), r = v >> 16 & 255, g = v >> 8 & 255, b = v & 255;
+  let best = "Color", bd = 1e9; for (const [n, R, G, B] of CNAMES) { const d = (r - R) ** 2 + (g - G) ** 2 + (b - B) ** 2; if (d < bd) { bd = d; best = n; } }
+  return best;
+}
+const STREET_RE = /\b(ave(nue)?|st(reet)?|r(oa)?d|dr(ive)?|l(a)?n(e)?|blvd|boulevard|pl(ace)?|c(our)?t|way|hwy|highway|route|rte|pkwy|parkway|terrace|ter)\.?$/i;
+/* Steven's fixes, kept for next time: {look: "col|w" or text: "STR", layer: name} */
+const examples = () => LS.get("cleanup.examples", []) || [];
+function learn(ex) { const L = examples().filter(e => !(e.look && e.look === ex.look) && !(e.text && e.text === ex.text)); L.unshift(Object.assign({ t: Date.now() }, ex)); LS.set("cleanup.examples", L.slice(0, 300)); }
+function sortByLook(silent) {
+  const p = work.pages[cur], d = pageData[p.n]; if (!d) return;
+  if (silent !== true) snap();
+  const ex = examples(), exLook = new Map(ex.filter(e => e.look).map(e => [e.look, e.layer])), exText = new Map(ex.filter(e => e.text).map(e => [e.text.toLowerCase(), e.layer]));
+  if (d.plan) {
+    const cnt = new Map(); for (const l of d.plan.lines) cnt.set(lookKey(l), (cnt.get(lookKey(l)) || 0) + 1);
+    const widths = [...cnt.keys()].map(k => +k.split("|")[1]).sort((a, b) => a - b), mid = widths[Math.floor(widths.length / 2)] || 1;
+    for (const k of cnt.keys()) {
+      if (p.groups[k] && silent === true) continue;
+      const [col, w] = k.split("|"), name = exLook.get(k) || `${colorName(col)} ${+w > mid * 1.4 ? "thick" : +w < mid * 0.7 ? "thin" : ""} lines`.replace(/\s+/g, " ");
+      const cn = colorName(col); p.groups[k] = addLayer(name, cn === "Black" || cn === "Gray" ? null : col).id;   // a colored line's layer shows in that color
+    }
+    const tsz = new Set(d.plan.texts.map(textKey));
+    for (const k of tsz) if (!p.groups[k] || silent !== true) p.groups[k] = addLayer("Words").id;
+    d.plan.texts.forEach((t, i) => {   // a few words he'd want on their own
+      const s = String(t[2]).trim(), learned = exText.get(s.toLowerCase());
+      if (learned) p.tover[i] = addLayer(learned).id;
+      else if (MATCH_RE.test(s)) p.tover[i] = addLayer("Match lines").id;
+      else if (STREET_RE.test(s) && /[a-z]{3}/i.test(s)) p.tover[i] = addLayer("Street names").id;
+    });
+  } else if (!work.layers.length) addLayer("Extra stuff");
+  touch(); draw();
+  if (silent !== true) { toast(`Sorted into ${work.layers.length} layers by color and thickness. Open Layers to name them.`, 4000); showLayers(); }
+}
+
+/* layers list */
+function counts() {
+  const c = {}; const add = (k, n) => c[k] = (c[k] || 0) + (n || 1);
+  for (const p of usedPages()) { const d = pageData[p.n]; if (!d) continue;
+    if (d.plan) { d.plan.lines.forEach((l, i) => add(lineLayer(p, i, l))); d.plan.texts.forEach((t, i) => add(textLayer(p, i, t))); }
+    for (const b of p.boxes) add(b.layer); }
+  return c;
+}
+function showLayers() {
+  const c = counts();
+  modal(`<span class="pg">Page C-5</span><h2>Layers</h2><p class="note">Switch a layer off to hide it. Tap a name to rename it. Names are kept for next time.</p>
+    ${work.layers.map(l => `<div class="lyr"><span class="dot" style="background:${l.col}"></span><button class="nm" data-rn="${l.id}">${esc(l.name)}</button><span class="ct">${c[l.id] || 0}</span>
+      <button class="sw ${l.on ? "on" : ""}" data-on="${l.id}">${l.on ? "On" : "Off"}</button></div>`).join("")}
+    ${c[UNSORTED] ? `<div class="lyr"><span class="dot" style="background:#9aa3a8"></span><span class="nm" style="padding-left:13px">Not sorted yet</span><span class="ct">${c[UNSORTED]}</span><span class="sw"></span></div>` : ""}
+    <div class="acts"><button id="l-all">All on</button><button id="l-new">New layer</button><button id="l-join">Join two layers</button><button class="primary" id="l-x">Close</button></div>`);
+  for (const b of document.querySelectorAll("[data-on]")) b.onclick = () => { const l = layerById(b.dataset.on); l.on = !l.on; touch(); draw(); showLayers(); };
+  for (const b of document.querySelectorAll("[data-rn]")) b.onclick = () => renameLayer(b.dataset.rn);
+  $("l-all").onclick = () => { for (const l of work.layers) l.on = true; touch(); draw(); showLayers(); };
+  $("l-new").onclick = () => askName("New layer", "", n => { snap(); addLayer(n); touch(); showLayers(); });
+  $("l-join").onclick = joinLayers;
+  $("l-x").onclick = closeModal;
+}
+function askName(title, val, done, back) {
+  modal(`<h2>${esc(title)}</h2><label class="f"><span>Name</span><input id="n-in" type="text" value="${esc(val)}" autocomplete="off"></label>
+    <div class="acts"><button id="n-x">Cancel</button><button class="primary" id="n-ok">Save</button></div>`);
+  const inp = $("n-in"); setTimeout(() => inp.focus(), 50);
+  $("n-x").onclick = back || showLayers;
+  $("n-ok").onclick = () => { const v = inp.value.trim(); if (!v) { toast("Type a name"); return; } done(v); };
+  inp.onkeydown = e => { if (e.key === "Enter") $("n-ok").click(); };
+}
+function renameLayer(id) {
+  const l = layerById(id);
+  askName("Rename layer", l.name, n => {
+    snap(); const other = work.layers.find(x => x !== l && x.name.toLowerCase() === n.toLowerCase());
+    if (other) { mergeInto(l.id, other.id); toast(`Joined into "${other.name}"`); }
+    else l.name = n;
+    rememberLayer(other || l); touch(); draw(); showLayers();
+  });
+}
+function rememberLayer(l) {   // every look and word on this layer is an example for next time
+  for (const p of work.pages) { const d = pageData[p.n]; if (!d || !d.plan) continue;
+    for (const [k, v] of Object.entries(p.groups)) if (v === l.id && !k.startsWith("t|")) learn({ look: k, layer: l.name }); }
+}
+function mergeInto(from, to) {
+  for (const p of work.pages) {
+    for (const o of [p.groups, p.over, p.tover]) for (const k of Object.keys(o)) if (o[k] === from) o[k] = to;
+    for (const b of p.boxes) if (b.layer === from) b.layer = to;
+  }
+  work.layers = work.layers.filter(x => x.id !== from);
+}
+function joinLayers() {
+  let first = null;
+  const pick = () => modal(`<h2>${first ? `Join "${esc(layerById(first).name)}" into…` : "Join which layer?"}</h2><div class="list">
+      ${work.layers.filter(l => l.id !== first).map(l => `<button data-j="${l.id}"><span class="dot" style="display:inline-block;width:14px;height:14px;border-radius:50%;background:${l.col}"></span> ${esc(l.name)}</button>`).join("")}</div>
+      <div class="acts"><button id="j-x">Cancel</button></div>`);
+  pick();
+  const wire = () => {
+    $("j-x").onclick = showLayers;
+    for (const b of document.querySelectorAll("[data-j]")) b.onclick = () => {
+      if (!first) { first = b.dataset.j; pick(); wire(); return; }
+      snap(); const to = layerById(b.dataset.j); mergeInto(first, to.id); rememberLayer(to); touch(); draw(); showLayers();
+    };
+  };
+  wire();
+}
+
+/* tap / box to fix */
+let picked = null, boxDrag = null;
+function segDist(q, a, b) { const dx = b.x - a.x, dy = b.y - a.y, L = dx * dx + dy * dy; let t = L ? ((q.x - a.x) * dx + (q.y - a.y) * dy) / L : 0; t = Math.max(0, Math.min(1, t)); return Math.hypot(q.x - a.x - t * dx, q.y - a.y - t * dy); }
+function textBox(t) {
+  const [x, y, str, size, , rot] = t, z = size || 8, len = String(str).length * z * 0.6, a = -(rot || 0) * Math.PI / 180;
+  return [[0, 0], [len, 0], [len, -z], [0, -z], [0, 0]].map(([px, py]) => ({ x: x + px * Math.cos(a) - py * Math.sin(a), y: y + px * Math.sin(a) + py * Math.cos(a) }));
+}
+function pickAt(sp) {
+  const p = work.pages[cur], d = pageData[p.n], w = toWorld(sp), lim = 14 / view.s; let best = null, bd = lim;
+  if (d && d.plan) {
+    d.plan.texts.forEach((t, i) => { const bx = textBox(t), xs = bx.map(q => q.x), ys = bx.map(q => q.y);
+      if (w.x >= Math.min(...xs) - lim / 2 && w.x <= Math.max(...xs) + lim / 2 && w.y >= Math.min(...ys) - lim / 2 && w.y <= Math.max(...ys) + lim / 2) { const dd = lim / 3; if (dd < bd) { bd = dd; best = { kind: "text", i, shape: [bx] }; } } });
+    d.plan.lines.forEach((l, i) => { const pts = l[2];
+      for (let j = 2; j < pts.length; j += 2) { const dd = segDist(w, { x: pts[j - 2], y: pts[j - 1] }, { x: pts[j], y: pts[j + 1] }); if (dd < bd) { bd = dd; best = { kind: "line", i }; } } });
+    if (best && best.kind === "line") { const pts = d.plan.lines[best.i][2], seg = []; for (let j = 0; j < pts.length; j += 2) seg.push({ x: pts[j], y: pts[j + 1] }); best.shape = [seg]; }
+  }
+  for (const b of p.boxes) if (w.x >= b.x0 && w.x <= b.x1 && w.y >= b.y0 && w.y <= b.y1 && !best) best = { kind: "box", id: b.id, shape: [[{ x: b.x0, y: b.y0 }, { x: b.x1, y: b.y0 }, { x: b.x1, y: b.y1 }, { x: b.x0, y: b.y1 }, { x: b.x0, y: b.y0 }]] };
+  return best;
+}
+function pickedLayer(p, d, it) {
+  if (it.kind === "line") return lineLayer(p, it.i, d.plan.lines[it.i]);
+  if (it.kind === "text") return textLayer(p, it.i, d.plan.texts[it.i]);
+  if (it.kind === "box") return (p.boxes.find(b => b.id === it.id) || {}).layer;
+  return UNSORTED;
+}
+function fixPicked() {
+  const p = work.pages[cur], d = pageData[p.n], it = picked; if (!it) return;
+  const now = pickedLayer(p, d, it), ln = now === UNSORTED ? "Not sorted yet" : (layerById(now) || {}).name || "?";
+  const what = it.kind === "text" ? `the words "${esc(d.plan.texts[it.i][2])}"` : it.kind === "line" ? `a ${esc(colorName(d.plan.lines[it.i][0]).toLowerCase())} line` : "this box";
+  const lookCount = it.kind === "line" ? d.plan.lines.filter(l => lookKey(l) === lookKey(d.plan.lines[it.i])).length : 0;
+  modal(`<span class="pg">Page C-6</span><h2>Move to which layer?</h2><p>This is ${what}. It's on <b>${esc(ln)}</b>.</p>
+    ${lookCount > 1 ? `<div class="seg" style="margin:8px 0"><button id="f-one" class="on">Just this one</button><button id="f-all">All ${lookCount} that look like it</button></div>` : ""}
+    <div class="list">${work.layers.map(l => `<button data-m="${l.id}" class="${l.id === now ? "on" : ""}"><span style="display:inline-block;width:14px;height:14px;border-radius:50%;background:${l.col}"></span> ${esc(l.name)}${l.on ? "" : " (off)"}</button>`).join("")}
+    <button id="f-new">New layer…</button>${it.kind === "box" ? `<button id="f-del" class="danger">Remove this box</button>` : ""}</div>
+    <div class="acts"><button id="f-x">Cancel</button></div>`);
+  let all = false;
+  if ($("f-one")) { $("f-one").onclick = () => { all = false; $("f-one").classList.add("on"); $("f-all").classList.remove("on"); }; $("f-all").onclick = () => { all = true; $("f-all").classList.add("on"); $("f-one").classList.remove("on"); }; }
+  const moveTo = id => {
+    snap(); const l = layerById(id);
+    if (it.kind === "line") { const k = lookKey(d.plan.lines[it.i]); if (all) { p.groups[k] = id; d.plan.lines.forEach((x, j) => { if (lookKey(x) === k) delete p.over[j]; }); learn({ look: k, layer: l.name }); } else p.over[it.i] = id; }
+    else if (it.kind === "text") { p.tover[it.i] = id; learn({ text: String(d.plan.texts[it.i][2]).trim(), layer: l.name }); }
+    else if (it.kind === "box") { const b = p.boxes.find(b => b.id === it.id); if (b) { b.layer = id; if (b.what) learn({ area: b.what, layer: l.name }); } }
+    picked = null; closeModal(); touch(); draw(); toast(`Moved to ${l.name}`);
+  };
+  for (const b of document.querySelectorAll("[data-m]")) b.onclick = () => moveTo(b.dataset.m);
+  $("f-new").onclick = () => askName("New layer", "", n => moveTo(addLayer(n).id), fixPicked);
+  if ($("f-del")) $("f-del").onclick = () => { snap(); p.boxes = p.boxes.filter(b => b.id !== it.id); picked = null; closeModal(); touch(); draw(); };
+  $("f-x").onclick = () => { picked = null; closeModal(); draw(); };
+}
+function boxDone(a, b) {
+  const p = work.pages[cur], d = pageData[p.n];
+  const x0 = Math.min(a.x, b.x), x1 = Math.max(a.x, b.x), y0 = Math.min(a.y, b.y), y1 = Math.max(a.y, b.y);
+  if ((x1 - x0) * view.s < 12 || (y1 - y0) * view.s < 12) return;
+  const inside = q => q.x >= x0 && q.x <= x1 && q.y >= y0 && q.y <= y1;
+  const lines = [], texts = [];
+  if (d && d.plan) {
+    d.plan.lines.forEach((l, i) => { const pts = l[2]; let ok = true; for (let j = 0; j < pts.length && ok; j += 2) ok = inside({ x: pts[j], y: pts[j + 1] }); if (ok) lines.push(i); });
+    d.plan.texts.forEach((t, i) => { if (inside({ x: t[0], y: t[1] })) texts.push(i); });
+  }
+  const isPic = !d || !d.plan;
+  if (!isPic && !lines.length && !texts.length) { toast("Nothing is fully inside that box"); return; }
+  modal(`<span class="pg">Page C-6</span><h2>Move to which layer?</h2><p>${isPic ? "The area in the box." : `${lines.length} lines and ${texts.length} words in the box.`}</p>
+    <div class="list">${work.layers.map(l => `<button data-m="${l.id}"><span style="display:inline-block;width:14px;height:14px;border-radius:50%;background:${l.col}"></span> ${esc(l.name)}${l.on ? "" : " (off)"}</button>`).join("")}
+    <button id="f-new">New layer…</button></div><div class="acts"><button id="f-x">Cancel</button></div>`);
+  const moveTo = id => {
+    snap();
+    if (isPic) p.boxes.push({ id: uid(), x0, y0, x1, y1, layer: id });
+    else { for (const i of lines) p.over[i] = id; for (const i of texts) { p.tover[i] = id; learn({ text: String(d.plan.texts[i][2]).trim(), layer: layerById(id).name }); } }
+    closeModal(); touch(); draw(); toast(`Moved to ${layerById(id).name}`);
+  };
+  for (const b of document.querySelectorAll("[data-m]")) b.onclick = () => moveTo(b.dataset.m);
+  $("f-new").onclick = () => askName("New layer", "", n => moveTo(addLayer(n).id), () => boxDone(a, b));
+  $("f-x").onclick = () => { closeModal(); draw(); };
+}
+
+/* ---------------------------------------------------------------- AI sorting (needs his own AI key, kept on this device only) */
+const aiKey = () => LS.get("cleanup.aikey", "");
+function showKey() {
+  modal(`<span class="pg">Page C-7</span><h2>AI key</h2>
+    <p>The AI sorting uses your own pay-per-use AI account. The key stays on this device only. It is never put on GitHub.</p>
+    <p class="note">Until a key is added, everything works by hand: Sort by look, Tap to fix and Box to fix.</p>
+    <label class="f"><span>Key (starts with sk-ant-)</span><input id="k-in" type="password" autocomplete="off" value="${esc(aiKey())}"></label>
+    <div class="acts">${aiKey() ? `<button id="k-del" class="danger">Remove key</button>` : ""}<button id="k-x">Cancel</button><button class="primary" id="k-ok">Save on this device</button></div>`);
+  $("k-ok").onclick = () => { const v = $("k-in").value.trim(); if (!/^sk-ant-/.test(v)) { toast("That doesn't look like an AI key"); return; } LS.set("cleanup.aikey", v); toast("Key saved on this device"); back(); };
+  if ($("k-del")) $("k-del").onclick = () => { LS.del("cleanup.aikey"); toast("Key removed"); back(); };
+  $("k-x").onclick = back;
+  function back() { if (screen === "start") showStart(); else closeModal(); }
+}
+function pageJpegFor(p, d, maxSide) {   // what the AI looks at
+  const s = maxSide / Math.max(p.size[0], p.size[1]);
+  const c = document.createElement("canvas"); c.width = Math.round(p.size[0] * s); c.height = Math.round(p.size[1] * s);
+  const g = c.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height); g.scale(s, s); g.translate(-p.origin[0], -p.origin[1]);
+  paintPage(g, p, d, s, { all: true });
+  return { url: c.toDataURL("image/jpeg", 0.85), s };
+}
+async function askAI(content) {
+  const body = { model: "claude-opus-5-5", max_tokens: 16000, output_config: { effort: "medium" }, fallbacks: "default", messages: [{ role: "user", content }] };
+  const headers = { "content-type": "application/json", "x-api-key": aiKey(), "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true", "anthropic-beta": "server-side-fallback-2026-07-01" };
+  let r = await fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers, body: JSON.stringify(body) });
+  if (r.status === 400) { const t = await r.text(); if (/fallback/i.test(t)) { delete body.fallbacks; delete headers["anthropic-beta"]; r = await fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers, body: JSON.stringify(body) }); } else throw new Error("the AI said: " + (t.match(/"message":"([^"]+)/) || [, t.slice(0, 120)])[1]); }
+  if (r.status === 401) throw new Error("the AI key was refused. Check it on the AI key page.");
+  if (!r.ok) throw new Error("the AI said " + r.status);
+  const j = await r.json();
+  if (j.stop_reason === "refusal") throw new Error("the AI declined this print");
+  const txt = (j.content || []).filter(b => b.type === "text").map(b => b.text).join("\n"), m = txt.match(/\{[\s\S]*\}/);
+  if (!m) throw new Error("the AI's answer couldn't be read");
+  return JSON.parse(m[0]);
+}
+async function sortWithAI() {
+  if (!aiKey()) { modal(`<h2>Sort with AI</h2><p>This needs your AI key first. Your AI account is still being set up, so for now use <b>Sort by look</b>, <b>Tap to fix</b> and <b>Box to fix</b>.</p>
+      <div class="acts"><button id="a-x">OK</button><button class="primary" id="a-k">Add AI key</button></div>`); $("a-x").onclick = closeModal; $("a-k").onclick = showKey; return; }
+  const p = work.pages[cur], d = pageData[p.n]; if (!d) return;
+  hint("The AI is sorting this page. This can take a minute…");
+  try {
+    const { url } = pageJpegFor(p, d, 1568);
+    const ex = examples().slice(0, 60).map(e => e.look ? `lines that look like ${colorName(e.look.split("|")[0])} (${e.look.split("|")[0]}), width ${e.look.split("|")[1]} -> "${e.layer}"` : e.text ? `the words "${e.text}" -> "${e.layer}"` : `area "${e.area}" -> "${e.layer}"`);
+    const layersNow = work.layers.map(l => l.name);
+    let task, groupsList = [];
+    if (d.plan) {
+      const g = new Map(); d.plan.lines.forEach(l => { const k = lookKey(l); const e = g.get(k) || { n: 0, x0: 1e9, y0: 1e9, x1: -1e9, y1: -1e9 }; e.n++; const pts = l[2]; for (let j = 0; j < pts.length; j += 2) { e.x0 = Math.min(e.x0, pts[j]); e.x1 = Math.max(e.x1, pts[j]); e.y0 = Math.min(e.y0, pts[j + 1]); e.y1 = Math.max(e.y1, pts[j + 1]); } g.set(k, e); });
+      const pct = (v, i) => Math.round((v - p.origin[i]) / p.size[i] * 100);
+      groupsList = [...g.entries()].map(([k, e], i) => ({ id: "L" + i, k, desc: `L${i}: ${colorName(k.split("|")[0])} ${k.split("|")[0]}, width ${k.split("|")[1]}, ${e.n} lines, area x ${pct(e.x0, 0)}-${pct(e.x1, 0)}%, y ${pct(e.y0, 1)}-${pct(e.y1, 1)}%` }));
+      const texts = d.plan.texts.slice(0, 1500).map((t, i) => `T${i}: "${String(t[2]).slice(0, 60)}" at x ${pct(t[0], 0)}%, y ${pct(t[1], 1)}%`);
+      task = `The picture is a construction site print. Its drawing is made of line groups (each group = one color and thickness) and words.
+Line groups:\n${groupsList.map(x => x.desc).join("\n")}\nWords:\n${texts.join("\n")}
+Sort everything into layers a utility contractor would want, e.g. Streets, Curbs, Sidewalks, Parking, Poles, Buildings, Property lines, Water, Sewer, Gas, Electric, Telecom, Trees, Street names, Unit numbers, Match lines, Extra stuff (notes, title box, legend, dimensions, revision table). Use plain names. Reuse these existing layer names when they fit: ${JSON.stringify(layersNow)}.
+A line group may be split only by words; lines stay with their group.
+Answer with JSON only: {"layers":[{"name":"Streets","groups":["L0"],"words":["T3","T7"]}],"matchLines":["text of any match line notes"],"note":"one short sentence"}`;
+    } else {
+      task = `The picture is a scanned construction site print. Mark the areas that belong to each layer a utility contractor would want, e.g. Title box, Notes, Legend, Revision table, Dimensions, North arrow, Match lines (plus anything else worth hiding).
+Answer with JSON only: {"layers":[{"name":"Title box","areas":[[x0,y0,x1,y1]]}],"matchLines":["text of any match line notes"],"note":"one short sentence"} with areas as fractions 0 to 1 of the picture width and height.`;
+    }
+    if (ex.length) task += `\nThe user corrected earlier sorting. Follow these examples:\n${ex.join("\n")}`;
+    const out = await askAI([{ type: "image", source: { type: "base64", media_type: "image/jpeg", data: url.split(",")[1] } }, { type: "text", text: task }]);
+    snap();
+    let moved = 0;
+    for (const L of out.layers || []) {
+      if (!L || !L.name) continue; const lay = addLayer(L.name);
+      for (const gid of L.groups || []) { const g = groupsList.find(x => x.id === gid); if (g) { p.groups[g.k] = lay.id; d.plan.lines.forEach((l, j) => { if (lookKey(l) === g.k) delete p.over[j]; }); moved++; } }
+      for (const tid of L.words || []) { const i = +String(tid).replace(/\D/g, ""); if (d.plan && d.plan.texts[i]) { p.tover[i] = lay.id; moved++; } }
+      for (const a of L.areas || []) { if (a.length === 4) { p.boxes.push({ id: uid(), x0: p.origin[0] + a[0] * p.size[0], y0: p.origin[1] + a[1] * p.size[1], x1: p.origin[0] + a[2] * p.size[0], y1: p.origin[1] + a[3] * p.size[1], layer: lay.id, what: L.name }); moved++; } }
+    }
+    if (Array.isArray(out.matchLines) && out.matchLines.length) p.match = [...new Set([...p.match, ...out.matchLines.map(String)])].slice(0, 6);
+    const cn = counts(); p.ai = true; work.layers = work.layers.filter(l => cn[l.id] || (out.layers || []).some(L => L && L.name === l.name));
+    touch(); draw(); hint(null);
+    toast(`AI sorted ${moved} things into layers. ${out.note || ""}`, 5000); showLayers();
+  } catch (e) { hint(null); toast("AI sorting didn't work: " + e.message, 6000); }
+}
+
+/* ---------------------------------------------------------------- C-4 whole-project sheet: piece pages together at the match lines */
+let sel = 0, seeThru = true, linePts = [];
+const R = deg => deg * Math.PI / 180;
+function placeOf(p) { return p.place || { x: 0, y: 0, r: 0, s: 1 }; }
+function toSheet(p, q) { const o = placeOf(p), c = Math.cos(R(o.r)), s = Math.sin(R(o.r)); return { x: o.s * (c * q.x - s * q.y) + o.x, y: o.s * (s * q.x + c * q.y) + o.y }; }
+function fromSheet(p, q) { const o = placeOf(p), c = Math.cos(R(o.r)), s = Math.sin(R(o.r)), x = (q.x - o.x) / o.s, y = (q.y - o.y) / o.s; return { x: c * x + s * y, y: -s * x + c * y }; }
+function corners(p) { const [ox, oy] = p.origin, [w, h] = p.size; return [[ox, oy], [ox + w, oy], [ox + w, oy + h], [ox, oy + h]].map(([x, y]) => toSheet(p, { x, y })); }
+function sheetBounds() {
+  const pts = usedPages().flatMap(corners); if (!pts.length) return { x0: 0, y0: 0, x1: 100, y1: 100 };
+  const xs = pts.map(q => q.x), ys = pts.map(q => q.y); return { x0: Math.min(...xs), y0: Math.min(...ys), x1: Math.max(...xs), y1: Math.max(...ys) };
+}
+function openSheet() {
+  screen = "sheet"; closeModal(); cache = null; view.fitted = false;
+  const used = usedPages(); let x = 0;
+  for (const p of used) if (!p.place) { p.place = { x: x - p.origin[0], y: -p.origin[1], r: 0, s: 1 }; x += p.size[0] * 1.03; }   // side by side to start
+  sel = used[0].n; mode = "move"; $("sub").textContent = `${work.name} · whole project`;
+  touch(); setTools(); fit(); draw();
+  hint(used.some(p => p.match.length) ? "Pages with match lines are marked. Use Line up 2 points: tap both ends of the match line on one page, then the same two spots on the other page." : null);
+  if (!used.some(p => p.match.length)) hint();
+}
+function paintSheet(g, s) {
+  for (const p of usedPages()) {
+    const d = pageData[p.n], o = placeOf(p);
+    g.save(); g.translate(o.x, o.y); g.rotate(R(o.r)); g.scale(o.s, o.s);
+    g.globalAlpha = seeThru && p.n !== sel ? 0.55 : 1;
+    if (!seeThru || p.n === sel) { g.fillStyle = "#fff"; g.fillRect(p.origin[0], p.origin[1], p.size[0], p.size[1]); }
+    if (d) paintPage(g, p, d, s * o.s, { all: p.use === "asis" });
+    g.globalAlpha = 1;
+    g.strokeStyle = p.n === sel ? "#0b6e4f" : "#8a9490"; g.lineWidth = (p.n === sel ? 3 : 1.5) / (s * o.s); g.strokeRect(p.origin[0], p.origin[1], p.size[0], p.size[1]);
+    g.restore();
+  }
+}
+function turnSel(deg) {
+  const p = work.pages.find(x => x.n === sel); if (!p) return;
+  const c = corners(p), cx = (c[0].x + c[2].x) / 2, cy = (c[0].y + c[2].y) / 2, o = placeOf(p);
+  const a = R(deg), dx = o.x - cx, dy = o.y - cy;
+  p.place = { x: cx + dx * Math.cos(a) - dy * Math.sin(a), y: cy + dx * Math.sin(a) + dy * Math.cos(a), r: (o.r + deg) % 360, s: o.s };
+  touch(); draw();
+}
+function lineHint() {
+  const n = linePts.length, other = "the page it joins";
+  return [`Tap the first end of the match line on page ${sel}.`, `Tap the other end of the match line on page ${sel}.`, `Now tap the first end on ${other}.`, `Tap the other end on ${other}.`][n] || "";
+}
+function lineTap(w) {
+  linePts.push({ x: w.x, y: w.y, lbl: String(linePts.length % 2 + 1) }); hint(); draw();
+  if (linePts.length < 4) return;
+  const p = work.pages.find(x => x.n === sel), [a1, a2, b1, b2] = linePts;
+  // turn and move page `sel` so its two points land on the other page's two points (same size: pages of one set share a scale)
+  const ra = Math.atan2(a2.y - a1.y, a2.x - a1.x), rb = Math.atan2(b2.y - b1.y, b2.x - b1.x), da = Math.hypot(a2.x - a1.x, a2.y - a1.y), db = Math.hypot(b2.x - b1.x, b2.y - b1.y);
+  const turn = rb - ra, scale = da > 0 && Math.abs(db / da - 1) > 0.03 && keepScaleAsk ? db / da : 1;
+  const L1 = fromSheet(p, a1), o = placeOf(p), nr = o.r + turn * 180 / Math.PI, ns = o.s * scale, c = Math.cos(R(nr)), s = Math.sin(R(nr));
+  const mid = { x: (b1.x + b2.x) / 2, y: (b1.y + b2.y) / 2 }, L2 = fromSheet(p, a2), Lm = { x: (L1.x + L2.x) / 2, y: (L1.y + L2.y) / 2 };
+  p.place = { x: mid.x - ns * (c * Lm.x - s * Lm.y), y: mid.y - ns * (s * Lm.x + c * Lm.y), r: nr, s: ns };
+  linePts = []; mode = "move"; touch(); setTools(); hint(`Page ${sel} is lined up. Drag it a little if it needs it.`); draw();
+}
+const keepScaleAsk = false;
+
+/* ---------------------------------------------------------------- touch, mouse */
+const ptrs = new Map(); let gest = null, pinch = null;
+const pos = e => { const r = cv.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
+cv.addEventListener("pointerdown", e => {
+  if (!work || (screen !== "clean" && screen !== "sheet")) return;
+  try { cv.setPointerCapture(e.pointerId); } catch {}
+  const q = pos(e); ptrs.set(e.pointerId, q);
+  if (ptrs.size === 2) { gest = null; boxDrag = null; const [a, b] = [...ptrs.values()]; pinch = { d: Math.hypot(a.x - b.x, a.y - b.y) || 1, m: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, v: { x: view.x, y: view.y, s: view.s } }; return; }
+  if (ptrs.size > 2) return;
+  gest = { start: q, last: q, moved: false, v: { x: view.x, y: view.y } };
+  if (screen === "clean" && mode === "box") gest.type = "box";
+  else if (screen === "sheet" && mode === "move" && sel) { const p = work.pages.find(x => x.n === sel), w = toWorld(q), L = fromSheet(p, w);
+    const inPage = L.x >= p.origin[0] && L.x <= p.origin[0] + p.size[0] && L.y >= p.origin[1] && L.y <= p.origin[1] + p.size[1];
+    gest.type = inPage ? "page" : "pan"; if (inPage) gest.o = Object.assign({}, placeOf(p)); }
+  else gest.type = "pan";
+});
+cv.addEventListener("pointermove", e => {
+  if (!ptrs.has(e.pointerId)) return;
+  const q = pos(e); ptrs.set(e.pointerId, q);
+  if (pinch && ptrs.size === 2) {
+    const [a, b] = [...ptrs.values()], d = Math.hypot(a.x - b.x, a.y - b.y) || 1, m = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    const s = Math.max(0.02, Math.min(80, pinch.v.s * d / pinch.d));
+    view.x = m.x - (pinch.m.x - pinch.v.x) * s / pinch.v.s; view.y = m.y - (pinch.m.y - pinch.v.y) * s / pinch.v.s; view.s = s; draw(true); return;
+  }
+  if (!gest) return;
+  if (Math.hypot(q.x - gest.start.x, q.y - gest.start.y) > 6) gest.moved = true;
+  if (!gest.moved) return;
+  if (gest.type === "pan") { view.x = gest.v.x + q.x - gest.start.x; view.y = gest.v.y + q.y - gest.start.y; draw(true); }
+  else if (gest.type === "box") { boxDrag = { a: toWorld(gest.start), b: toWorld(q) }; draw(); }
+  else if (gest.type === "page") { const p = work.pages.find(x => x.n === sel); p.place = Object.assign({}, gest.o, { x: gest.o.x + (q.x - gest.start.x) / view.s, y: gest.o.y + (q.y - gest.start.y) / view.s }); ver++; draw(); }
+});
+function up(e) {
+  if (!ptrs.has(e.pointerId)) return;
+  ptrs.delete(e.pointerId);
+  if (pinch) { if (ptrs.size < 2) { pinch = null; gest = null; draw(); } return; }
+  const g = gest; gest = null; if (!g) return;
+  const q = pos(e);
+  if (g.type === "box" && g.moved) { const a = toWorld(g.start), b = toWorld(q); boxDrag = null; boxDone(a, b); draw(); return; }
+  if (g.type === "page" && g.moved) { touch(); draw(); return; }
+  if (g.moved) { draw(); return; }
+  // a tap
+  if (screen === "clean" && mode === "fix") { picked = pickAt(q); draw(); if (picked) fixPicked(); else toast("Nothing there. Zoom in and tap right on a line."); }
+  else if (screen === "clean" && mode === "box" && pageData[work.pages[cur].n] && pageData[work.pages[cur].n].plan) { picked = pickAt(q); if (picked) { draw(); fixPicked(); } }
+  else if (screen === "sheet" && mode === "line") lineTap(toWorld(q));
+  else if (screen === "sheet" && mode === "move") {   // tap a page to pick it
+    const w = toWorld(q), hit = usedPages().slice().reverse().find(p => { const L = fromSheet(p, w); return L.x >= p.origin[0] && L.x <= p.origin[0] + p.size[0] && L.y >= p.origin[1] && L.y <= p.origin[1] + p.size[1]; });
+    if (hit && hit.n !== sel) { sel = hit.n; setTools(); hint(); draw(); }
+  }
+}
+cv.addEventListener("pointerup", up); cv.addEventListener("pointercancel", up);
+cv.addEventListener("wheel", e => {
+  e.preventDefault(); const q = pos(e), k = Math.exp(-e.deltaY * 0.0015), s = Math.max(0.02, Math.min(80, view.s * k));
+  view.x = q.x - (q.x - view.x) * s / view.s; view.y = q.y - (q.y - view.y) * s / view.s; view.s = s; draw(true);
+}, { passive: false });
+
+/* ---------------------------------------------------------------- the finished print, and Add to project */
+function finished() {   // one print in sheet coordinates: {kind:"vec", plan} or {kind:"img", canvas}
+  const used = usedPages(), one = used.length === 1;
+  if (used.every(p => p.kind === "vec")) {
+    const lines = [], texts = [];
+    for (const p of used) {
+      const d = pageData[p.n]; if (!d) continue; const o = one ? { x: 0, y: 0, r: 0, s: 1 } : placeOf(p), c = Math.cos(R(o.r)), sn = Math.sin(R(o.r));
+      const T = (x, y) => [Math.round((o.s * (c * x - sn * y) + o.x) * 10) / 10, Math.round((o.s * (sn * x + c * y) + o.y) * 10) / 10];
+      d.plan.lines.forEach((l, i) => { if (p.use === "clean" && !layerOn(lineLayer(p, i, l))) return; const pts = []; for (let j = 0; j < l[2].length; j += 2) pts.push(...T(l[2][j], l[2][j + 1])); lines.push([l[0], Math.round(l[1] * o.s * 100) / 100, pts]); });
+      d.plan.texts.forEach((t, i) => { if (p.use === "clean" && !layerOn(textLayer(p, i, t))) return; const [x, y] = T(t[0], t[1]); texts.push([x, y, t[2], Math.round(t[3] * o.s * 10) / 10, t[4], Math.round((t[5] || 0) - o.r)]); });
+    }
+    let origin, size;
+    if (one) { origin = used[0].origin.slice(); size = used[0].size.slice(); }   // same frame as the page it came from, so GPS spots stay put
+    else { const b = sheetBounds(); origin = [Math.floor(b.x0), Math.floor(b.y0)]; size = [Math.ceil(b.x1 - b.x0), Math.ceil(b.y1 - b.y0)]; }
+    return { kind: "vec", plan: { size, origin, lines, texts, from: "cleanup:" + work.id } };
+  }
+  const b = one ? { x0: used[0].origin[0], y0: used[0].origin[1], x1: used[0].origin[0] + used[0].size[0], y1: used[0].origin[1] + used[0].size[1] } : sheetBounds();
+  const w = b.x1 - b.x0, h = b.y1 - b.y0, k = one && used[0].kind === "img" ? 1 : Math.min(5000 / Math.max(w, h), Math.sqrt(15e6 / (w * h)));
+  const cvs = document.createElement("canvas"); cvs.width = Math.round(w * k); cvs.height = Math.round(h * k);
+  const g = cvs.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, cvs.width, cvs.height); g.scale(k, k); g.translate(-b.x0, -b.y0);
+  for (const p of used) { const d = pageData[p.n]; if (!d) continue; const o = one ? { x: 0, y: 0, r: 0, s: 1 } : placeOf(p);
+    g.save(); g.translate(o.x, o.y); g.rotate(R(o.r)); g.scale(o.s, o.s); paintPage(g, p, d, k * o.s, { all: p.use === "asis" }); g.restore(); }
+  return { kind: "img", canvas: cvs, size: [cvs.width, cvs.height] };
+}
+function previewUrl(f) {
+  if (f.kind === "img") { const c = document.createElement("canvas"), k = 600 / Math.max(f.canvas.width, f.canvas.height); c.width = f.canvas.width * k; c.height = f.canvas.height * k; c.getContext("2d").drawImage(f.canvas, 0, 0, c.width, c.height); return c.toDataURL("image/jpeg", 0.8); }
+  const p = f.plan, c = document.createElement("canvas"), k = 600 / Math.max(p.size[0], p.size[1]); c.width = p.size[0] * k; c.height = p.size[1] * k;
+  const g = c.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height); g.scale(k, k); g.translate(-p.origin[0], -p.origin[1]);
+  for (const [col, w, pts] of p.lines) { g.strokeStyle = col; g.lineWidth = Math.max(w, 0.7 / k); g.beginPath(); g.moveTo(pts[0], pts[1]); for (let j = 2; j < pts.length; j += 2) g.lineTo(pts[j], pts[j + 1]); g.stroke(); }
+  return c.toDataURL("image/jpeg", 0.8);
+}
+async function projectsList() {
+  let jobs = LS.get("jobs", []) || [], projs = (LS.get("custom", []) || []).map(c => ({ name: c.name, slug: c.slug, print: c.print }));
+  if (gh.on()) {
+    try { const j = await gh.get("gps/jobs/index.json", true); if (Array.isArray(j)) jobs = j; } catch {}
+    try { const t = await gh.get("gps/projects.json", true); if (t && Array.isArray(t.projects)) { const gone = t.removed || {}; projs = t.projects.filter(p => !gone[p.slug]).map(p => ({ name: p.name, slug: p.slug, print: p.print })); } } catch {}
+  }
+  const out = [], seen = new Set();
+  for (const j of jobs) { seen.add(j.slug); out.push({ name: j.name, slug: j.slug, job: true }); }
+  for (const p of projs) if (!seen.has(p.slug) && p.slug !== "random-locations") { seen.add(p.slug); out.push(Object.assign({ job: false }, p)); }
+  return out;
+}
+async function showAdd() {
+  screen = "add"; closeModal();
+  const f = finished(), src = work.src || {}, fromProj = src.kind === "project", used = usedPages();
+  const sameFrame = fromProj && used.length === 1;
+  modal(`<span class="pg">Page C-8</span><h2>Add to project</h2>
+    <img src="${previewUrl(f)}" style="width:100%;border:1px solid var(--line);border-radius:8px;background:#fff" alt="The finished print">
+    <p class="note">This is the finished print. Until you press a button below, nothing in your projects has changed.</p>
+    ${work.added ? `<p class="warn">Already added to ${esc(work.added.name)} on ${new Date(work.added.t).toLocaleString()}.</p>` : ""}
+    <div class="list" id="a-list"><p class="note">Loading projects…</p></div>
+    <div class="acts">${work.added && work.added.undo ? `<button id="a-undo" class="danger">Undo add to project</button>` : ""}<button id="a-back">Back</button><button id="a-home">Save and close</button></div>`, true);
+  $("a-back").onclick = () => { if (used.length > 1) openSheet(); else if (used.some(p => p.use === "clean")) { closeModal(); openClean(work.pages.indexOf(used.find(p => p.use === "clean"))); } else showPages(); };
+  $("a-home").onclick = () => { saveNow(); work = null; showStart(); };
+  if ($("a-undo")) $("a-undo").onclick = undoAdd;
+  const ps = await projectsList(); if (!$("a-list")) return;
+  let html = "";
+  if (sameFrame) { const me = ps.find(p => p.slug === src.slug) || { name: src.name, slug: src.slug, job: src.job };
+    html += `<button class="primary" data-add="${esc(me.slug)}">Add to ${esc(me.name)} (replaces its print, GPS spots stay in place)</button>`; }
+  html += `<button data-new="1">Make a new project with this print</button><h3>Or another project</h3>`;
+  html += ps.filter(p => !(sameFrame && p.slug === src.slug)).map(p => `<button data-add="${esc(p.slug)}">${esc(p.name)}</button>`).join("");
+  $("a-list").innerHTML = html;
+  for (const b of document.querySelectorAll("[data-add]")) b.onclick = () => confirmAdd(f, ps.find(p => p.slug === b.dataset.add) || { name: src.name, slug: src.slug, job: src.job }, sameFrame && b.dataset.add === src.slug);
+  document.querySelector("[data-new]").onclick = () => askName("New project name", work.name.replace(/ print$/, ""), n => confirmAdd(f, { name: n, slug: slugify(n), job: false, isNew: true }, true), showAdd);
+}
+function confirmAdd(f, p, same) {
+  if (!gh.on()) { toast("Needs the GitHub key (open GPS Shots from the Home Screen icon first)"); return; }
+  if (p.slug === GARDEN && !same) { modal(`<h2>Not for Garden Homes</h2><p>Garden Homes is a real job. A different print would not line up with its GPS spots, so this print can't replace it. Pick another project or make a new one.</p><div class="acts"><button class="primary" id="c-x">OK</button></div>`); $("c-x").onclick = showAdd; return; }
+  if (p.job && f.kind !== "vec") { modal(`<h2>Can't add a picture here yet</h2><p>${esc(p.name)} comes from the as-built designer, which only takes drawn prints (PDF lines), not scanned pictures.</p><div class="acts"><button class="primary" id="c-x">OK</button></div>`); $("c-x").onclick = showAdd; return; }
+  const warn = p.isNew ? "" : same ? "Its GPS spots stay where they are." : `<p class="warn">${esc(p.name)} may already have spots placed on its old print. They will not line up with this one.</p>`;
+  modal(`<h2>Add to ${esc(p.name)}?</h2>
+    <p>${p.isNew ? "This makes a new project with this print. It shows in GPS Shots." : `This print replaces the print ${esc(p.name)} uses in GPS Shots and Draw as-built. The old print is kept, and you can undo this.`}</p>${warn}
+    <div class="acts"><button id="c-x">Cancel</button><button class="primary" id="c-ok">Add to project</button></div>`);
+  $("c-x").onclick = showAdd;
+  $("c-ok").onclick = () => doAdd(f, p);
+}
+async function editProjects(fn, msg) {
+  for (let a = 0; a < 4; a++) {
+    const m = await gh.get("gps/projects.json", false), d = m ? JSON.parse(decodeB64(m.content)) : {};
+    d.status = d.status || {}; d.projects = d.projects || [];
+    const r = fn(d);
+    const res = await fetch(gh.url("gps/projects.json"), { method: "PUT", headers: gh.headers(false), body: JSON.stringify({ message: msg, branch: cfg.branch, content: b64(JSON.stringify(d, null, 1)), sha: m && m.sha }) });
+    if (res.ok) return r;
+    if (res.status !== 409 && res.status !== 422) throw new Error("GitHub said " + res.status);
+  }
+  throw new Error("GitHub kept refusing the save");
+}
+async function doAdd(f, p) {
+  modal(`<h2>Adding…</h2><p id="ad-t">Saving the print…</p>`);
+  try {
+    const t = Date.now(), msg = `Cleanup print: add to ${p.name}`;
+    let undo;
+    if (p.job) {   // a designer job: GPS Shots and Draw as-built use gps/prints/<slug>.plan.json over the designer's drawing
+      const path = `gps/prints/${p.slug}.plan.json`, old = await gh.get(path, true).catch(() => null);
+      if (old) await gh.put(`gps/cleanup/${work.id}-backup.plan.json`, old, `Cleanup print: keep ${p.name}'s print before replacing it`);
+      await gh.put(path, f.plan, msg);
+      undo = { kind: "job", path, backup: old ? `gps/cleanup/${work.id}-backup.plan.json` : null };
+    } else {
+      const vec = f.kind === "vec", path = `gps/prints/${p.slug}.cleanup-${t}.${vec ? "json" : "jpg"}`;
+      if (vec) await gh.put(path, f.plan, msg);
+      else await gh.putRaw(path, await blobB64(await new Promise(ok => f.canvas.toBlob(ok, "image/jpeg", 0.85))), msg);
+      $("ad-t").textContent = "Updating the project list…";
+      const rec = { kind: vec ? "dxf" : "pdf", path, size: vec ? f.plan.size : f.size, file: "Cleanup print: " + work.name, t };
+      const before = await editProjects(d => {
+        if (d.removed) delete d.removed[p.slug];
+        let q = d.projects.find(x => x.slug === p.slug); if (!q) { q = { name: p.name, slug: p.slug, t }; d.projects.push(q); }
+        const b = q.print || null; q.print = rec; return b;
+      }, msg);
+      undo = { kind: "project", slug: p.slug, before, isNew: !!p.isNew };
+    }
+    work.added = { t, name: p.name, slug: p.slug, undo }; touch(); await saveNow();
+    modal(`<h2>Added to ${esc(p.name)}</h2><p>Open ${esc(p.name)} in GPS Shots to see it. If it doesn't look right, come back here and press Undo add to project.</p>
+      <div class="acts"><button id="d-x">OK</button></div>`);
+    $("d-x").onclick = showAdd;
+  } catch (e) { modal(`<h2>Didn't finish</h2><p>${esc(e.message)}</p><div class="acts"><button class="primary" id="d-x">OK</button></div>`); $("d-x").onclick = showAdd; }
+}
+async function undoAdd() {
+  const a = work.added, u = a && a.undo; if (!u) return;
+  modal(`<h2>Undo add to ${esc(a.name)}?</h2><p>${esc(a.name)} goes back to the print it had before.</p><div class="acts"><button id="u-x">Cancel</button><button class="danger" id="u-ok">Undo</button></div>`);
+  $("u-x").onclick = showAdd;
+  $("u-ok").onclick = async () => {
+    try {
+      if (u.kind === "job") { if (u.backup) await gh.put(u.path, await gh.get(u.backup, true), `Cleanup print: undo, ${a.name} gets its old print back`); else await gh.del(u.path, `Cleanup print: undo, ${a.name} gets its old print back`); }
+      else await editProjects(d => { const q = d.projects.find(x => x.slug === u.slug); if (q) { if (u.before) q.print = Object.assign({}, u.before, { t: Date.now() }); else delete q.print; } }, `Cleanup print: undo, ${a.name} gets its old print back`);
+      delete work.added; touch(); await saveNow(); toast("Undone"); showAdd();
+    } catch (e) { toast("Couldn't undo: " + e.message, 5000); }
+  };
+}
+
+/* ---------------------------------------------------------------- start */
+if (!gh.on()) setSave("No key: open from the Home Screen icon");
+showStart();
+</script>
+</body>
+</html>
