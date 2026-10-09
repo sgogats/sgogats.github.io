@@ -771,7 +771,7 @@ html.big #z-full { display: block; }
 </div></div>
 <script>
 "use strict";
-const APP_VERSION = "2026-10-09.01";
+const APP_VERSION = "2026-10-09.02";
 const DESIGN_MODE = new URLSearchParams(location.search).has("design");   // shown inside designer.html: no saving, no GPS
 // GitHub Pages lets phones keep an old copy for a while; load the newest one when it changes
 if (!DESIGN_MODE) (async () => {
@@ -1995,6 +1995,56 @@ async function finishShot() {
 
 /* ---------- local save + GitHub sync ---------- */
 function saveLocal() { data.updated = Date.now(); if (!LS.set("data." + current, data)) toast("Phone storage is full; export now"); }
+/* Steven 2026-10-09: take the dashes out of location names (V-18 is now V 18, V – 22 is now V 22), everywhere the name is used.
+   data.nameFix {old: {to, t}} renames a location's GPS, spot on the print, second name, conduit ends and pictures; merge() applies it
+   to every phone's copy, so an older copy can't bring the dashed name back. Boxes from the designer also get a printRen entry,
+   so the designer renames them on its next "Pull GPS spots from phone". Runs once per project (data.dashFix). Two names that would
+   end up the same (V-22 and V – 22) become one: the copy placed on the print keeps its GPS (Steven 2026-10-09). */
+const undash = n => String(n).replace(/\s*[-\u2010-\u2015\u2212]\s*/g, " ").replace(/\s+/g, " ").trim();
+function fixNames(d) {
+  for (const [old, v] of Object.entries(d.nameFix || {})) {
+    const nu = v && v.to; if (!nu || nu === old) continue;
+    const it = d.items || {};
+    if (it[old]) { if (!v.drop && (!it[nu] || (it[nu].t || 0) < (it[old].t || 0))) it[nu] = it[old]; delete it[old]; }   // drop: a doubled copy whose GPS gives way to the one placed on the print
+    const c = d.controls || {};
+    if (c[old] && c[old].x != null) { if (!c[nu] || c[nu].x == null) c[nu] = c[old]; c[old] = {}; }
+    if (d.labels && d.labels[old]) { if (!d.labels[nu]) d.labels[nu] = d.labels[old]; d.labels[old] = ""; }
+    const e = (d.extra || []).find(x => x.name === old);
+    if (e) { d.extra = d.extra.filter(x => x.name !== old); if (!d.extra.some(x => x.name === nu)) d.extra.push(Object.assign({}, e, { name: nu })); }
+    for (const ru of [...Object.values(d.runs || {}), ...Object.values(d.learn || {}), ...Object.values(d.delRuns || {}).map(x => x.run || {})]) { if (ru.from === old) ru.from = nu; if (ru.to === old) ru.to = nu; }
+    for (const ph of Object.values(d.photos || {})) if (ph.name === old) ph.name = nu;
+  }
+  return d;
+}
+function dashFixOnce() {
+  if (!data || data.dashFix) return false;
+  const p = allProjects().find(x => x.slug === current);
+  if (p && p.job && !(job && Array.isArray(job.raw || job.items))) return false;   // wait until the designer's list is here
+  const ren = data.printRen || {}, raw = job ? (job.raw || job.items).filter(i => !i.drawn) : [];
+  const shown = new Map();   // name as shown now -> designer name (null when it isn't a designer box)
+  for (const i of raw) shown.set(ren[i.name] && ren[i.name].to || i.name, i.name);
+  const more = [...Object.keys(data.items || {}).filter(n => !data.items[n].corner && !data.items[n].run), ...(data.extra || []).map(e => e.name),
+    ...Object.keys(data.controls || {}).filter(n => data.controls[n] && data.controls[n].x != null), ...Object.keys(data.labels || {}).filter(n => data.labels[n]),
+    ...Object.values(data.runs || {}).flatMap(r => [r.from, r.to]), ...((drawnDoc && drawnDoc.slug === current && drawnDoc.items) || []).map(i => i.gpsName)];
+  for (const n of more) if (n && !shown.has(n)) shown.set(n, null);
+  const same = new Map(); for (const n of shown.keys()) { const k = undash(n).toLowerCase(); same.set(k, [...(same.get(k) || []), n]); }
+  const placed = n => data.controls && data.controls[n] && data.controls[n].x != null;
+  const now = Date.now(), fix = Object.assign({}, data.nameFix);
+  let n = 0;
+  for (const [name, orig] of shown) {
+    let nu = undash(name), drop = false; if (nu === name || !nu) continue;
+    const grp = same.get(nu.toLowerCase());
+    if (grp.length > 1) {   // Steven 2026-10-09: a location saved twice (V-22 and V – 22) becomes one, keeping the copy placed on the print and every picture and conduit run
+      const keep = grp.filter(placed); if (grp.length !== 2 || keep.length !== 1) continue;
+      const des = grp.find(x => shown.get(x)); nu = undash(des || keep[0]); drop = name !== keep[0];
+    }
+    fix[name] = drop ? { to: nu, t: now, drop: true } : { to: nu, t: now }; n++;
+    if (orig) { const was = ren[orig] || {}; data.printRen = Object.assign({}, data.printRen, { [orig]: { to: nu, prev: [...new Set([...(was.prev || []), name])].filter(x => x !== nu), t: now } }); }
+  }
+  data.dashFix = now; data.nameFix = fix; fixNames(data); saveLocal();
+  if (n) toast(`Took the dashes out of ${n} location names`);
+  return true;
+}
 function merge(a, b) {
   const out = Object.assign({}, a, { items: {}, extra: [], controls: Object.assign({}, a.controls || {}, b.controls || {}), deleted: Object.assign({}, a.deleted || {}) });
   for (const [k, v] of Object.entries(b.deleted || {})) out.deleted[k] = Math.max(out.deleted[k] || 0, v);
@@ -2023,6 +2073,9 @@ function merge(a, b) {
   out.photosDel = Object.assign({}, b.photosDel || {}, a.photosDel || {});   // deleted pictures stay deleted on every phone
   for (const k of Object.keys(out.photosDel)) delete out.photos[k];
   out.bldgs = [...new Set([...(a.bldgs || []), ...(b.bldgs || [])])];   // buildings added on page 2-5
+  out.nameFix = {}; for (const src of [b.nameFix || {}, a.nameFix || {}]) for (const [k, v] of Object.entries(src)) if (!out.nameFix[k] || (out.nameFix[k].t || 0) <= (v.t || 0)) out.nameFix[k] = v;
+  out.dashFix = Math.max(a.dashFix || 0, b.dashFix || 0) || undefined;
+  fixNames(out);   // an older copy on another phone still has the old names: rename them there too
   const ta = a.types ? a.typesT || 0 : -1, tb = b.types ? b.typesT || 0 : -1;    // newest button list wins
   if (tb > ta) { out.types = b.types; out.typesT = b.typesT; out.typesOwn = b.typesOwn; }
   return out;
@@ -2036,6 +2089,7 @@ async function pull() {
     const m = await gh.meta(`gps/readings/${s}.json`);
     if (s !== current) return;
     if (m) { data = merge(data, JSON.parse(decodeB64(m.content))); LS.set("data." + s, data); applyPrintEdits(); if (dropOldRuns().length) toast("Older copies of re-walked runs moved to Deleted runs"); render(); }
+    if (m && s === current && dashFixOnce()) { applyPrintEdits(); render(); push("Take dashes out of location names"); }
     setSync("ok", "Saved to GitHub"); picUpload(s);
     if (!m && (Object.keys(data.items).length || (data.extra || []).length)) push("Upload shots");
   } catch (e) { setSync("err", "Not synced"); }

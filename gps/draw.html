@@ -101,7 +101,7 @@
    GPS Shots use: a typed name that matches one (18 for a lockbox = LB-18) is that location; any other becomes a new
    location GPS Shots lists and can plot (gpsName / gk / gg below are what GPS Shots reads). Lines start on one icon
    and end on another and stay attached when an icon moves. */
-const APP_VERSION = "V 01.09";
+const APP_VERSION = "V 01.10";
 // phones keep an old copy of this page for a while: load the newest one when it changes (same as GPS Shots)
 (async () => {
   try {
@@ -495,6 +495,12 @@ function collectNames(job, rd) {
   for (const [n, v] of Object.entries((rd && rd.items) || {})) if (!v.corner && !v.run) add(n, "");
   names = out;
 }
+/* Steven 2026-10-09: dashes taken out of location names in GPS Shots (V-18 is now V 18): rename the icons here too. */
+function fixDrawnNames(rd) {
+  const fx = (rd && rd.nameFix) || {}; let n = 0;
+  for (const it of doc.items) for (const f of ["name", "gpsName"]) { const v = fx[it[f]]; if (v && v.to && v.to !== it[f]) { it[f] = v.to; n++; } }
+  return n > 0;
+}
 async function load() {
   if (!slug) { $("proj").textContent = "Open a project in GPS Shots first"; return; }
   const custom = LS.get("custom", []) || [], c = custom.find(x => x.slug === slug);
@@ -525,6 +531,7 @@ async function load() {
     if (remote && (remote.updated || 0) > (doc.updated || 0)) { doc = Object.assign(newDoc(), remote); kCache = lCache = null; wordsVer++; LS.set("drawn." + slug, doc); setSave("Saved"); }
     else if (doc.updated && (!remote || (remote.updated || 0) < doc.updated)) scheduleSave();
     else setSave(remote ? "Saved" : "Nothing drawn yet");
+    if (fixDrawnNames(rd)) { doc.updated = Date.now(); LS.set("drawn." + slug, doc); kCache = lCache = null; wordsVer++; scheduleSave(); }
     $("proj").textContent = projName + (plan ? "" : " · no print found");
   } catch (e) { setSave("Offline · using this device's copy"); }
   draw();
