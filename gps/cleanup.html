@@ -48,6 +48,7 @@
   .list > button { justify-content:flex-start; text-align:left; }
   .acts { display:flex; gap:8px; flex-wrap:wrap; margin-top:14px; }
   .acts button { flex:1 1 auto; }
+  .acts.stick { position:sticky; bottom:calc(-1 * max(14px, env(safe-area-inset-bottom))); background:var(--panel); padding:10px 0 max(14px, env(safe-area-inset-bottom)); margin-bottom:calc(-1 * max(14px, env(safe-area-inset-bottom))); border-top:1px solid var(--line); }
   .seg { display:flex; gap:6px; flex-wrap:wrap; }
   .seg button { flex:1 1 auto; min-height:40px; padding:6px 10px; }
   label.f { display:block; margin-top:10px; }
@@ -91,7 +92,7 @@
    by look (same color + thickness) or with AI. His fixes are kept as examples for next time. Pages with match lines are
    pieced together into one whole-project sheet. NOTHING outside this page changes until he presses "Add to project".
    Work is kept in ASBUILT_MAKER gps/cleanup/<id>.json (+ <id>-page<n>.json / .jpg); the original print is never changed. */
-const APP_VERSION = "V 01.00";
+const APP_VERSION = "V 01.01";
 (async () => {   // phones keep an old copy of this page for a while: load the newest one when it changes (same as GPS Shots)
   try {
     const r = await fetch(location.pathname + "?check=" + Date.now(), { cache: "no-store" });
@@ -200,6 +201,10 @@ async function saveNow() {
   if (saving) { again = true; return; }
   saving = true;
   try {
+    if (work.src && work.src.kind === "upload" && !work.srcSent) {   // the PDF itself, so another device can read its pages
+      const blob = await idb.get(`cleanup.${work.id}.src`);
+      if (blob && blob.size < 60e6) { await gh.putRaw(`gps/cleanup/${work.id}.pdf`, await blobB64(blob), `Cleanup print: ${work.name} (the PDF)`); work.srcSent = true; }
+    }
     for (const p of work.pages) {
       const k = work.id + "|" + p.n; if (sent[k] || p.sent) continue;
       const d = pageData[p.n]; if (!d) continue;
@@ -227,11 +232,11 @@ function blobImg(blob) { return new Promise(ok => { const img = new Image(); img
 
 /* ---------------------------------------------------------------- reading a print */
 /* PDF page -> plan {size, origin, lines: [[color, width, [x, y, ...]]], texts: [[x, y, words, size, color, turn]]} in page points, y down (same shape as the GPS Shots print) */
-async function pageToPlan(pdfjsLib, pg) {
+async function pageToPlan(pdfjsLib, pg, ol) {
   const OPS = pdfjsLib.OPS, vp = pg.getViewport({ scale: 1 }), V = vp.transform;
   const mul = (a, b) => [a[0]*b[0]+a[2]*b[1], a[1]*b[0]+a[3]*b[1], a[0]*b[2]+a[2]*b[3], a[1]*b[2]+a[3]*b[3], a[0]*b[4]+a[2]*b[5]+a[4], a[1]*b[4]+a[3]*b[5]+a[5]];
   const hex = a => { if (typeof a[0] === "string") return a[0]; const v = Array.from(a).slice(0, 3), big = a instanceof Uint8ClampedArray || v.some(x => x > 1); return "#" + v.map(x => Math.max(0, Math.min(255, Math.round(big ? x : x * 255))).toString(16).padStart(2, "0")).join(""); };
-  const ol = await pg.getOperatorList(), lines = [], fills = [];
+  ol = ol || await pg.getOperatorList(); const lines = [], fills = [];
   let st = { m: V, sc: "#000000", fc: "#000000", w: 1 }; const stack = [];
   let pending = null;   // paths built by constructPath, waiting for stroke/fill
   const r1 = v => Math.round(v * 10) / 10;
@@ -277,32 +282,73 @@ async function pageToPlan(pdfjsLib, pg) {
   }
   return { size: [Math.round(vp.width), Math.round(vp.height)], origin: [0, 0], lines, texts };
 }
-async function pdfPages(file, progress) {
+/* Steven 2026-10-09: a 47-page set read every page in full and the iPad gave up. Now the first pass only makes a small
+   picture of each page and looks for match-line words; a page is read in full only when he picks it (Next on page C-2). */
+async function pdfQuick(file, progress) {
   const lib = await pdfLib(), pdf = await lib.getDocument({ data: await file.arrayBuffer() }).promise, out = [];
   for (let n = 1; n <= pdf.numPages; n++) {
-    progress(`Reading page ${n} of ${pdf.numPages}…`);
-    const pg = await pdf.getPage(n), ol = await pg.getOperatorList();
-    const pics = ol.fnArray.filter(f => f === lib.OPS.paintImageXObject || f === lib.OPS.paintJpegXObject || f === lib.OPS.paintInlineImageXObject).length;
-    const plan = await pageToPlan(lib, pg);
-    if (plan.lines.length >= 200 || (!pics && plan.lines.length + plan.texts.length > 0)) out.push({ kind: "vec", plan });
-    else out.push({ kind: "img", ...(await pageJpeg(pg)) });   // a scanned page: keep it as a picture
+    progress(n, pdf.numPages);
+    const pg = await pdf.getPage(n), v1 = pg.getViewport({ scale: 1 }), k = 240 / Math.max(v1.width, v1.height), v = pg.getViewport({ scale: k });
+    const c = document.createElement("canvas"); c.width = Math.round(v.width); c.height = Math.round(v.height);
+    const x = c.getContext("2d"); x.fillStyle = "#fff"; x.fillRect(0, 0, c.width, c.height);
+    try { await pg.render({ canvasContext: x, viewport: v }).promise; } catch {}
+    const th = c.toDataURL("image/jpeg", 0.7); c.width = c.height = 0;
+    let match = [];
+    try { const tc = await pg.getTextContent(); match = [...new Set(tc.items.map(t => String(t.str).trim()).filter(t => MATCH_RE.test(t)))].slice(0, 6); } catch {}
+    out.push({ size: [Math.round(v1.width), Math.round(v1.height)], th, match });
+    pg.cleanup();
   }
+  await pdf.destroy();
   return out;
+}
+let srcPdf = null;   // the uploaded PDF, open while pages are read in full
+async function openSrc() {
+  if (srcPdf && srcPdf.id === work.id) return srcPdf.pdf;
+  let blob = await idb.get(`cleanup.${work.id}.src`);
+  if (!blob && gh.on()) { try { blob = await gh.get(`gps/cleanup/${work.id}.pdf`, "blob"); if (blob) idb.set(`cleanup.${work.id}.src`, blob); } catch {} }
+  if (!blob) return null;
+  const lib = await pdfLib(), pdf = await lib.getDocument({ data: new Uint8Array(await blob.arrayBuffer()) }).promise;
+  srcPdf = { id: work.id, pdf }; return pdf;
+}
+async function readFull(p) {   // one page in full: lines and words, or a picture when it's a scanned page
+  const lib = await pdfLib(), pdf = await openSrc(); if (!pdf) return null;
+  const pg = await pdf.getPage(p.n), ol = await pg.getOperatorList();
+  const pics = ol.fnArray.filter(f => f === lib.OPS.paintImageXObject || f === lib.OPS.paintJpegXObject || f === lib.OPS.paintInlineImageXObject).length;
+  const plan = await pageToPlan(lib, pg, ol);
+  let d;
+  if (plan.lines.length >= 200 || (!pics && plan.lines.length + plan.texts.length > 0)) { p.kind = "vec"; p.size = plan.size; p.origin = plan.origin; d = { plan }; }
+  else { const j = await pageJpeg(pg); p.kind = "img"; p.size = j.size; p.origin = [0, 0]; p.pt = pg.getViewport({ scale: 1 }).width / j.size[0]; d = { blob: j.blob, img: await blobImg(j.blob) }; }
+  pg.cleanup();
+  await keepPage(p.n, d); return d;
+}
+async function ensurePages(list) {   // full read of the pages he picked, with a progress screen
+  let i = 0;
+  for (const p of list) {
+    i++; if (pageData[p.n]) continue;
+    modal(`<h2>Getting the pages ready</h2><p>Reading page ${p.n} (${i} of ${list.length})…</p>`);
+    let d = await loadPage(work, p).catch(() => null);
+    if (!d && work.src && work.src.kind === "upload") d = await readFull(p).catch(e => { toast("Couldn't read page " + p.n + ": " + e.message, 5000); return null; });
+    if (d) pageData[p.n] = d;
+  }
+  closeModal(); touch();
+  return list.every(p => pageData[p.n]);
 }
 async function pageJpeg(pg) {
   const v1 = pg.getViewport({ scale: 1 }), k = Math.min(5000 / Math.max(v1.width, v1.height), Math.sqrt(15e6 / (v1.width * v1.height)));   // phones can't hold a bigger picture
   const v = pg.getViewport({ scale: k }), c = document.createElement("canvas"); c.width = Math.round(v.width); c.height = Math.round(v.height);
   const x = c.getContext("2d"); x.fillStyle = "#fff"; x.fillRect(0, 0, c.width, c.height);
   await pg.render({ canvasContext: x, viewport: v }).promise;
-  const blob = await new Promise(ok => c.toBlob(ok, "image/jpeg", 0.85));
-  return { blob, size: [c.width, c.height] };
+  const blob = await new Promise(ok => c.toBlob(ok, "image/jpeg", 0.85)), size = [c.width, c.height];
+  c.width = c.height = 0;   // give the memory back right away (iPads run out)
+  return { blob, size };
 }
 async function picturePage(file) {
   const img = await blobImg(file); if (!img) throw new Error("this picture could not be opened");
   let w = img.naturalWidth, h = img.naturalHeight, k = Math.min(1, Math.sqrt(15e6 / (w * h)));
   const c = document.createElement("canvas"); c.width = Math.round(w * k); c.height = Math.round(h * k);
   const x = c.getContext("2d"); x.fillStyle = "#fff"; x.fillRect(0, 0, c.width, c.height); x.drawImage(img, 0, 0, c.width, c.height);
-  return { kind: "img", blob: await new Promise(ok => c.toBlob(ok, "image/jpeg", 0.88)), size: [c.width, c.height] };
+  const blob = await new Promise(ok => c.toBlob(ok, "image/jpeg", 0.88)), size = [c.width, c.height]; c.width = c.height = 0;
+  return { kind: "img", blob, size };
 }
 const MATCH_RE = /match\s*-?\s*line|see\s+(sheet|dwg|drawing)/i;
 function newPage(n, kind, size, origin) {
@@ -310,16 +356,20 @@ function newPage(n, kind, size, origin) {
 }
 async function startWork(name, src, raw) {   // raw = [{kind, plan} | {kind, blob, size}]
   work = { id: slugify(name).slice(0, 40) + "-" + Date.now().toString(36), name, created: Date.now(), updated: Date.now(), src, layers: [], pages: [] };
-  pageData = {};
+  pageData = {}; thumbs = {};
   for (let i = 0; i < raw.length; i++) {
     const r = raw[i], n = i + 1;
-    const p = newPage(n, r.kind, r.kind === "vec" ? r.plan.size : r.size, r.kind === "vec" ? (r.plan.origin || [0, 0]) : [0, 0]);
-    if (r.kind === "vec") { p.match = [...new Set(r.plan.texts.filter(t => MATCH_RE.test(t[2])).map(t => String(t[2]).trim()))].slice(0, 6); await keepPage(n, { plan: r.plan }); }
+    const p = newPage(n, r.kind || null, r.kind === "vec" ? r.plan.size : r.size, r.kind === "vec" ? (r.plan.origin || [0, 0]) : [0, 0]);
+    if (r.th) { thumbs[n] = r.th; p.match = r.match || []; if (raw.length > 4) p.use = "skip"; }   // a big set: he picks the pages he wants
+    else if (r.kind === "vec") { p.match = [...new Set(r.plan.texts.filter(t => MATCH_RE.test(t[2])).map(t => String(t[2]).trim()))].slice(0, 6); await keepPage(n, { plan: r.plan }); }
     else await keepPage(n, { blob: r.blob, img: await blobImg(r.blob) });
     work.pages.push(p);
   }
+  if (srcFile) { await idb.set(`cleanup.${work.id}.src`, srcFile); srcFile = null; }
+  idb.set(`cleanup.${work.id}.thumbs`, thumbs);
   touch(); showPages();
 }
+let thumbs = {}, srcFile = null;
 async function fromProject() {
   const custom = LS.get("custom", []) || [], c = custom.find(x => x.slug === projSlug), job = LS.get("job." + projSlug, null);
   const lj = (LS.get("jobs", []) || []).find(j => j.slug === projSlug), isJob = !!lj, name = (job && job.name) || (lj && lj.name) || (c && c.name) || projSlug;
@@ -348,10 +398,12 @@ function pickFile() {
   inp.onchange = async () => {
     const f = inp.files[0]; if (!f) return;
     try {
-      const raw = /\.pdf$/i.test(f.name) || f.type === "application/pdf" ? await pdfPages(f, t => toast(t, 60000)) : [await picturePage(f)];
-      $("toast").hidden = true;
+      const isPdf = /\.pdf$/i.test(f.name) || f.type === "application/pdf";
+      modal(`<span class="pg">Page C-1</span><h2>Reading your print</h2><p id="rd-t">Opening the file…</p><p class="note">When it's done you'll see every page, and you pick the ones you want.</p>`);
+      const raw = isPdf ? await pdfQuick(f, (n, of) => { if ($("rd-t")) $("rd-t").textContent = `Looking at page ${n} of ${of}…`; }) : [await picturePage(f)];
+      if (isPdf) srcFile = f;
       await startWork(f.name.replace(/\.[a-z0-9]+$/i, ""), { kind: "upload", file: f.name }, raw);
-    } catch (e) { toast("Couldn't read that file: " + e.message, 5000); }
+    } catch (e) { showStart(); toast("Couldn't read that file: " + e.message, 6000); }
   };
   inp.click();
 }
@@ -381,7 +433,7 @@ async function showStart() {
     try {
       const dir = await gh.get("gps/cleanup", false);
       if (Array.isArray(dir) && screen === "start" && $("s-list")) {
-        const have = new Set(list.map(w => w.id)), more = dir.filter(f => /^[^/]+\.json$/.test(f.name) && !/-page\d+\.json$|-backup\.plan\.json$/.test(f.name)).map(f => f.name.replace(/\.json$/, "")).filter(id => !have.has(id));
+        const have = new Set(list.map(w => w.id)), more = dir.filter(f => /^[^/]+\.json$/.test(f.name) && !/-page\d+\.json$|-backup\.plan\.json$|\.pdf$/.test(f.name)).map(f => f.name.replace(/\.json$/, "")).filter(id => !have.has(id));
         if (more.length) {
           if (!list.length) $("s-list").innerHTML = "";
           $("s-list").insertAdjacentHTML("beforeend", more.map(id => `<button data-w="${esc(id)}">${esc(id.replace(/-[a-z0-9]+$/, "").replace(/-/g, " "))}<span class="note" style="margin-left:auto">other device</span></button>`).join(""));
@@ -396,8 +448,8 @@ async function openWork(id) {
   let w = LS.get("cleanup.w." + id, null);
   if (gh.on()) { try { const r = await gh.get(`gps/cleanup/${id}.json`, true); if (r && (!w || (r.updated || 0) > (w.updated || 0))) w = r; } catch {} }
   if (!w) { toast("Couldn't open it"); return; }
-  work = w; pageData = {};
-  for (const p of work.pages) { const d = await loadPage(work, p); if (d) pageData[p.n] = d; }
+  work = w; pageData = {}; thumbs = (await idb.get(`cleanup.${work.id}.thumbs`)) || {};
+  for (const p of usedPages()) { const d = await loadPage(work, p).catch(() => null); if (d) pageData[p.n] = d; }
   $("toast").hidden = true; listAdd(work);
   showPages();
 }
@@ -406,27 +458,39 @@ async function openWork(id) {
 function showPages() {
   screen = "pages"; setTools(); $("sub").textContent = work.name;
   const many = work.pages.length > 1;
-  modal(`<span class="pg">Page C-2</span><h2>${esc(work.name)}</h2>
-    <p class="note">${many ? `This print has ${work.pages.length} pages.` : "One page."} For each page pick: use it as it is, clean it up, or leave it out.</p>
+  const nUsed = usedPages().length;
+  modal(`<span class="pg">Page C-2</span><h2>Pick your pages</h2><p class="note">${esc(work.name)}</p>
+    <p><b>Next step:</b> ${many ? `this print has ${work.pages.length} pages. ` : ""}For each page tap <b>Use as-is</b>, <b>Clean up</b> or <b>Leave out</b>. Then press <b>Next</b> at the bottom.</p>
+    ${many ? `<div class="seg" style="margin:8px 0"><button id="p-allc">Clean up all</button><button id="p-alla">Use all as-is</button><button id="p-none">Leave all out</button></div>` : ""}
+    <p class="note" id="p-cnt">${nUsed} of ${work.pages.length} picked.</p>
     ${work.pages.map(p => `<div class="pgrow"><canvas data-th="${p.n}" width="220" height="168"></canvas><div class="bd">
-      <b>Page ${p.n}${pageData[p.n] ? "" : " · not on this device yet"}</b>
+      <b>Page ${p.n}</b>
       ${p.match.length ? `<span class="flag">Has match lines: ${esc(p.match.slice(0, 2).join(", "))}</span>` : ""}
       ${p.kind === "img" ? `<span class="note">Picture page (scanned)</span>` : ""}
       <div class="seg">${[["asis", "Use as-is"], ["clean", "Clean up"], ["skip", "Leave out"]].map(([k, t]) => `<button data-u="${p.n}|${k}" class="${p.use === k ? "on" : ""}">${t}</button>`).join("")}</div>
     </div></div>`).join("")}
-    <div class="acts"><button id="p-start">Start over</button><button class="primary" id="p-next">Next</button></div>`, true);
+    <div class="acts stick"><button id="p-start">Start over</button><button class="primary" id="p-next">Next</button></div>`, true);
+  const setAll = u => { for (const p of work.pages) p.use = u; touch(); const y = $("card").scrollTop; showPages(); $("card").scrollTop = y; };
+  if (many) { $("p-allc").onclick = () => setAll("clean"); $("p-alla").onclick = () => setAll("asis"); $("p-none").onclick = () => setAll("skip"); }
   for (const c of document.querySelectorAll("[data-th]")) thumb(c, work.pages.find(p => p.n === +c.dataset.th));
-  for (const b of document.querySelectorAll("[data-u]")) b.onclick = () => { const [n, u] = b.dataset.u.split("|"); work.pages.find(p => p.n === +n).use = u; touch(); showPages(); };
+  for (const b of document.querySelectorAll("[data-u]")) b.onclick = () => {   // change just this row, so the list doesn't jump
+    const [n, u] = b.dataset.u.split("|"); work.pages.find(p => p.n === +n).use = u; touch();
+    for (const x of b.parentNode.children) x.classList.toggle("on", x === b);
+    $("p-cnt").textContent = `${usedPages().length} of ${work.pages.length} picked.`;
+  };
   $("p-start").onclick = () => { work = null; showStart(); };
-  $("p-next").onclick = () => {
-    const used = usedPages(); if (!used.length) { toast("Pick at least one page"); return; }
+  $("p-next").onclick = async () => {
+    const used = usedPages(); if (!used.length) { toast("Pick at least one page first"); return; }
+    if (!(await ensurePages(used))) { showPages(); toast("Some pages couldn't be read on this device", 5000); return; }
     const clean = used.findIndex(p => p.use === "clean");
     closeModal();
     if (clean >= 0) openClean(work.pages.indexOf(used[clean])); else if (used.length > 1) openSheet(); else showAdd();
   };
 }
 function thumb(c, p) {
-  const d = pageData[p.n], g = c.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height); if (!d) return;
+  const d = pageData[p.n], g = c.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height);
+  if (thumbs[p.n] && (!d || p.use !== "clean")) { const im = new Image(); im.onload = () => { const k = Math.min(c.width / im.width, c.height / im.height); g.drawImage(im, (c.width - im.width * k) / 2, (c.height - im.height * k) / 2, im.width * k, im.height * k); }; im.src = thumbs[p.n]; return; }
+  if (!d) return;
   const k = Math.min(c.width / p.size[0], c.height / p.size[1]);
   g.save(); g.translate((c.width - p.size[0] * k) / 2, (c.height - p.size[1] * k) / 2); g.scale(k, k); g.translate(-p.origin[0], -p.origin[1]);
   paintPage(g, p, d, k, { all: p.use !== "clean" }); g.restore();
@@ -855,7 +919,7 @@ function sheetBounds() {
 function openSheet() {
   screen = "sheet"; closeModal(); cache = null; view.fitted = false;
   const used = usedPages(); let x = 0;
-  for (const p of used) if (!p.place) { p.place = { x: x - p.origin[0], y: -p.origin[1], r: 0, s: 1 }; x += p.size[0] * 1.03; }   // side by side to start
+  for (const p of used) if (!p.place) { const s = p.pt || 1; p.place = { x: x - p.origin[0] * s, y: -p.origin[1] * s, r: 0, s }; x += p.size[0] * s * 1.03; }   // a scanned page is shrunk to the same scale as the drawn pages   // side by side to start
   sel = used[0].n; mode = "move"; $("sub").textContent = `${work.name} · whole project`;
   touch(); setTools(); fit(); draw();
   hint(used.some(p => p.match.length) ? "Pages with match lines are marked. Use Line up 2 points: tap both ends of the match line on one page, then the same two spots on the other page." : null);
