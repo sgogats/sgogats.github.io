@@ -101,7 +101,7 @@
    GPS Shots use: a typed name that matches one (18 for a lockbox = LB-18) is that location; any other becomes a new
    location GPS Shots lists and can plot (gpsName / gk / gg below are what GPS Shots reads). Lines start on one icon
    and end on another and stay attached when an icon moves. */
-const APP_VERSION = "V 01.15";
+const APP_VERSION = "V 01.16";
 // phones keep an old copy of this page for a while: load the newest one when it changes (same as GPS Shots)
 (async () => {
   try {
@@ -448,9 +448,9 @@ function draw(quick) {
       const q = wordCorners(w); ctx.beginPath(); q.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)); ctx.closePath();
       if (w === selWord) { ctx.save(); ctx.setLineDash([]); ctx.fillStyle = "rgba(255,210,0,.35)"; ctx.fill(); ctx.strokeStyle = "#0b6e4f"; ctx.lineWidth = 2.5; ctx.stroke(); ctx.restore(); } else ctx.stroke(); }
     ctx.restore(); }
-  for (const ln of doc.lines) paintLen(ctx, linePts(ln).map(toScreen), lenText(ln), lenSize() * view.s, "#111");
+  for (const ln of doc.lines) paintLen(ctx, linePts(ln).map(toScreen), lenText(ln), (ln.lenSize || lenSize()) * view.s, "#111");
   for (const it of doc.items) paintIcon(ctx, it, toScreen(it), z, (sel && sel.type === "icon" && sel.id === it.id) || (cur && cur.a === it.id));
-  for (const it of doc.items) paintLabel(ctx, it, toScreen(it), z, nameSize() * view.s);
+  for (const it of doc.items) paintLabel(ctx, it, toScreen(it), z, (it.nameSize || nameSize()) * view.s);
   if (ppf) scaleBar();
 }
 const chunk = a => { const o = []; for (let i = 0; i < (a || []).length; i += 2) o.push({ x: a[i], y: a[i + 1] }); return o; };
@@ -783,8 +783,8 @@ function renderSel() {
     box.innerHTML = `<div class="row"><span class="nm">${esc(label(it))}${link}</span><span class="small">Drag the icon to move it</span></div>
       <div class="row"><button id="r-l" aria-label="Turn left">⟲ 15°</button><input type="range" id="r-v" min="0" max="359" step="1" value="${Math.round(it.rot || 0)}"><button id="r-r" aria-label="Turn right">⟳ 15°</button><b id="r-t" style="min-width:44px;text-align:right">${Math.round(it.rot || 0)}°</b></div>
       <div class="row"><button id="s-ren">Rename</button><button id="s-del" class="danger">Delete</button><button id="s-done" class="primary" style="margin-left:auto">Done</button></div>
-      ${sizeHtml("ns", "Name size (all icons, also on the PDF)", nameSize())}`;
-    sizeRow("ns", "nameSize", nameSize);
+      ${sizeHtml("ns", "Name size (this icon, also on the PDF)", it.nameSize || nameSize(), "Make all names this size")}`;
+    sizeRow("ns", it, "nameSize", () => it.nameSize || nameSize(), doc.items);
     let rotSnap = null;
     const setRot = (v, commit) => { if (!rotSnap) rotSnap = snap(); it.rot = ((Math.round(v) % 360) + 360) % 360; $("r-t").textContent = it.rot + "°"; $("r-v").value = it.rot; draw();
       if (commit) { undo.push(rotSnap); rotSnap = null; changed(); } };
@@ -800,8 +800,8 @@ function renderSel() {
       <div class="row"><select id="s-lk" aria-label="Line type">${Object.entries(lks).map(([k, v]) => `<option value="${k}"${k === ln.k ? " selected" : ""}>${esc(v.name)}</option>`).join("")}</select>
       <label class="small" style="display:flex;align-items:center;gap:6px">Length <input type="text" id="s-len" inputmode="decimal" value="${esc(ln.len || "")}" placeholder="${f != null ? Math.round(f) : "ft"}" autocomplete="off" style="width:90px;font:inherit;min-height:44px;border-radius:10px;border:1px solid var(--line);padding:0 8px"> ft</label>
       <button id="s-del" class="danger">Delete</button><button id="s-done" class="primary" style="margin-left:auto">Done</button></div>
-      ${sizeHtml("ls", "Length size (all lines, also on the PDF)", lenSize())}`;
-    sizeRow("ls", "lenSize", lenSize);
+      ${sizeHtml("ls", "Length size (this line, also on the PDF)", ln.lenSize || lenSize(), "Make all lengths this size")}`;
+    sizeRow("ls", ln, "lenSize", () => ln.lenSize || lenSize(), doc.lines);
     $("s-lk").onchange = e => { before(); ln.k = e.target.value; changed(); };
     let lenSnap = null;   // one undo step for the whole typed length
     $("s-len").oninput = e => { if (!lenSnap) { before(); lenSnap = 1; } const v = e.target.value.trim(); if (v) ln.len = v; else delete ln.len; doc.updated = Date.now(); LS.set("drawn." + slug, doc); scheduleSave(); draw(); };   // not changed(): that redraws this box and drops the keyboard
@@ -811,11 +811,13 @@ function renderSel() {
   $("s-done").onclick = () => { sel = null; renderSel(); draw(); };
   box.hidden = false;
 }
-// A− / slider / A+ for the length words and icon names (sizes in print units, saved per job, one undo step each)
-const sizeHtml = (id, text, v) => `<div class="row"><span class="small" style="flex-basis:100%">${text}</span><button id="${id}-m" aria-label="Smaller">A−</button><input type="range" id="${id}-r" min="${Math.log(0.2)}" max="${Math.log(80)}" step="0.01" value="${Math.log(v)}"><button id="${id}-p" aria-label="Bigger">A+</button></div>`;
-function sizeRow(id, key, get) {
+/* A− / slider / A+ for one icon's name or one line's length (Steven 2026-10-10: "when I click on a vault, I can resize the name").
+   Sizes are print units on the item (it.nameSize / ln.lenSize); "Make all … this size" sets the job default and clears the others. */
+const sizeHtml = (id, text, v, all) => `<div class="row"><span class="small" style="flex-basis:100%">${text}</span><button id="${id}-m" aria-label="Smaller">A−</button><input type="range" id="${id}-r" min="${Math.log(0.2)}" max="${Math.log(80)}" step="0.01" value="${Math.log(v)}"><button id="${id}-p" aria-label="Bigger">A+</button><button id="${id}-a">${all}</button></div>`;
+function sizeRow(id, obj, key, get, list) {
   let s0 = null;
-  const set = (v, commit) => { if (!s0) s0 = snap(); doc[key] = Math.max(0.2, Math.min(80, v)); $(id + "-r").value = Math.log(doc[key]); draw();
+  $(id + "-a").onclick = () => { before(); doc[key] = get(); for (const o of list) delete o[key]; changed(); toast("Done: all the same size"); };
+  const set = (v, commit) => { if (!s0) s0 = snap(); obj[key] = Math.max(0.2, Math.min(80, v)); $(id + "-r").value = Math.log(obj[key]); draw();
     if (commit) { undo.push(s0); s0 = null; doc.updated = Date.now(); LS.set("drawn." + slug, doc); scheduleSave(); } };
   $(id + "-m").onclick = () => set(get() / 1.25, true);
   $(id + "-p").onclick = () => set(get() * 1.25, true);
@@ -1002,9 +1004,9 @@ $("t-save").onclick = async () => {
   g.save(); g.translate(ox, oy); g.scale(k, k); g.translate(-b.x0, -b.y0); paintPlan(g, k, printMode === "off" ? 0 : printMode === "faded" ? 0.4 : 1); g.restore();
   const T = p => ({ x: (p.x - b.x0) * k + ox, y: (p.y - b.y0) * k + oy }), z = iconSize() * k, wm = Math.max(0.2, z * 0.11), lks = lineKinds();
   for (const ln of doc.lines) paintLine(g, linePts(ln).map(T), lks[ln.k] || DEF_LINES.c2, wm, false);
-  for (const ln of doc.lines) paintLen(g, linePts(ln).map(T), lenText(ln), Math.max(5, lenSize() * k), "#111");
+  for (const ln of doc.lines) paintLen(g, linePts(ln).map(T), lenText(ln), Math.max(5, (ln.lenSize || lenSize()) * k), "#111");
   for (const it of doc.items) paintIcon(g, it, T(it), z, false);
-  for (const it of doc.items) paintLabel(g, it, T(it), z, Math.max(5, nameSize() * k));
+  for (const it of doc.items) paintLabel(g, it, T(it), z, Math.max(5, (it.nameSize || nameSize()) * k));
   if (ppf) {   // scale bar
     const per = k * ppf; let ft = 10; for (const f of [10, 20, 25, 50, 100, 200, 250, 500]) { ft = f; if (f * per >= DPI * 2) break; }
     const x = M, y = PH - M - 30, w = ft * per;
