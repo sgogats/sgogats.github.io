@@ -101,7 +101,7 @@
    GPS Shots use: a typed name that matches one (18 for a lockbox = LB-18) is that location; any other becomes a new
    location GPS Shots lists and can plot (gpsName / gk / gg below are what GPS Shots reads). Lines start on one icon
    and end on another and stay attached when an icon moves. */
-const APP_VERSION = "V 01.12";
+const APP_VERSION = "V 01.13";
 // phones keep an old copy of this page for a while: load the newest one when it changes (same as GPS Shots)
 (async () => {
   try {
@@ -984,7 +984,7 @@ $("t-save").onclick = async () => {
   g.save(); g.translate(ox, oy); g.scale(k, k); g.translate(-b.x0, -b.y0); paintPlan(g, k, printMode === "off" ? 0 : printMode === "faded" ? 0.4 : 1); g.restore();
   const T = p => ({ x: (p.x - b.x0) * k + ox, y: (p.y - b.y0) * k + oy }), z = iconSize() * k, wm = Math.max(0.2, z * 0.11), lks = lineKinds();
   for (const ln of doc.lines) paintLine(g, linePts(ln).map(T), lks[ln.k] || DEF_LINES.c2, wm, false);
-  for (const ln of doc.lines) paintLen(g, linePts(ln).map(T), lenText(ln), Math.max(z * 1.05, DPI * 0.3), "#111");   // lengths at least about 0.3 inch tall
+  for (const ln of doc.lines) paintLen(g, linePts(ln).map(T), lenText(ln), Math.max(z * 1.05, DPI * 0.3) / 3, "#111");   // Steven 2026-10-10: a third of what V 01.12 printed
   for (const it of doc.items) paintIcon(g, it, T(it), z, false);
   for (const it of doc.items) paintLabel(g, it, T(it), z, z * 1.05);
   if (ppf) {   // scale bar
