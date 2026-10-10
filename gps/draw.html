@@ -101,7 +101,7 @@
    GPS Shots use: a typed name that matches one (18 for a lockbox = LB-18) is that location; any other becomes a new
    location GPS Shots lists and can plot (gpsName / gk / gg below are what GPS Shots reads). Lines start on one icon
    and end on another and stay attached when an icon moves. */
-const APP_VERSION = "V 01.13";
+const APP_VERSION = "V 01.14";
 // phones keep an old copy of this page for a while: load the newest one when it changes (same as GPS Shots)
 (async () => {
   try {
@@ -258,6 +258,8 @@ let printMode = LS.get("draw.print", "faded");   // normal / faded / off
    per print with "Icon size" (asked after the first icon is placed) and kept in doc.iconSize (half-size in print units). */
 const ICON = 6;
 const iconSize = () => (doc && doc.iconSize) || ICON;
+/* Steven 2026-10-10: length words have their own size (print units, so screen and PDF match); set with the slider when a line is tapped */
+const lenSize = () => (doc && doc.lenSize) || iconSize() * 0.35;
 const iconPx = s => Math.max(1.5, iconSize() * s);
 let planPaths = null, planCache = null;
 function planGroups() {
@@ -445,7 +447,7 @@ function draw(quick) {
       const q = wordCorners(w); ctx.beginPath(); q.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)); ctx.closePath();
       if (w === selWord) { ctx.save(); ctx.setLineDash([]); ctx.fillStyle = "rgba(255,210,0,.35)"; ctx.fill(); ctx.strokeStyle = "#0b6e4f"; ctx.lineWidth = 2.5; ctx.stroke(); ctx.restore(); } else ctx.stroke(); }
     ctx.restore(); }
-  for (const ln of doc.lines) paintLen(ctx, linePts(ln).map(toScreen), lenText(ln), font, "#111");
+  for (const ln of doc.lines) paintLen(ctx, linePts(ln).map(toScreen), lenText(ln), lenSize() * view.s, "#111");
   for (const it of doc.items) paintIcon(ctx, it, toScreen(it), z, (sel && sel.type === "icon" && sel.id === it.id) || (cur && cur.a === it.id));
   for (const it of doc.items) paintLabel(ctx, it, toScreen(it), z, font);
   if (ppf) scaleBar();
@@ -461,7 +463,7 @@ function scaleBar() {
 
 /* ---------------------------------------------------------------- changes, undo, saving */
 let undo = [];
-const snap = () => JSON.stringify({ kinds: doc.kinds, lineKinds: doc.lineKinds, items: doc.items, lines: doc.lines, textMoves: doc.textMoves || {}, iconSize: doc.iconSize || null });
+const snap = () => JSON.stringify({ kinds: doc.kinds, lineKinds: doc.lineKinds, items: doc.items, lines: doc.lines, textMoves: doc.textMoves || {}, iconSize: doc.iconSize || null, lenSize: doc.lenSize || null });
 function before() { undo.push(snap()); if (undo.length > 60) undo.shift(); }
 function changed() {
   kCache = lCache = null; wordsVer++;
@@ -794,7 +796,15 @@ function renderSel() {
     box.innerHTML = `<div class="row"><span class="nm">${esc((lks[ln.k] || {}).name || "Line")}</span><span class="small">${esc(a ? label(a) : "?")} to ${esc(b ? label(b) : "?")}${f != null ? " · " + Math.round(f) + " ft" : ""}</span></div>
       <div class="row"><select id="s-lk" aria-label="Line type">${Object.entries(lks).map(([k, v]) => `<option value="${k}"${k === ln.k ? " selected" : ""}>${esc(v.name)}</option>`).join("")}</select>
       <label class="small" style="display:flex;align-items:center;gap:6px">Length <input type="text" id="s-len" inputmode="decimal" value="${esc(ln.len || "")}" placeholder="${f != null ? Math.round(f) : "ft"}" autocomplete="off" style="width:90px;font:inherit;min-height:44px;border-radius:10px;border:1px solid var(--line);padding:0 8px"> ft</label>
-      <button id="s-del" class="danger">Delete</button><button id="s-done" class="primary" style="margin-left:auto">Done</button></div>`;
+      <button id="s-del" class="danger">Delete</button><button id="s-done" class="primary" style="margin-left:auto">Done</button></div>
+      <div class="row"><span class="small" style="flex-basis:100%">Length size (all lines, also on the PDF)</span><button id="ls-m" aria-label="Smaller">A−</button><input type="range" id="ls-r" min="${Math.log(0.2)}" max="${Math.log(60)}" step="0.01" value="${Math.log(lenSize())}"><button id="ls-p" aria-label="Bigger">A+</button></div>`;
+    let lsSnap = null;
+    const setLs = (v, commit) => { if (!lsSnap) lsSnap = snap(); doc.lenSize = Math.max(0.2, Math.min(60, v)); $("ls-r").value = Math.log(doc.lenSize); draw();
+      if (commit) { undo.push(lsSnap); lsSnap = null; doc.updated = Date.now(); LS.set("drawn." + slug, doc); scheduleSave(); } };
+    $("ls-m").onclick = () => setLs(lenSize() / 1.25, true);
+    $("ls-p").onclick = () => setLs(lenSize() * 1.25, true);
+    $("ls-r").oninput = e => setLs(Math.exp(+e.target.value), false);
+    $("ls-r").onchange = e => setLs(Math.exp(+e.target.value), true);
     $("s-lk").onchange = e => { before(); ln.k = e.target.value; changed(); };
     let lenSnap = null;   // one undo step for the whole typed length
     $("s-len").oninput = e => { if (!lenSnap) { before(); lenSnap = 1; } const v = e.target.value.trim(); if (v) ln.len = v; else delete ln.len; doc.updated = Date.now(); LS.set("drawn." + slug, doc); scheduleSave(); draw(); };   // not changed(): that redraws this box and drops the keyboard
@@ -984,7 +994,7 @@ $("t-save").onclick = async () => {
   g.save(); g.translate(ox, oy); g.scale(k, k); g.translate(-b.x0, -b.y0); paintPlan(g, k, printMode === "off" ? 0 : printMode === "faded" ? 0.4 : 1); g.restore();
   const T = p => ({ x: (p.x - b.x0) * k + ox, y: (p.y - b.y0) * k + oy }), z = iconSize() * k, wm = Math.max(0.2, z * 0.11), lks = lineKinds();
   for (const ln of doc.lines) paintLine(g, linePts(ln).map(T), lks[ln.k] || DEF_LINES.c2, wm, false);
-  for (const ln of doc.lines) paintLen(g, linePts(ln).map(T), lenText(ln), Math.max(z * 1.05, DPI * 0.3) / 3, "#111");   // Steven 2026-10-10: a third of what V 01.12 printed
+  for (const ln of doc.lines) paintLen(g, linePts(ln).map(T), lenText(ln), Math.max(5, lenSize() * k), "#111");
   for (const it of doc.items) paintIcon(g, it, T(it), z, false);
   for (const it of doc.items) paintLabel(g, it, T(it), z, z * 1.05);
   if (ppf) {   // scale bar
