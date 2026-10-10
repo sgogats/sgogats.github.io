@@ -89,7 +89,7 @@
   <button id="t-undo">Undo</button>
   <button id="t-print">Print: faded</button>
   <button id="t-fit">Whole print</button>
-  <button id="t-save">Save PDF 24x36</button>
+  <button id="t-save">Save PDF 36x48</button>
 </div>
 <div id="modal" hidden><div id="card"></div></div>
 <div id="toast" hidden></div>
@@ -101,7 +101,7 @@
    GPS Shots use: a typed name that matches one (18 for a lockbox = LB-18) is that location; any other becomes a new
    location GPS Shots lists and can plot (gpsName / gk / gg below are what GPS Shots reads). Lines start on one icon
    and end on another and stay attached when an icon moves. */
-const APP_VERSION = "V 01.11";
+const APP_VERSION = "V 01.12";
 // phones keep an old copy of this page for a while: load the newest one when it changes (same as GPS Shots)
 (async () => {
   try {
@@ -413,7 +413,8 @@ function paintLen(g, pts, t, font, color) {
   const p = pts[i - 1], q = pts[i], d = Math.hypot(q.x - p.x, q.y - p.y) || 1, x = p.x + (q.x - p.x) * half / d, y = p.y + (q.y - p.y) * half / d;
   let a = Math.atan2(q.y - p.y, q.x - p.x); if (a > Math.PI / 2) a -= Math.PI; if (a < -Math.PI / 2) a += Math.PI;   // never upside down
   g.save(); g.translate(x, y); g.rotate(a); g.font = `700 ${font}px sans-serif`; g.textAlign = "center"; g.textBaseline = "bottom";
-  const off = -font * 0.25; g.lineWidth = Math.max(3, font * 0.28); g.strokeStyle = "rgba(255,255,255,.95)"; g.lineJoin = "round"; g.strokeText(t, 0, off);
+  const off = -font * 0.3, tw = g.measureText(t).width, pad = font * 0.25;   // white box behind it so it reads over lines and the print
+  g.fillStyle = "rgba(255,255,255,.95)"; g.fillRect(-tw / 2 - pad, off - font * 1.05, tw + pad * 2, font * 1.2);
   g.fillStyle = color || "#111"; g.fillText(t, 0, off); g.restore();
 }
 const feet = pts => { if (!ppf) return null; let d = 0; for (let i = 1; i < pts.length; i++) d += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y); return d / ppf; };
@@ -964,16 +965,17 @@ $("t-print").onclick = () => { printMode = printMode === "faded" ? "off" : print
 $("t-words").onclick = () => { if (!plan || !(plan.texts || []).length) { toast("This print has no words to move"); return; } setMode(mode === "words" ? "view" : "words"); };
 $("t-size").onclick = () => setMode(mode === "size" ? "view" : "size");
 $("t-fit").onclick = () => { fit(); draw(); };
-/* Steven 2026-10-08: Save PDF makes a 24 x 36 inch sheet (the drawing, a title line and a legend of what is used). */
+/* Steven 2026-10-08: Save PDF makes a big sheet (2026-10-09: 36 x 48 inches) (the drawing, a title line and a legend of what is used). */
 const JSPDF = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
 const loadScript = src => new Promise((ok, no) => { const s = document.createElement("script"); s.src = src; s.onload = ok; s.onerror = () => no(new Error("couldn't load " + src)); document.head.appendChild(s); });
 $("t-save").onclick = async () => {
   if (!doc) return;
-  toast("Making the 24 x 36 PDF…");
+  toast("Making the 36 x 48 PDF…");
   const b = bounds(), bw = b.x1 - b.x0, bh = b.y1 - b.y0, land = bw >= bh;
-  const DPI = 120, PW = (land ? 36 : 24) * DPI, PH = (land ? 24 : 36) * DPI, M = DPI / 2, head = DPI;   // half-inch margins, one-inch title band
+  const SW = land ? 48 : 36, SH = land ? 36 : 48;
+  const DPI = 120, PW = SW * DPI, PH = SH * DPI, M = DPI / 2, head = DPI;   // half-inch margins, one-inch title band
   const k = Math.min((PW - 2 * M) / bw, (PH - 2 * M - head) / bh), ox = (PW - bw * k) / 2, oy = M + head + (PH - 2 * M - head - bh * k) / 2;
-  const c = document.createElement("canvas"); c.width = PW; c.height = PH; const g = c.getContext("2d");
+  const paint = g => {
   g.fillStyle = "#fff"; g.fillRect(0, 0, PW, PH);
   g.strokeStyle = "#111"; g.lineWidth = 4; g.strokeRect(M / 2, M / 2, PW - M, PH - M);
   g.fillStyle = "#111"; g.font = "700 56px sans-serif"; g.textBaseline = "middle"; g.textAlign = "left";
@@ -982,7 +984,7 @@ $("t-save").onclick = async () => {
   g.save(); g.translate(ox, oy); g.scale(k, k); g.translate(-b.x0, -b.y0); paintPlan(g, k, printMode === "off" ? 0 : printMode === "faded" ? 0.4 : 1); g.restore();
   const T = p => ({ x: (p.x - b.x0) * k + ox, y: (p.y - b.y0) * k + oy }), z = iconSize() * k, wm = Math.max(0.2, z * 0.11), lks = lineKinds();
   for (const ln of doc.lines) paintLine(g, linePts(ln).map(T), lks[ln.k] || DEF_LINES.c2, wm, false);
-  for (const ln of doc.lines) paintLen(g, linePts(ln).map(T), lenText(ln), z * 1.05, "#111");
+  for (const ln of doc.lines) paintLen(g, linePts(ln).map(T), lenText(ln), Math.max(z * 1.05, DPI * 0.3), "#111");   // lengths at least about 0.3 inch tall
   for (const it of doc.items) paintIcon(g, it, T(it), z, false);
   for (const it of doc.items) paintLabel(g, it, T(it), z, z * 1.05);
   if (ppf) {   // scale bar
@@ -999,14 +1001,21 @@ $("t-save").onclick = async () => {
     for (const kk of usedK) { const kd = kinds()[kk]; if (!kd) continue; g.save(); g.translate(x + 60, yy); iconShape(g, kd, 22); g.restore(); g.fillStyle = "#111"; g.fillText(kd.name, x + 120, yy); yy += lh; }
     for (const lk of usedL) { const v = lks[lk]; if (!v) continue; paintLine(g, [{ x: x + 20, y: yy }, { x: x + 100, y: yy }], v, 2, false); g.fillStyle = "#111"; g.fillText(v.name, x + 120, yy); yy += lh; }
   }
+  };
   try {
     if (!window.jspdf) await loadScript(JSPDF);
-    const pdf = new window.jspdf.jsPDF({ orientation: land ? "landscape" : "portrait", unit: "in", format: [24, 36] });
-    pdf.addImage(c.toDataURL("image/jpeg", 0.9), "JPEG", 0, 0, land ? 36 : 24, land ? 24 : 36);
-    const blob = pdf.output("blob"), fname = `${slug}-as-built-24x36.pdf`, file = new File([blob], fname, { type: "application/pdf" });
+    const pdf = new window.jspdf.jsPDF({ orientation: land ? "landscape" : "portrait", unit: "in", format: [36, 48] });
+    // phones refuse one canvas this big, so the sheet is drawn in strips and placed one under another
+    const STRIPS = 3, TH = Math.ceil(PH / STRIPS), c = document.createElement("canvas"); c.width = PW; c.height = TH; const g = c.getContext("2d");
+    for (let i = 0; i < STRIPS; i++) {
+      g.setTransform(1, 0, 0, 1, 0, 0); g.fillStyle = "#fff"; g.fillRect(0, 0, PW, TH); g.translate(0, -i * TH); paint(g);
+      pdf.addImage(c.toDataURL("image/jpeg", 0.9), "JPEG", 0, i * TH / DPI, SW, TH / DPI);
+    }
+    c.width = c.height = 1;
+    const blob = pdf.output("blob"), fname = `${slug}-as-built-36x48.pdf`, file = new File([blob], fname, { type: "application/pdf" });
     try { if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: projName + " as-built" }); return; } } catch (e) { if (e.name === "AbortError") return; }
     const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = fname; document.body.appendChild(a); a.click(); a.remove();
-    toast("PDF saved (24 x 36)");
+    toast("PDF saved (36 x 48)");
   } catch (e) { toast("Couldn't make the PDF: " + e.message); }
 };
 
