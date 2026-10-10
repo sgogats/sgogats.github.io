@@ -101,7 +101,7 @@
    GPS Shots use: a typed name that matches one (18 for a lockbox = LB-18) is that location; any other becomes a new
    location GPS Shots lists and can plot (gpsName / gk / gg below are what GPS Shots reads). Lines start on one icon
    and end on another and stay attached when an icon moves. */
-const APP_VERSION = "V 01.17";
+const APP_VERSION = "V 01.18";
 // phones keep an old copy of this page for a while: load the newest one when it changes (same as GPS Shots)
 (async () => {
   try {
@@ -411,13 +411,17 @@ function paintLine(g, pts, lk, wmul, selected) {
 }
 /* Steven 2026-10-09: tap a line and type its length; it shows on the middle of the line (screen and PDF). */
 const lenText = ln => { const t = String(ln.len || "").trim(); return !t ? "" : /^[\d.,]+$/.test(t) ? t + " ft" : t; };
-function paintLen(g, pts, t, font, color) {
-  if (!t || pts.length < 2 || font < 5) return;
+function lenSpot(pts) {   // middle of a line and its slope, turned so the words never read upside down
   let tot = 0; for (let i = 1; i < pts.length; i++) tot += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
   let half = tot / 2, i = 1;
   for (; i < pts.length - 1; i++) { const d = Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y); if (half <= d) break; half -= d; }
   const p = pts[i - 1], q = pts[i], d = Math.hypot(q.x - p.x, q.y - p.y) || 1, x = p.x + (q.x - p.x) * half / d, y = p.y + (q.y - p.y) * half / d;
-  let a = Math.atan2(q.y - p.y, q.x - p.x); if (a > Math.PI / 2) a -= Math.PI; if (a < -Math.PI / 2) a += Math.PI;   // never upside down
+  let a = Math.atan2(q.y - p.y, q.x - p.x); if (a > Math.PI / 2) a -= Math.PI; if (a < -Math.PI / 2) a += Math.PI;
+  return { x, y, a };
+}
+function paintLen(g, pts, t, font, color) {
+  if (!t || pts.length < 2 || font < 5) return;
+  const { x, y, a } = lenSpot(pts);
   g.save(); g.translate(x, y); g.rotate(a); g.font = `700 ${font}px sans-serif`; g.textAlign = "center"; g.textBaseline = "bottom";
   const off = -font * 0.3, tw = g.measureText(t).width, pad = font * 0.25;   // white box behind it so it reads over lines and the print
   g.fillStyle = "rgba(255,255,255,.95)"; g.fillRect(-tw / 2 - pad, off - font * 1.05, tw + pad * 2, font * 1.2);
@@ -999,7 +1003,7 @@ $("t-save").onclick = async () => {
   toast("Making the 36 x 48 PDF…");
   const b = bounds(), bw = b.x1 - b.x0, bh = b.y1 - b.y0, land = bw >= bh;
   const SW = land ? 48 : 36, SH = land ? 36 : 48;
-  const DPI = 120, PW = SW * DPI, PH = SH * DPI, M = DPI / 2, head = DPI;   // half-inch margins, one-inch title band
+  const DPI = 150, PW = SW * DPI, PH = SH * DPI, M = DPI / 2, head = DPI;   // half-inch margins, one-inch title band
   const k = Math.min((PW - 2 * M) / bw, (PH - 2 * M - head) / bh), ox = (PW - bw * k) / 2, oy = M + head + (PH - 2 * M - head - bh * k) / 2;
   const paint = g => {
   g.fillStyle = "#fff"; g.fillRect(0, 0, PW, PH);
@@ -1010,9 +1014,8 @@ $("t-save").onclick = async () => {
   g.save(); g.translate(ox, oy); g.scale(k, k); g.translate(-b.x0, -b.y0); paintPlan(g, k, printMode === "off" ? 0 : printMode === "faded" ? 0.4 : 1); g.restore();
   const T = p => ({ x: (p.x - b.x0) * k + ox, y: (p.y - b.y0) * k + oy }), z = iconSize() * k, wm = Math.max(0.2, z * 0.11), lks = lineKinds();
   for (const ln of doc.lines) paintLine(g, linePts(ln).map(T), lks[ln.k] || DEF_LINES.c2, wm, false);
-  for (const ln of doc.lines) paintLen(g, linePts(ln).map(T), lenText(ln), Math.max(5, (ln.lenSize || lenSize()) * k), "#111");
   for (const it of doc.items) paintIcon(g, it, T(it), zOf(it, z), false);
-  for (const it of doc.items) paintLabel(g, it, T(it), zOf(it, z), Math.max(5, (it.nameSize || nameSize()) * k));
+  // names and lengths are not drawn here: they go into the PDF as real text so they stay sharp (Steven 2026-10-10)
   if (ppf) {   // scale bar
     const per = k * ppf; let ft = 10; for (const f of [10, 20, 25, 50, 100, 200, 250, 500]) { ft = f; if (f * per >= DPI * 2) break; }
     const x = M, y = PH - M - 30, w = ft * per;
@@ -1032,12 +1035,31 @@ $("t-save").onclick = async () => {
     if (!window.jspdf) await loadScript(JSPDF);
     const pdf = new window.jspdf.jsPDF({ orientation: land ? "landscape" : "portrait", unit: "in", format: [36, 48] });
     // phones refuse one canvas this big, so the sheet is drawn in strips and placed one under another
-    const STRIPS = 3, TH = Math.ceil(PH / STRIPS), c = document.createElement("canvas"); c.width = PW; c.height = TH; const g = c.getContext("2d");
+    const STRIPS = 5, TH = Math.ceil(PH / STRIPS), c = document.createElement("canvas"); c.width = PW; c.height = TH; const g = c.getContext("2d");
     for (let i = 0; i < STRIPS; i++) {
       g.setTransform(1, 0, 0, 1, 0, 0); g.fillStyle = "#fff"; g.fillRect(0, 0, PW, TH); g.translate(0, -i * TH); paint(g);
-      pdf.addImage(c.toDataURL("image/jpeg", 0.9), "JPEG", 0, i * TH / DPI, SW, TH / DPI);
+      pdf.addImage(c.toDataURL("image/jpeg", 0.95), "JPEG", 0, i * TH / DPI, SW, TH / DPI);
     }
     c.width = c.height = 1;
+    // sharp text on top: icon names and conduit lengths, with a white edge so they read over lines and the print
+    const T = p => ({ x: (p.x - b.x0) * k + ox, y: (p.y - b.y0) * k + oy }), z = iconSize() * k, IN = v => v / DPI;
+    pdf.setFont("helvetica", "bold"); pdf.setLineJoin("round"); pdf.setDrawColor(255, 255, 255);
+    const say = (t, x, y, px, opt) => {
+      pdf.setFontSize(px / DPI * 72); pdf.setLineWidth(IN(Math.max(2, px * 0.28)));
+      pdf.text(t, IN(x), IN(y), Object.assign({ renderingMode: "stroke" }, opt));
+      pdf.setTextColor(17, 17, 17); pdf.text(t, IN(x), IN(y), Object.assign({ renderingMode: "fill" }, opt));
+    };
+    for (const ln of doc.lines) {
+      const t = lenText(ln), pts = linePts(ln).map(T); if (!t || pts.length < 2) continue;
+      const px = Math.max(5, (ln.lenSize || lenSize()) * k), sp = lenSpot(pts);
+      pdf.setFontSize(px / DPI * 72); const tw = pdf.getTextWidth(t) * DPI, off = -px * 0.45;   // centred just above the line
+      const ca = Math.cos(sp.a), sa = Math.sin(sp.a), sx = sp.x + (-tw / 2) * ca - off * sa, sy = sp.y + (-tw / 2) * sa + off * ca;
+      say(t, sx, sy, px, { angle: -sp.a * 180 / Math.PI, baseline: "bottom" });
+    }
+    for (const it of doc.items) {
+      const p = T(it), zi = zOf(it, z), px = Math.max(5, (it.nameSize || nameSize()) * k);
+      say(label(it), p.x + zi * (kindOf(it).shape === "riser" ? 1.8 : 1.45), p.y - zi * 1.05, px, { baseline: "middle" });
+    }
     const blob = pdf.output("blob"), fname = `${slug}-as-built-36x48.pdf`, file = new File([blob], fname, { type: "application/pdf" });
     try { if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: projName + " as-built" }); return; } } catch (e) { if (e.name === "AbortError") return; }
     const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = fname; document.body.appendChild(a); a.click(); a.remove();
