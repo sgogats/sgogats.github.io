@@ -101,7 +101,7 @@
    GPS Shots use: a typed name that matches one (18 for a lockbox = LB-18) is that location; any other becomes a new
    location GPS Shots lists and can plot (gpsName / gk / gg below are what GPS Shots reads). Lines start on one icon
    and end on another and stay attached when an icon moves. */
-const APP_VERSION = "V 01.18";
+const APP_VERSION = "V 01.19";
 // phones keep an old copy of this page for a while: load the newest one when it changes (same as GPS Shots)
 (async () => {
   try {
@@ -270,8 +270,8 @@ function planGroups() {
   if (planPaths && planPaths.plan === plan) return planPaths.g;
   const m = new Map();
   for (const [col, w, pts] of plan.lines || []) {
-    const k = col + "|" + w; let e = m.get(k); if (!e) { e = { col, w, p: new Path2D() }; m.set(k, e); }
-    e.p.moveTo(pts[0], pts[1]); for (let i = 2; i < pts.length; i += 2) e.p.lineTo(pts[i], pts[i + 1]);
+    const k = col + "|" + w; let e = m.get(k); if (!e) { e = { col, w, p: new Path2D() }; e.p.__pts = []; m.set(k, e); }
+    e.p.__pts.push(pts); e.p.moveTo(pts[0], pts[1]); for (let i = 2; i < pts.length; i += 2) e.p.lineTo(pts[i], pts[i + 1]);
   }
   planPaths = { plan, g: [...m.values()] }; return planPaths.g;
 }
@@ -995,6 +995,74 @@ $("t-print").onclick = () => { printMode = printMode === "faded" ? "off" : print
 $("t-words").onclick = () => { if (!plan || !(plan.texts || []).length) { toast("This print has no words to move"); return; } setMode(mode === "words" ? "view" : "words"); };
 $("t-size").onclick = () => setMode(mode === "size" ? "view" : "size");
 $("t-fit").onclick = () => { fit(); draw(); };
+/* Steven 2026-10-10: "everything needs to print sharp". VecCtx takes the same drawing calls as a canvas
+   but writes them into the PDF as lines, shapes and text (vector), so nothing goes fuzzy at 36 x 48.
+   It covers only what this page draws: paths, rect, arc, fillText, dashes, alpha, transforms, drawImage. */
+class VecCtx {
+  constructor(pdf, unit) {
+    this.pdf = pdf; this.m = [unit, 0, 0, unit, 0, 0]; this.st = []; this.path = [];
+    Object.assign(this, { fillStyle: "#000", strokeStyle: "#000", lineWidth: 1, lineCap: "butt", lineJoin: "miter", globalAlpha: 1, font: "10px sans-serif", textAlign: "left", textBaseline: "alphabetic", dash: [] });
+  }
+  save() { this.st.push({ m: this.m.slice(), fillStyle: this.fillStyle, strokeStyle: this.strokeStyle, lineWidth: this.lineWidth, lineCap: this.lineCap, lineJoin: this.lineJoin, globalAlpha: this.globalAlpha, font: this.font, textAlign: this.textAlign, textBaseline: this.textBaseline, dash: this.dash }); }
+  restore() { const o = this.st.pop(); if (o) Object.assign(this, o); }
+  transform(a, b, c, d, e, f) { const m = this.m; this.m = [m[0] * a + m[2] * b, m[1] * a + m[3] * b, m[0] * c + m[2] * d, m[1] * c + m[3] * d, m[0] * e + m[2] * f + m[4], m[1] * e + m[3] * f + m[5]]; }
+  translate(x, y) { this.transform(1, 0, 0, 1, x, y); }
+  scale(x, y) { this.transform(x, 0, 0, y, 0, 0); }
+  rotate(r) { const c = Math.cos(r), s = Math.sin(r); this.transform(c, s, -s, c, 0, 0); }
+  setTransform(a, b, c, d, e, f) { this.m = [a, b, c, d, e, f]; }
+  setLineDash(d) { this.dash = d || []; }
+  P(x, y) { const m = this.m; return [m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]]; }
+  get k() { const m = this.m; return Math.sqrt(Math.abs(m[0] * m[3] - m[1] * m[2])); }
+  beginPath() { this.path = []; }
+  moveTo(x, y) { this.path.push([["M", ...this.P(x, y)]]); }
+  lineTo(x, y) { if (!this.path.length) return this.moveTo(x, y); this.path[this.path.length - 1].push(["L", ...this.P(x, y)]); }
+  closePath() { const sp = this.path[this.path.length - 1]; if (sp) sp.push(["Z"]); }
+  rect(x, y, w, h) { this.moveTo(x, y); this.lineTo(x + w, y); this.lineTo(x + w, y + h); this.lineTo(x, y + h); this.closePath(); }
+  arc(cx, cy, r, a0, a1) {
+    if (a1 - a0 >= Math.PI * 2) a1 = a0 + Math.PI * 2;
+    const n = Math.max(1, Math.ceil((a1 - a0) / (Math.PI / 2))), da = (a1 - a0) / n, kk = 4 / 3 * Math.tan(da / 4);
+    const pt = a => [cx + r * Math.cos(a), cy + r * Math.sin(a)];
+    const [sx, sy] = pt(a0); if (this.path.length) this.lineTo(sx, sy); else this.moveTo(sx, sy);
+    for (let i = 0; i < n; i++) {
+      const b0 = a0 + i * da, b1 = b0 + da, [x0, y0] = pt(b0), [x3, y3] = pt(b1);
+      const c1 = this.P(x0 - kk * r * Math.sin(b0), y0 + kk * r * Math.cos(b0)), c2 = this.P(x3 + kk * r * Math.sin(b1), y3 - kk * r * Math.cos(b1));
+      this.path[this.path.length - 1].push(["C", ...c1, ...c2, ...this.P(x3, y3)]);
+    }
+  }
+  col(c) {   // "#rgb", "#rrggbb", "rgba(r,g,b,a)" -> [r,g,b,a]
+    c = String(c || "#000").trim(); let m;
+    if ((m = c.match(/^#([0-9a-f]{3})$/i))) return [...m[1]].map(h => parseInt(h + h, 16)).concat(1);
+    if ((m = c.match(/^#([0-9a-f]{6})$/i))) return [0, 2, 4].map(i => parseInt(m[1].substr(i, 2), 16)).concat(1);
+    if ((m = c.match(/rgba?\(([^)]+)\)/i))) { const v = m[1].split(",").map(Number); return [v[0], v[1], v[2], v.length > 3 ? v[3] : 1]; }
+    return [0, 0, 0, 1];
+  }
+  alpha(a) { const pdf = this.pdf, o = Math.max(0, Math.min(1, a * this.globalAlpha)); pdf.setGState(new pdf.GState({ opacity: o, "stroke-opacity": o })); }
+  emit() { const pdf = this.pdf; for (const sp of this.path) for (const op of sp) { if (op[0] === "M") pdf.moveTo(op[1], op[2]); else if (op[0] === "L") pdf.lineTo(op[1], op[2]); else if (op[0] === "C") pdf.curveTo(op[1], op[2], op[3], op[4], op[5], op[6]); else pdf.close(); } }
+  fill() { if (!this.path.length) return; const c = this.col(this.fillStyle); this.pdf.setFillColor(c[0], c[1], c[2]); this.alpha(c[3]); this.emit(); this.pdf.fill(); }
+  stroke(p) {
+    if (p && p.__pts) { this.beginPath(); for (const a of p.__pts) { this.moveTo(a[0], a[1]); for (let i = 2; i < a.length; i += 2) this.lineTo(a[i], a[i + 1]); } }
+    if (!this.path.length) return;
+    const pdf = this.pdf, c = this.col(this.strokeStyle), k = this.k; pdf.setDrawColor(c[0], c[1], c[2]); this.alpha(c[3]);
+    pdf.setLineWidth(this.lineWidth * k); pdf.setLineCap(this.lineCap === "round" ? "round" : this.lineCap === "square" ? "square" : "butt"); pdf.setLineJoin(this.lineJoin === "round" ? "round" : this.lineJoin === "bevel" ? "bevel" : "miter");
+    pdf.setLineDashPattern(this.dash.map(v => v * k), 0); this.emit(); pdf.stroke(); pdf.setLineDashPattern([], 0);
+  }
+  fillRect(x, y, w, h) { const p = this.path; this.beginPath(); this.rect(x, y, w, h); this.fill(); this.path = p; }
+  strokeRect(x, y, w, h) { const p = this.path; this.beginPath(); this.rect(x, y, w, h); this.stroke(); this.path = p; }
+  fontPx() { const m = String(this.font).match(/(\d+(?:\.\d+)?)px/); return m ? +m[1] : 10; }
+  fillText(t, x, y) {
+    t = String(t); if (!t) return; const pdf = this.pdf, px = this.fontPx(), k = this.k, size = px * k;
+    if (size * 72 < 0.5) return;
+    pdf.setFont("helvetica", /\b(6|7|8|9)00\b|bold/.test(this.font) ? "bold" : "normal"); pdf.setFontSize(size * 72);
+    const w = pdf.getTextWidth(t) / k, dx = this.textAlign === "center" ? -w / 2 : this.textAlign === "right" || this.textAlign === "end" ? -w : 0;
+    const dy = this.textBaseline === "middle" ? px * 0.35 : this.textBaseline === "top" || this.textBaseline === "hanging" ? px * 0.75 : this.textBaseline === "bottom" ? -px * 0.22 : 0;
+    const [X, Y] = this.P(x + dx, y + dy), m = this.m, ang = Math.atan2(m[1], m[0]);
+    const c = this.col(this.fillStyle); pdf.setTextColor(c[0], c[1], c[2]); this.alpha(c[3]);
+    pdf.text(t, X, Y, ang ? { angle: -ang * 180 / Math.PI } : {});
+  }
+  strokeText() {}
+  measureText(t) { const pdf = this.pdf; pdf.setFontSize(this.fontPx() * 72); return { width: pdf.getTextWidth(String(t)) }; }
+  drawImage(img, x, y, w, h) { const [X, Y] = this.P(x, y), [X2, Y2] = this.P(x + w, y + h); this.alpha(1); try { this.pdf.addImage(img, "PNG", X, Y, X2 - X, Y2 - Y); } catch (e) { } }
+}
 /* Steven 2026-10-08: Save PDF makes a big sheet (2026-10-09: 36 x 48 inches) (the drawing, a title line and a legend of what is used). */
 const JSPDF = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
 const loadScript = src => new Promise((ok, no) => { const s = document.createElement("script"); s.src = src; s.onload = ok; s.onerror = () => no(new Error("couldn't load " + src)); document.head.appendChild(s); });
@@ -1034,13 +1102,8 @@ $("t-save").onclick = async () => {
   try {
     if (!window.jspdf) await loadScript(JSPDF);
     const pdf = new window.jspdf.jsPDF({ orientation: land ? "landscape" : "portrait", unit: "in", format: [36, 48] });
-    // phones refuse one canvas this big, so the sheet is drawn in strips and placed one under another
-    const STRIPS = 5, TH = Math.ceil(PH / STRIPS), c = document.createElement("canvas"); c.width = PW; c.height = TH; const g = c.getContext("2d");
-    for (let i = 0; i < STRIPS; i++) {
-      g.setTransform(1, 0, 0, 1, 0, 0); g.fillStyle = "#fff"; g.fillRect(0, 0, PW, TH); g.translate(0, -i * TH); paint(g);
-      pdf.addImage(c.toDataURL("image/jpeg", 0.95), "JPEG", 0, i * TH / DPI, SW, TH / DPI);
-    }
-    c.width = c.height = 1;
+    paint(new VecCtx(pdf, 1 / DPI));   // the whole sheet as vector drawing (sharp at any size)
+    pdf.setGState(new pdf.GState({ opacity: 1, "stroke-opacity": 1 }));
     // sharp text on top: icon names and conduit lengths, with a white edge so they read over lines and the print
     const T = p => ({ x: (p.x - b.x0) * k + ox, y: (p.y - b.y0) * k + oy }), z = iconSize() * k, IN = v => v / DPI;
     pdf.setFont("helvetica", "bold"); pdf.setLineJoin("round"); pdf.setDrawColor(255, 255, 255);
