@@ -101,7 +101,7 @@
    GPS Shots use: a typed name that matches one (18 for a lockbox = LB-18) is that location; any other becomes a new
    location GPS Shots lists and can plot (gpsName / gk / gg below are what GPS Shots reads). Lines start on one icon
    and end on another and stay attached when an icon moves. */
-const APP_VERSION = "V 01.16";
+const APP_VERSION = "V 01.17";
 // phones keep an old copy of this page for a while: load the newest one when it changes (same as GPS Shots)
 (async () => {
   try {
@@ -261,6 +261,9 @@ const iconSize = () => (doc && doc.iconSize) || ICON;
 /* Steven 2026-10-10: length words have their own size (print units, so screen and PDF match); set with the slider when a line is tapped */
 const lenSize = () => (doc && doc.lenSize) || iconSize() * 0.35;
 const nameSize = () => (doc && doc.nameSize) || iconSize();   // icon names too (Steven 2026-10-10)
+/* Steven 2026-10-10: each icon type has its own size (resizing vaults leaves lockboxes alone). doc.typeSize[kind]; Icon size is the default. */
+const typeSize = k => ((doc && doc.typeSize) || {})[k] || iconSize();
+const zOf = (it, z) => z * typeSize(it.k) / iconSize();
 const iconPx = s => Math.max(1.5, iconSize() * s);
 let planPaths = null, planCache = null;
 function planGroups() {
@@ -449,8 +452,8 @@ function draw(quick) {
       if (w === selWord) { ctx.save(); ctx.setLineDash([]); ctx.fillStyle = "rgba(255,210,0,.35)"; ctx.fill(); ctx.strokeStyle = "#0b6e4f"; ctx.lineWidth = 2.5; ctx.stroke(); ctx.restore(); } else ctx.stroke(); }
     ctx.restore(); }
   for (const ln of doc.lines) paintLen(ctx, linePts(ln).map(toScreen), lenText(ln), (ln.lenSize || lenSize()) * view.s, "#111");
-  for (const it of doc.items) paintIcon(ctx, it, toScreen(it), z, (sel && sel.type === "icon" && sel.id === it.id) || (cur && cur.a === it.id));
-  for (const it of doc.items) paintLabel(ctx, it, toScreen(it), z, (it.nameSize || nameSize()) * view.s);
+  for (const it of doc.items) paintIcon(ctx, it, toScreen(it), zOf(it, z), (sel && sel.type === "icon" && sel.id === it.id) || (cur && cur.a === it.id));
+  for (const it of doc.items) paintLabel(ctx, it, toScreen(it), zOf(it, z), (it.nameSize || nameSize()) * view.s);
   if (ppf) scaleBar();
 }
 const chunk = a => { const o = []; for (let i = 0; i < (a || []).length; i += 2) o.push({ x: a[i], y: a[i + 1] }); return o; };
@@ -464,7 +467,7 @@ function scaleBar() {
 
 /* ---------------------------------------------------------------- changes, undo, saving */
 let undo = [];
-const snap = () => JSON.stringify({ kinds: doc.kinds, lineKinds: doc.lineKinds, items: doc.items, lines: doc.lines, textMoves: doc.textMoves || {}, iconSize: doc.iconSize || null, lenSize: doc.lenSize || null, nameSize: doc.nameSize || null });
+const snap = () => JSON.stringify({ kinds: doc.kinds, lineKinds: doc.lineKinds, items: doc.items, lines: doc.lines, textMoves: doc.textMoves || {}, iconSize: doc.iconSize || null, lenSize: doc.lenSize || null, nameSize: doc.nameSize || null, typeSize: doc.typeSize || {} });
 function before() { undo.push(snap()); if (undo.length > 60) undo.shift(); }
 function changed() {
   kCache = lCache = null; wordsVer++;
@@ -559,8 +562,8 @@ async function load() {
 const ptrs = new Map(); let gest = null, pinch = null;
 const pos = e => { const r = cv.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
 function hitIcon(p, skip) {
-  const z = iconPx(view.s), lim = Math.max(z * 1.5, 22); let best = null, bd = lim;
-  for (const it of doc.items) { if (it.id === skip) continue; const q = toScreen(it), d = Math.hypot(q.x - p.x, q.y - p.y); if (d < bd) { bd = d; best = it; } }
+  const z = iconPx(view.s); let best = null, bd = Infinity;
+  for (const it of doc.items) { if (it.id === skip) continue; const q = toScreen(it), d = Math.hypot(q.x - p.x, q.y - p.y), lim = Math.max(zOf(it, z) * 1.5, 22); if (d < lim && d < bd) { bd = d; best = it; } }
   return best;
 }
 function segDist(p, a, b) { const dx = b.x - a.x, dy = b.y - a.y, L = dx * dx + dy * dy; let t = L ? ((p.x - a.x) * dx + (p.y - a.y) * dy) / L : 0; t = Math.max(0, Math.min(1, t)); return Math.hypot(p.x - a.x - t * dx, p.y - a.y - t * dy); }
@@ -783,7 +786,10 @@ function renderSel() {
     box.innerHTML = `<div class="row"><span class="nm">${esc(label(it))}${link}</span><span class="small">Drag the icon to move it</span></div>
       <div class="row"><button id="r-l" aria-label="Turn left">⟲ 15°</button><input type="range" id="r-v" min="0" max="359" step="1" value="${Math.round(it.rot || 0)}"><button id="r-r" aria-label="Turn right">⟳ 15°</button><b id="r-t" style="min-width:44px;text-align:right">${Math.round(it.rot || 0)}°</b></div>
       <div class="row"><button id="s-ren">Rename</button><button id="s-del" class="danger">Delete</button><button id="s-done" class="primary" style="margin-left:auto">Done</button></div>
+      ${sizeHtml("ts", `Icon size (every ${esc(kindOf(it).name)})`, typeSize(it.k), "")}
       ${sizeHtml("ns", "Name size (this icon, also on the PDF)", it.nameSize || nameSize(), "Make all names this size")}`;
+    doc.typeSize = doc.typeSize || {};
+    sizeRow("ts", doc.typeSize, it.k, () => typeSize(it.k), null);
     sizeRow("ns", it, "nameSize", () => it.nameSize || nameSize(), doc.items);
     let rotSnap = null;
     const setRot = (v, commit) => { if (!rotSnap) rotSnap = snap(); it.rot = ((Math.round(v) % 360) + 360) % 360; $("r-t").textContent = it.rot + "°"; $("r-v").value = it.rot; draw();
@@ -813,10 +819,10 @@ function renderSel() {
 }
 /* A− / slider / A+ for one icon's name or one line's length (Steven 2026-10-10: "when I click on a vault, I can resize the name").
    Sizes are print units on the item (it.nameSize / ln.lenSize); "Make all … this size" sets the job default and clears the others. */
-const sizeHtml = (id, text, v, all) => `<div class="row"><span class="small" style="flex-basis:100%">${text}</span><button id="${id}-m" aria-label="Smaller">A−</button><input type="range" id="${id}-r" min="${Math.log(0.2)}" max="${Math.log(80)}" step="0.01" value="${Math.log(v)}"><button id="${id}-p" aria-label="Bigger">A+</button><button id="${id}-a">${all}</button></div>`;
+const sizeHtml = (id, text, v, all) => `<div class="row"><span class="small" style="flex-basis:100%">${text}</span><button id="${id}-m" aria-label="Smaller">A−</button><input type="range" id="${id}-r" min="${Math.log(0.2)}" max="${Math.log(80)}" step="0.01" value="${Math.log(v)}"><button id="${id}-p" aria-label="Bigger">A+</button>${all ? `<button id="${id}-a">${all}</button>` : ""}</div>`;
 function sizeRow(id, obj, key, get, list) {
   let s0 = null;
-  $(id + "-a").onclick = () => { before(); doc[key] = get(); for (const o of list) delete o[key]; changed(); toast("Done: all the same size"); };
+  if (list) $(id + "-a").onclick = () => { before(); doc[key] = get(); for (const o of list) delete o[key]; changed(); toast("Done: all the same size"); };
   const set = (v, commit) => { if (!s0) s0 = snap(); obj[key] = Math.max(0.2, Math.min(80, v)); $(id + "-r").value = Math.log(obj[key]); draw();
     if (commit) { undo.push(s0); s0 = null; doc.updated = Date.now(); LS.set("drawn." + slug, doc); scheduleSave(); } };
   $(id + "-m").onclick = () => set(get() / 1.25, true);
@@ -1005,8 +1011,8 @@ $("t-save").onclick = async () => {
   const T = p => ({ x: (p.x - b.x0) * k + ox, y: (p.y - b.y0) * k + oy }), z = iconSize() * k, wm = Math.max(0.2, z * 0.11), lks = lineKinds();
   for (const ln of doc.lines) paintLine(g, linePts(ln).map(T), lks[ln.k] || DEF_LINES.c2, wm, false);
   for (const ln of doc.lines) paintLen(g, linePts(ln).map(T), lenText(ln), Math.max(5, (ln.lenSize || lenSize()) * k), "#111");
-  for (const it of doc.items) paintIcon(g, it, T(it), z, false);
-  for (const it of doc.items) paintLabel(g, it, T(it), z, Math.max(5, (it.nameSize || nameSize()) * k));
+  for (const it of doc.items) paintIcon(g, it, T(it), zOf(it, z), false);
+  for (const it of doc.items) paintLabel(g, it, T(it), zOf(it, z), Math.max(5, (it.nameSize || nameSize()) * k));
   if (ppf) {   // scale bar
     const per = k * ppf; let ft = 10; for (const f of [10, 20, 25, 50, 100, 200, 250, 500]) { ft = f; if (f * per >= DPI * 2) break; }
     const x = M, y = PH - M - 30, w = ft * per;
