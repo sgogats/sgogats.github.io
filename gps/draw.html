@@ -101,7 +101,7 @@
    GPS Shots use: a typed name that matches one (18 for a lockbox = LB-18) is that location; any other becomes a new
    location GPS Shots lists and can plot (gpsName / gk / gg below are what GPS Shots reads). Lines start on one icon
    and end on another and stay attached when an icon moves. */
-const APP_VERSION = "V 01.20";
+const APP_VERSION = "V 01.21";
 // phones keep an old copy of this page for a while: load the newest one when it changes (same as GPS Shots)
 (async () => {
   try {
@@ -161,6 +161,7 @@ const DEF_KINDS = {
   pole:    { name: "Pole", color: "#222222", shape: "pole", grp: "Telecom", gk: "Pole line", gg: "Pole line", match: ["Pole line", "Pole"], pre: "" },
   riser:   { name: "Riser pole", color: "#222222", shape: "riser", grp: "Telecom", gk: "Riser pole", gg: "Vaults, cans and poles", match: ["Riser pole"], pre: "rp" },
   ped:     { name: "Pedestal", color: "#4b5563", shape: "ped", grp: "Telecom", gk: "Pedestal", gg: "Pedestal", match: ["Pedestal"] },
+  splice:  { name: "Splice can", color: "#111111", shape: "bowtie", grp: "Telecom", gk: "Splice can", gg: "Splice can", match: ["Splice can"] },
   nid:     { name: "NID panel", color: "#1f6feb", shape: "box", letter: "NID", grp: "Telecom", gk: "NID panel", gg: "NID panels" },
   xfmr:    { name: "Transformer", color: "#c1121f", shape: "box", letter: "T", grp: "Electric" },
   emeter:  { name: "Electric meter", color: "#c1121f", shape: "circ", letter: "M", grp: "Electric" },
@@ -174,7 +175,7 @@ const DEF_KINDS = {
   tvtap:   { name: "Cable TV tap", color: "#e07000", shape: "circ", letter: "T", grp: "Cable TV" },
 };
 const SHAPES = { rect: "Rectangle", tri: "Triangle", pole: "Circle with X", riser: "Riser pole", ped: "Pedestal", box: "Box with letters",
-                 circ: "Circle with letters", valve: "Valve", hydrant: "Hydrant", amp: "Amplifier", light: "Light", dot: "Dot", diamond: "Diamond" };
+                 circ: "Circle with letters", valve: "Valve", hydrant: "Hydrant", amp: "Amplifier", light: "Light", dot: "Dot", diamond: "Diamond", bowtie: "Two triangles point to point" };
 const DEF_LINES = {
   c2:    { name: '2" conduit', color: "#f28c28", w: 3.5, dash: "" },
   c1:    { name: '1" conduit', color: "#8a8f98", w: 3, dash: "" },
@@ -376,6 +377,8 @@ function iconShape(g, kd, z) {
     case "amp": g.beginPath(); g.moveTo(z * 1.05, 0); g.lineTo(-z * 0.8, -z * 0.95); g.lineTo(-z * 0.8, z * 0.95); g.closePath(); g.fill(); break;
     case "light": g.beginPath(); g.arc(0, 0, z * 0.45, 0, 7); g.fill(); g.beginPath();
       for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4; g.moveTo(Math.cos(a) * z * 0.65, Math.sin(a) * z * 0.65); g.lineTo(Math.cos(a) * z * 1.05, Math.sin(a) * z * 1.05); } g.stroke(); break;
+    case "bowtie": g.beginPath(); g.moveTo(-z * 1.3, -z * 0.85); g.lineTo(0, 0); g.lineTo(-z * 1.3, z * 0.85); g.closePath();   // splice can (Steven 2026-10-20)
+      g.moveTo(z * 1.3, -z * 0.85); g.lineTo(0, 0); g.lineTo(z * 1.3, z * 0.85); g.closePath(); g.fill(); break;
     case "diamond": g.beginPath(); g.moveTo(0, -z); g.lineTo(z, 0); g.lineTo(0, z); g.lineTo(-z, 0); g.closePath(); g.fill(); break;
     default: g.beginPath(); g.arc(0, 0, z * 0.7, 0, 7); g.fill();
   }
