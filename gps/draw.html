@@ -66,6 +66,19 @@
   .seg { display:flex; gap:6px; flex-wrap:wrap; }
   .preview { margin-top:10px; padding:10px; border-radius:10px; background:var(--bg); font-size:16px; }
   #toast { position:fixed; left:50%; bottom:110px; transform:translateX(-50%); background:#14201b; color:#fff; padding:10px 16px; border-radius:22px; z-index:30; font-size:15px; max-width:90vw; text-align:center; }
+  /* the as-built list (Steven 2026-11-20) */
+  #list { flex:1; min-height:0; overflow:auto; padding:12px 12px max(12px, env(safe-area-inset-bottom)); }
+  #list .top { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px; }
+  #list .top button { flex:1 1 auto; }
+  #list h2 { margin:4px 0 10px; font-size:20px; }
+  .sh { display:flex; gap:8px; align-items:center; background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:8px; margin-bottom:8px; }
+  .sh .open { flex:1; min-width:0; justify-content:flex-start; text-align:left; border:0; background:none; flex-direction:column; align-items:flex-start; gap:2px; padding:6px 8px; }
+  .sh .open b { font-size:18px; }
+  .sh .open span { font-size:13px; color:var(--muted); }
+  .sh .act { min-height:40px; padding:6px 10px; font-size:14px; }
+  @media (max-width:520px) { .sh { flex-wrap:wrap; } .sh .open { flex-basis:100%; } }
+  .ck { display:flex; align-items:center; gap:8px; min-height:40px; font-size:16px; }
+  .ck input { width:24px; height:24px; }
   #pg { position:absolute; right:6px; bottom:4px; font-size:11px; color:#666; background:rgba(255,255,255,.7); padding:1px 5px; border-radius:6px; pointer-events:none; }
 </style>
 </head>
@@ -75,19 +88,21 @@
   <div class="ttl"><b>Draw as-built</b><span id="proj">Loading…</span></div>
   <div class="meta"><div id="save"></div><div id="ver"></div></div>
 </div>
-<div id="wrap">
+<div id="list"><p>Loading…</p></div>
+<div id="wrap" hidden>
   <canvas id="cv"></canvas>
   <div id="hint" hidden><span id="hint-t"></span><span class="hb" id="hint-b"></span></div>
   <div id="pg">Page D-1</div>
 </div>
 <div id="sel" hidden></div>
-<div id="tools">
+<div id="tools" hidden>
   <button class="primary" id="t-icon">Add icon</button>
   <button class="primary" id="t-line">Draw line</button>
   <button id="t-words">Move words</button>
   <button id="t-size">Icon size</button>
   <button id="t-undo">Undo</button>
   <button id="t-print">Print: faded</button>
+  <button id="t-others">Others: faded</button>
   <button id="t-fit">Whole print</button>
   <button id="t-save">Save PDF 36x48</button>
 </div>
@@ -101,7 +116,7 @@
    GPS Shots use: a typed name that matches one (18 for a lockbox = LB-18) is that location; any other becomes a new
    location GPS Shots lists and can plot (gpsName / gk / gg below are what GPS Shots reads). Lines start on one icon
    and end on another and stay attached when an icon moves. */
-const APP_VERSION = "V 01.21";
+const APP_VERSION = "V 01.22";
 // phones keep an old copy of this page for a while: load the newest one when it changes (same as GPS Shots)
 (async () => {
   try {
@@ -122,7 +137,10 @@ $("ver").textContent = APP_VERSION;
 const slug = new URLSearchParams(location.search).get("p") || LS.get("current", "");
 const cfg = Object.assign({ token: "", repo: "sgogats/ASBUILT_MAKER", branch: "main" }, LS.get("cfg", {}) || {});
 $("back").href = "./";
-$("back").onclick = e => { if (history.length > 1) { e.preventDefault(); history.back(); } };
+$("back").onclick = e => {
+  if (sheet) { e.preventDefault(); if (history.state && history.state.sheet) history.back(); else showList(true); return; }   // from an as-built back to the list
+  if (history.length > 1) { e.preventDefault(); history.back(); }
+};
 
 function b64(str) { const bytes = new TextEncoder().encode(str); let s = ""; for (let i = 0; i < bytes.length; i += 8192) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 8192)); return btoa(s); }
 function decodeB64(s) { const bin = atob(s.replace(/\n/g, "")); return new TextDecoder().decode(Uint8Array.from(bin, c => c.charCodeAt(0))); }
@@ -182,6 +200,7 @@ const DEF_LINES = {
   elec:  { name: "Electric", color: "#c1121f", w: 3, dash: "dash" },
   water: { name: "Water", color: "#1565c0", w: 3, dash: "dash" },
   tv:    { name: "Cable TV", color: "#e07000", w: 3, dash: "dot" },
+  aerial: { name: "Aerial", color: "#222222", w: 2.5, dash: "" },   // the wire between poles (Steven 2026-11-20)
 };
 const COLORS = ["#d62828", "#c1121f", "#f28c28", "#e07000", "#f2c500", "#2e9d4f", "#0b6e4f", "#1f5fd6", "#1565c0", "#7b3fbf", "#8a8f98", "#4b5563", "#6d4c41", "#222222"];
 const DASH = { "": [], dash: [12, 6], dot: [3, 5] };
@@ -199,6 +218,78 @@ function label(it) {   // Steven: type 18 for a lockbox and the print says "Lock
 }
 const newDoc = () => ({ project: projName, slug, v: 1, updated: 0, kinds: {}, lineKinds: {}, items: [], lines: [] });
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+
+/* ---------------------------------------------------------------- as-builts (Steven 2026-11-20)
+   One drawing per job, many as-builts of it, kept in doc.sheets:
+   - the Composite: everything (the drawing as it was before),
+   - one per building: cut down to the building's outline plus a little room, turned so it lies landscape,
+   - ones that show only some icon and line types (Conduit and vaults, Aerial, Fiber, ...). The rest shows faded or hidden.
+   They are all views of the same drawing, so a change on any of them is a change on the Composite and on the others. */
+let sheet = null, job = null, rdata = null;
+const rot = () => (sheet && sheet.rot) || 0;
+function rotPt(p, r) {
+  if (!r) return { x: p.x, y: p.y };
+  const a = r * Math.PI / 180, c = Math.cos(a), s = Math.sin(a);
+  return { x: p.x * c - p.y * s, y: p.x * s + p.y * c };
+}
+const PRESETS = {
+  cv:      { name: "Conduit and vaults", lineRx: "conduit", iconRx: "vault|lockbox", icons: ["vault", "lockbox"] },
+  conduit: { name: "Conduit", lineRx: "conduit" },
+  vaults:  { name: "Vaults", iconRx: "vault", icons: ["vault"] },
+  fiber:   { name: "Fiber", lineRx: "^(?!.*drop).*fiber", icons: ["splice"] },
+  drops:   { name: "Drops", lineRx: "drop", icons: ["nid"] },
+  aerial:  { name: "Aerial", lineRx: "aerial|strand", icons: ["pole", "riser"] },
+};
+const presetSheet = (key, name) => Object.assign({ id: uid(), type: "pick", lines: [], icons: [] }, JSON.parse(JSON.stringify(PRESETS[key])), name ? { name } : {});
+function picks(sh, isLine, k) {   // does this as-built show this icon / line type?
+  const list = isLine ? sh.lines : sh.icons, rx = isLine ? sh.lineRx : sh.iconRx, kd = isLine ? lineKinds()[k] : kinds()[k];
+  if ((list || []).includes(k)) return true;
+  if (rx && kd) { try { return new RegExp(rx, "i").test(kd.name); } catch { } }
+  return false;
+}
+let othersMode = LS.get("draw.others", "faded");   // what is not on this as-built: faded / off
+const FADE = 0.22;
+function vis(o, isLine, sh = sheet) {   // "on", "faded" or "off"
+  if (sh && sh.type === "bldg" && !isLine && !inBox(o, sh)) return "off";
+  if (!sh || sh.type !== "pick") return "on";
+  return picks(sh, isLine, o.k) ? "on" : othersMode === "off" ? "off" : "faded";
+}
+const inBox = (p, sh) => { const b = sh.box; return p.x >= b[0] && p.x <= b[2] && p.y >= b[1] && p.y <= b[3]; };
+function bldgSheet(b) {   // the building outline from the designer, a little room around it, and its own lockboxes / vaults close by
+  let [x0, y0, x1, y1] = b.box; const w = x1 - x0, h = y1 - y0;
+  const m = Math.max(0.2 * Math.max(w, h), ppf ? 25 * ppf : 36), near = ppf ? 60 * ppf : 90;
+  const num = String(b.name).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), own = new RegExp("(^|[^0-9])" + num + "[A-Z]?([^0-9]|$)", "i");
+  let X0 = x0 - m, Y0 = y0 - m, X1 = x1 + m, Y1 = y1 + m;
+  for (const it of doc.items) {
+    if (!/^(lockbox|vault)$/.test(it.k) || !own.test(String(it.name || ""))) continue;
+    if (it.x < x0 - near || it.x > x1 + near || it.y < y0 - near || it.y > y1 + near) continue;
+    const pad = iconSize() * 3; X0 = Math.min(X0, it.x - pad); Y0 = Math.min(Y0, it.y - pad); X1 = Math.max(X1, it.x + pad); Y1 = Math.max(Y1, it.y + pad);
+  }
+  const box = [X0, Y0, X1, Y1].map(v => Math.round(v * 10) / 10);
+  return { id: uid(), name: "Building " + b.name, type: "bldg", bldg: String(b.name), box, rot: (box[3] - box[1]) > (box[2] - box[0]) ? 90 : 0 };
+}
+function pullPoles() {   // Steven 2026-11-20: the pole line shot in GPS Shots, joined in the order the poles were shot
+  const it = (rdata && rdata.items) || {}, ctl = (rdata && rdata.controls) || {};
+  const poles = Object.entries(it).filter(([n, v]) => v && v.group === "Pole line" && ctl[n] && ctl[n].x != null).sort((a, b) => (a[1].t || 0) - (b[1].t || 0));
+  let prev = null, made = 0;
+  for (const [n] of poles) {
+    let ic = doc.items.find(i => i.gpsName === n || i.name === n);
+    if (!ic) { ic = { id: uid(), k: "pole", name: n, x: ctl[n].x, y: ctl[n].y, rot: 0 }; doc.items.push(ic); made++; }
+    if (prev && !doc.lines.some(l => (l.a === prev.id && l.b === ic.id) || (l.a === ic.id && l.b === prev.id))) { doc.lines.push({ id: uid(), k: "aerial", a: prev.id, b: ic.id, pts: [] }); made++; }
+    prev = ic;
+  }
+  return made;
+}
+function ensureSheets() {   // the first time: the Composite, one per building, Conduit and vaults, and Aerial
+  if (doc.sheets && doc.sheets.length) return false;
+  const S = doc.sheets = [{ id: "composite", name: "Composite", type: "all" }];
+  if (!doc.items.length && !doc.lines.length) return true;
+  for (const b of (job && job.buildings) || []) if (b.box && b.box[0] != null) S.push(bldgSheet(b));
+  S.push(presetSheet("cv"), presetSheet("aerial"));
+  pullPoles(); for (const i of doc.items) stamp(i);
+  return true;
+}
+function saveDoc() { kCache = lCache = null; doc.project = projName; doc.updated = Date.now(); LS.set("drawn." + slug, doc); scheduleSave(); }
 
 /* ---------------------------------------------------------------- shared names (designer + GPS Shots) */
 const sq = s => String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -228,16 +319,21 @@ function stamp(it) {   // what GPS Shots reads: the location name, its kind and 
 const cv = $("cv"), ctx = cv.getContext("2d");
 let W = 0, H = 0, DPR = 1, TOP = null;
 const view = { x: 0, y: 0, s: 1, fitted: false };
-const toScreen = p => ({ x: p.x * view.s + view.x, y: p.y * view.s + view.y });
-const toPrint = p => ({ x: (p.x - view.x) / view.s, y: (p.y - view.y) / view.s });
+const toScreen = p => { const q = rotPt(p, rot()); return { x: q.x * view.s + view.x, y: q.y * view.s + view.y }; };   // a building as-built is turned (rot)
+const toPrint = p => rotPt({ x: (p.x - view.x) / view.s, y: (p.y - view.y) / view.s }, -rot());
 function bounds() {
   if (plan && plan.size) { const [ox, oy] = plan.origin || [0, 0]; return { x0: ox, y0: oy, x1: ox + plan.size[0], y1: oy + plan.size[1] }; }
   const pts = doc.items.length ? doc.items : [{ x: 0, y: 0 }];
   const xs = pts.map(p => p.x), ys = pts.map(p => p.y);
   return { x0: Math.min(...xs) - 200, y0: Math.min(...ys) - 200, x1: Math.max(...xs) + 200, y1: Math.max(...ys) + 200 };
 }
+function sheetBox(sh) { if (sh && sh.type === "bldg") { const [x0, y0, x1, y1] = sh.box; return { x0, y0, x1, y1 }; } return bounds(); }
+function rotBounds(b, r) {   // the box after turning, in turned units
+  const q = [[b.x0, b.y0], [b.x1, b.y0], [b.x1, b.y1], [b.x0, b.y1]].map(([x, y]) => rotPt({ x, y }, r)), xs = q.map(p => p.x), ys = q.map(p => p.y);
+  return { x0: Math.min(...xs), y0: Math.min(...ys), x1: Math.max(...xs), y1: Math.max(...ys) };
+}
 function fit() {
-  const b = bounds(), pad = 10;
+  const b = rotBounds(sheetBox(sheet), rot()), pad = 10;
   view.s = Math.min((W - 2 * pad) / (b.x1 - b.x0), (H - 2 * pad) / (b.y1 - b.y0));
   view.x = (W - (b.x1 - b.x0) * view.s) / 2 - b.x0 * view.s; view.y = (H - (b.y1 - b.y0) * view.s) / 2 - b.y0 * view.s;
   view.fitted = true;
@@ -321,7 +417,7 @@ function paintWord(g, w) {
 }
 const printAlpha = () => printMode === "off" ? 0 : printMode === "faded" ? 0.35 : 1;
 function drawPlanLayer(quick) {
-  const key = [view.x, view.y, view.s, W, H, printMode, wordsVer, dragWord ? dragWord.key : ""].join("|");
+  const key = [view.x, view.y, view.s, W, H, printMode, wordsVer, dragWord ? dragWord.key : "", sheet ? sheet.id : "", rot()].join("|");
   if (quick && planCache && planCache.key !== key && planCache.mode === printMode) {   // fingers moving: slide the last picture, the sharp one follows
     const L = planCache.v, k = view.s / L.s;
     ctx.drawImage(planCache.c, view.x - L.x * k, view.y - L.y * k, W * k, H * k); return;
@@ -329,12 +425,12 @@ function drawPlanLayer(quick) {
   if (!planCache || planCache.key !== key) {
     const c = planCache && planCache.c.width === cv.width && planCache.c.height === cv.height ? planCache.c : Object.assign(document.createElement("canvas"), { width: cv.width, height: cv.height });
     const g = c.getContext("2d"); g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, c.width, c.height);
-    g.setTransform(DPR, 0, 0, DPR, 0, 0); g.translate(view.x, view.y); g.scale(view.s, view.s);
+    g.setTransform(DPR, 0, 0, DPR, 0, 0); g.translate(view.x, view.y); g.scale(view.s, view.s); g.rotate(rot() * Math.PI / 180);
     paintPlan(g, view.s, printAlpha(), dragWord);
     planCache = { key, c, mode: printMode, v: { x: view.x, y: view.y, s: view.s } };
   }
   ctx.drawImage(planCache.c, 0, 0, W, H);
-  if (dragWord) { ctx.save(); ctx.setTransform(DPR, 0, 0, DPR, 0, 0); ctx.translate(view.x, view.y); ctx.scale(view.s, view.s); ctx.globalAlpha = Math.max(printAlpha(), 0.6); paintWord(ctx, dragWord); ctx.restore(); }
+  if (dragWord) { ctx.save(); ctx.setTransform(DPR, 0, 0, DPR, 0, 0); ctx.translate(view.x, view.y); ctx.scale(view.s, view.s); ctx.rotate(rot() * Math.PI / 180); ctx.globalAlpha = Math.max(printAlpha(), 0.6); paintWord(ctx, dragWord); ctx.restore(); }
 }
 let wordsVer = 0, dragWord = null;
 function wordCorners(w) {   // the word's box on screen, turned with the word
@@ -385,7 +481,7 @@ function iconShape(g, kd, z) {
 }
 function paintIcon(g, it, p, z, selected) {
   const kd = kindOf(it);
-  g.save(); g.translate(p.x, p.y); g.rotate((it.rot || 0) * Math.PI / 180);
+  g.save(); g.translate(p.x, p.y); g.rotate(((it.rot || 0) + rot()) * Math.PI / 180);
   if (selected) { g.save(); g.fillStyle = "rgba(255,210,0,.55)"; g.beginPath(); g.arc(0, 0, z * 1.9, 0, 7); g.fill(); g.restore(); }
   iconShape(g, kd, z); g.restore();
 }
@@ -444,9 +540,18 @@ function draw(quick) {
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0); ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, W, H);
   if (!doc) return;
   if (!view.fitted) fit();
+  const clip = sheet && sheet.type === "bldg";
+  if (clip) {   // a building as-built: only its own part of the print, the rest grey
+    ctx.fillStyle = "#d9dedb"; ctx.fillRect(0, 0, W, H); ctx.save();
+    const b = sheet.box, q = [[b[0], b[1]], [b[2], b[1]], [b[2], b[3]], [b[0], b[3]]].map(([x, y]) => toScreen({ x, y }));
+    ctx.beginPath(); q.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)); ctx.closePath(); ctx.clip();
+    ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, W, H);
+  }
   drawPlanLayer(quick);
   const lks = lineKinds(), z = iconPx(view.s), font = z * 0.95;
-  for (const ln of doc.lines) paintLine(ctx, linePts(ln).map(toScreen), lks[ln.k] || DEF_LINES.c2, 1, sel && sel.type === "line" && sel.id === ln.id);
+  const alpha = (o, isLine) => { const v = vis(o, isLine); ctx.globalAlpha = v === "faded" ? FADE : 1; return v !== "off"; };
+  for (const ln of doc.lines) if (alpha(ln, true)) paintLine(ctx, linePts(ln).map(toScreen), lks[ln.k] || DEF_LINES.c2, 1, sel && sel.type === "line" && sel.id === ln.id);
+  ctx.globalAlpha = 1;
   if (cur) {
     const a = itemById(cur.a), pts = [a ? { x: a.x, y: a.y } : null, ...chunk(cur.pts)].filter(Boolean).map(toScreen);
     if (hover) pts.push(hover);
@@ -459,9 +564,11 @@ function draw(quick) {
       const q = wordCorners(w); ctx.beginPath(); q.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)); ctx.closePath();
       if (w === selWord) { ctx.save(); ctx.setLineDash([]); ctx.fillStyle = "rgba(255,210,0,.35)"; ctx.fill(); ctx.strokeStyle = "#0b6e4f"; ctx.lineWidth = 2.5; ctx.stroke(); ctx.restore(); } else ctx.stroke(); }
     ctx.restore(); }
-  for (const ln of doc.lines) paintLen(ctx, linePts(ln).map(toScreen), lenText(ln), (ln.lenSize || lenSize()) * view.s, "#111");
-  for (const it of doc.items) paintIcon(ctx, it, toScreen(it), zOf(it, z), (sel && sel.type === "icon" && sel.id === it.id) || (cur && cur.a === it.id));
-  for (const it of doc.items) paintLabel(ctx, it, toScreen(it), zOf(it, z), (it.nameSize || nameSize()) * view.s);
+  for (const ln of doc.lines) if (alpha(ln, true)) paintLen(ctx, linePts(ln).map(toScreen), lenText(ln), (ln.lenSize || lenSize()) * view.s, "#111");
+  for (const it of doc.items) if (alpha(it, false)) paintIcon(ctx, it, toScreen(it), zOf(it, z), (sel && sel.type === "icon" && sel.id === it.id) || (cur && cur.a === it.id));
+  for (const it of doc.items) if (alpha(it, false)) paintLabel(ctx, it, toScreen(it), zOf(it, z), (it.nameSize || nameSize()) * view.s);
+  ctx.globalAlpha = 1;
+  if (clip) ctx.restore();
   if (ppf) scaleBar();
 }
 const chunk = a => { const o = []; for (let i = 0; i < (a || []).length; i += 2) o.push({ x: a[i], y: a[i + 1] }); return o; };
@@ -533,15 +640,15 @@ function fixDrawnNames(rd) {
 async function load() {
   if (!slug) { $("proj").textContent = "Open a project in GPS Shots first"; return; }
   const custom = LS.get("custom", []) || [], c = custom.find(x => x.slug === slug);
-  let job = LS.get("job." + slug, null);
+  job = LS.get("job." + slug, null); rdata = LS.get("data." + slug, null);
   projName = (job && job.name) || (c && c.name) || slug.replace(/-/g, " ");
   $("proj").textContent = projName;
   doc = LS.get("drawn." + slug, null) || newDoc(); kCache = lCache = null;
   if (job && job.plan) { plan = job.plan; ppf = job.pt_per_ft || 0; }
   else if (c && c.print) plan = await loadPlanFromCustom(c);
-  collectNames(job, LS.get("data." + slug, null));
-  view.fitted = false; planCache = null; draw();
-  if (!gh.on()) { setSave("No key: open from the Home Screen icon"); if (!plan) $("proj").textContent = projName + " · no print on this device"; return; }
+  collectNames(job, rdata);
+  view.fitted = false; planCache = null; renderList();
+  if (!gh.on()) { setSave("No key: open from the Home Screen icon"); if (!plan) $("proj").textContent = projName + " · no print on this device"; if (ensureSheets()) saveDoc(); return; }
   setSave("Loading…");
   try {
     const [j, np, rd, dm] = await Promise.all([
@@ -554,6 +661,7 @@ async function load() {
     const p2 = np || (j && j.plan) || null;   // the replacement print (800 Sylvan page 1 for Garden Homes) wins, same as GPS Shots
     if (p2 && (!plan || String(p2.origin) !== String(plan.origin) || p2.size[0] !== plan.size[0])) { plan = p2; view.fitted = false; planCache = null; }
     if (!plan && c && c.print) { plan = await loadPlanFromCustom(c); view.fitted = false; }
+    if (rd) rdata = rd;
     collectNames(job, rd);
     sha = dm ? dm.sha : "";
     const remote = dm ? JSON.parse(decodeB64(dm.content)) : null;
@@ -561,8 +669,9 @@ async function load() {
     else if (doc.updated && (!remote || (remote.updated || 0) < doc.updated)) scheduleSave();
     else setSave(remote ? "Saved" : "Nothing drawn yet");
     if (fixDrawnNames(rd)) { doc.updated = Date.now(); LS.set("drawn." + slug, doc); kCache = lCache = null; wordsVer++; scheduleSave(); }
+    if (ensureSheets()) saveDoc();
     $("proj").textContent = projName + (plan ? "" : " · no print found");
-  } catch (e) { setSave("Offline · using this device's copy"); }
+  } catch (e) { setSave("Offline · using this device's copy"); ensureSheets(); }   // not saved: the newer copy on GitHub must not be overwritten
   draw();
 }
 
@@ -571,13 +680,13 @@ const ptrs = new Map(); let gest = null, pinch = null;
 const pos = e => { const r = cv.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
 function hitIcon(p, skip) {
   const z = iconPx(view.s); let best = null, bd = Infinity;
-  for (const it of doc.items) { if (it.id === skip) continue; const q = toScreen(it), d = Math.hypot(q.x - p.x, q.y - p.y), lim = Math.max(zOf(it, z) * 1.5, 22); if (d < lim && d < bd) { bd = d; best = it; } }
+  for (const it of doc.items) { if (it.id === skip || vis(it, false) === "off") continue; const q = toScreen(it), d = Math.hypot(q.x - p.x, q.y - p.y), lim = Math.max(zOf(it, z) * 1.5, 22); if (d < lim && d < bd) { bd = d; best = it; } }
   return best;
 }
 function segDist(p, a, b) { const dx = b.x - a.x, dy = b.y - a.y, L = dx * dx + dy * dy; let t = L ? ((p.x - a.x) * dx + (p.y - a.y) * dy) / L : 0; t = Math.max(0, Math.min(1, t)); return Math.hypot(p.x - a.x - t * dx, p.y - a.y - t * dy); }
 function hitLine(p) {
   let best = null, bd = 14;
-  for (const ln of doc.lines) { const q = linePts(ln).map(toScreen); for (let i = 1; i < q.length; i++) { const d = segDist(p, q[i - 1], q[i]); if (d < bd) { bd = d; best = ln; } } }
+  for (const ln of doc.lines) { if (vis(ln, true) === "off") continue; const q = linePts(ln).map(toScreen); for (let i = 1; i < q.length; i++) { const d = segDist(p, q[i - 1], q[i]); if (d < bd) { bd = d; best = ln; } } }
   return best;
 }
 cv.addEventListener("pointerdown", e => {
@@ -625,7 +734,8 @@ cv.addEventListener("pointermove", e => {
   if (gest.type === "pan") { view.x = gest.v.x + p.x - gest.start.x; view.y = gest.v.y + p.y - gest.start.y; drawSoon(); }
   else if (gest.type === "word") {
     doc.textMoves = doc.textMoves || {}; dragWord = gest.w;
-    doc.textMoves[gest.w.key] = [gest.m0[0] + (p.x - gest.start.x) / view.s, gest.m0[1] + (p.y - gest.start.y) / view.s, gest.m0[2]]; drawSoon();
+    const P0 = toPrint(gest.start), P1 = toPrint(p);   // in print units, so it also works on a turned building as-built
+    doc.textMoves[gest.w.key] = [gest.m0[0] + P1.x - P0.x, gest.m0[1] + P1.y - P0.y, gest.m0[2]]; drawSoon();
   }
   else if (gest.type === "move") { const P = toPrint(p); gest.it.x = P.x - gest.dx; gest.it.y = P.y - gest.dy; drawSoon(); }
   else if (gest.type === "free") {
@@ -1043,8 +1153,14 @@ class VecCtx {
   alpha(a) { const pdf = this.pdf, o = Math.max(0, Math.min(1, a * this.globalAlpha)); pdf.setGState(new pdf.GState({ opacity: o, "stroke-opacity": o })); }
   emit() { const pdf = this.pdf; for (const sp of this.path) for (const op of sp) { if (op[0] === "M") pdf.moveTo(op[1], op[2]); else if (op[0] === "L") pdf.lineTo(op[1], op[2]); else if (op[0] === "C") pdf.curveTo(op[1], op[2], op[3], op[4], op[5], op[6]); else pdf.close(); } }
   fill() { if (!this.path.length) return; const c = this.col(this.fillStyle); this.pdf.setFillColor(c[0], c[1], c[2]); this.alpha(c[3]); this.emit(); this.pdf.fill(); }
+  out(xs, ys) {   // Steven 2026-11-20: a building sheet leaves out the parts of the print that are off the sheet (smaller PDF)
+    const c = this.cull; if (!c) return false;
+    return Math.max(...xs) < c[0] || Math.min(...xs) > c[2] || Math.max(...ys) < c[1] || Math.min(...ys) > c[3];
+  }
   stroke(p) {
-    if (p && p.__pts) { this.beginPath(); for (const a of p.__pts) { this.moveTo(a[0], a[1]); for (let i = 2; i < a.length; i += 2) this.lineTo(a[i], a[i + 1]); } }
+    if (p && p.__pts) { this.beginPath(); for (const a of p.__pts) {
+      if (this.cull) { const xs = [], ys = []; for (let i = 0; i < a.length; i += 2) { const [X, Y] = this.P(a[i], a[i + 1]); xs.push(X); ys.push(Y); } if (this.out(xs, ys)) continue; }
+      this.moveTo(a[0], a[1]); for (let i = 2; i < a.length; i += 2) this.lineTo(a[i], a[i + 1]); } }
     if (!this.path.length) return;
     const pdf = this.pdf, c = this.col(this.strokeStyle), k = this.k; pdf.setDrawColor(c[0], c[1], c[2]); this.alpha(c[3]);
     pdf.setLineWidth(this.lineWidth * k); pdf.setLineCap(this.lineCap === "round" ? "round" : this.lineCap === "square" ? "square" : "butt"); pdf.setLineJoin(this.lineJoin === "round" ? "round" : this.lineJoin === "bevel" ? "bevel" : "miter");
@@ -1060,75 +1176,226 @@ class VecCtx {
     const w = pdf.getTextWidth(t) / k, dx = this.textAlign === "center" ? -w / 2 : this.textAlign === "right" || this.textAlign === "end" ? -w : 0;
     const dy = this.textBaseline === "middle" ? px * 0.35 : this.textBaseline === "top" || this.textBaseline === "hanging" ? px * 0.75 : this.textBaseline === "bottom" ? -px * 0.22 : 0;
     const [X, Y] = this.P(x + dx, y + dy), m = this.m, ang = Math.atan2(m[1], m[0]);
+    if (this.cull && this.out([X - 2, X + 2], [Y - 2, Y + 2])) return;
     const c = this.col(this.fillStyle); pdf.setTextColor(c[0], c[1], c[2]); this.alpha(c[3]);
     pdf.text(t, X, Y, ang ? { angle: -ang * 180 / Math.PI } : {});
   }
   strokeText() {}
   measureText(t) { const pdf = this.pdf; pdf.setFont("helvetica", /\b(6|7|8|9)00\b|bold/.test(this.font) ? "bold" : "normal"); pdf.setFontSize(this.fontPx() * 72); return { width: pdf.getTextWidth(String(t)) }; }
+  clipTo(pts) {   // keep what follows inside these points (ended with unclip)
+    const pdf = this.pdf; pdf.saveGraphicsState(); this.beginPath(); pts.forEach((q, i) => i ? this.lineTo(q.x, q.y) : this.moveTo(q.x, q.y)); this.closePath();
+    this.emit(); pdf.clip(); pdf.discardPath(); this.path = [];
+  }
+  unclip() { this.pdf.restoreGraphicsState(); }
   drawImage(img, x, y, w, h) { const [X, Y] = this.P(x, y), [X2, Y2] = this.P(x + w, y + h); this.alpha(1); try { this.pdf.addImage(img, "PNG", X, Y, X2 - X, Y2 - Y); } catch (e) { } }
 }
 /* Steven 2026-10-08: Save PDF makes a big sheet (2026-10-09: 36 x 48 inches) (the drawing, a title line and a legend of what is used). */
 const JSPDF = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
 const loadScript = src => new Promise((ok, no) => { const s = document.createElement("script"); s.src = src; s.onload = ok; s.onerror = () => no(new Error("couldn't load " + src)); document.head.appendChild(s); });
-$("t-save").onclick = async () => {
-  if (!doc) return;
-  toast("Making the 36 x 48 PDF…");
-  const b = bounds(), bw = b.x1 - b.x0, bh = b.y1 - b.y0, land = bw >= bh;
-  const SW = land ? 48 : 36, SH = land ? 36 : 48;
-  const DPI = 150, PW = SW * DPI, PH = SH * DPI, M = DPI / 2, head = DPI;   // half-inch margins, one-inch title band
-  const k = Math.min((PW - 2 * M) / bw, (PH - 2 * M - head) / bh), ox = (PW - bw * k) / 2, oy = M + head + (PH - 2 * M - head - bh * k) / 2;
-  const paint = g => {
-  g.fillStyle = "#fff"; g.fillRect(0, 0, PW, PH);
-  g.strokeStyle = "#111"; g.lineWidth = 4; g.strokeRect(M / 2, M / 2, PW - M, PH - M);
-  g.fillStyle = "#111"; g.font = "700 56px sans-serif"; g.textBaseline = "middle"; g.textAlign = "left";
-  g.fillText(`${projName} · As-built`, M, M + head / 2);
-  g.textAlign = "right"; g.font = "500 40px sans-serif"; g.fillText(new Date().toLocaleDateString(), PW - M, M + head / 2);
-  g.save(); g.translate(ox, oy); g.scale(k, k); g.translate(-b.x0, -b.y0); paintPlan(g, k, printMode === "off" ? 0 : printMode === "faded" ? 0.4 : 1); g.restore();
-  const T = p => ({ x: (p.x - b.x0) * k + ox, y: (p.y - b.y0) * k + oy }), z = iconSize() * k, wm = Math.max(0.2, z * 0.11), lks = lineKinds();
-  for (const ln of doc.lines) paintLine(g, linePts(ln).map(T), lks[ln.k] || DEF_LINES.c2, wm, false);
-  for (const it of doc.items) paintIcon(g, it, T(it), zOf(it, z), false);
-  for (const ln of doc.lines) paintLen(g, linePts(ln).map(T), lenText(ln), Math.max(5, (ln.lenSize || lenSize()) * k), "#111");
-  // icon names are not drawn here: they go into the PDF as real text with a white edge (Steven 2026-10-10)
-  if (ppf) {   // scale bar
-    const per = k * ppf; let ft = 10; for (const f of [10, 20, 25, 50, 100, 200, 250, 500]) { ft = f; if (f * per >= DPI * 2) break; }
-    const x = M, y = PH - M - 30, w = ft * per;
-    g.strokeStyle = "#111"; g.lineWidth = 6; g.beginPath(); g.moveTo(x, y - 24); g.lineTo(x, y); g.lineTo(x + w, y); g.lineTo(x + w, y - 24); g.stroke();
-    g.fillStyle = "#111"; g.font = "600 40px sans-serif"; g.textAlign = "left"; g.textBaseline = "alphabetic"; g.fillText(ft + " ft", x + w + 16, y);
-  }
-  const usedK = [...new Set(doc.items.map(i => i.k))], usedL = [...new Set(doc.lines.map(l => l.k))], rows = usedK.length + usedL.length;
-  if (rows) {   // legend, bottom right
-    const lh = 70, w = 700, h = rows * lh + 30, x = PW - M - w, y = PH - M - h;
-    g.fillStyle = "rgba(255,255,255,.95)"; g.strokeStyle = "#111"; g.lineWidth = 3; g.fillRect(x, y, w, h); g.strokeRect(x, y, w, h);
-    let yy = y + 15 + lh / 2; g.font = "600 40px sans-serif"; g.textAlign = "left"; g.textBaseline = "middle";
-    for (const kk of usedK) { const kd = kinds()[kk]; if (!kd) continue; g.save(); g.translate(x + 60, yy); iconShape(g, kd, 22); g.restore(); g.fillStyle = "#111"; g.fillText(kd.name, x + 120, yy); yy += lh; }
-    for (const lk of usedL) { const v = lks[lk]; if (!v) continue; paintLine(g, [{ x: x + 20, y: yy }, { x: x + 100, y: yy }], v, 2, false); g.fillStyle = "#111"; g.fillText(v.name, x + 120, yy); yy += lh; }
-  }
-  };
+// Steven 2026-11-20: Save PDF asks each time: this as-built, or all of them (one 36 x 48 page each, all landscape)
+$("t-save").onclick = () => {
+  if (!doc || !sheet) return;
+  const S = doc.sheets || [];
+  openCard(`<h2>Save PDF</h2><p class="small">36 x 48 inches, landscape.</p>
+    <div class="list"><button class="primary" id="sp-1">Just this one: ${esc(sheet.name)}</button>${S.length > 1 ? `<button id="sp-all">All ${S.length} as-builts, one page each</button>` : ""}</div>
+    <div class="acts"><button data-cancel id="sp-x">Cancel</button></div>`, "D-10");
+  $("sp-1").onclick = () => { closeCard(); makePdf([sheet]); };
+  if ($("sp-all")) $("sp-all").onclick = () => { closeCard(); makePdf(S); };
+  $("sp-x").onclick = closeCard;
+};
+let pdfBusy = false;
+async function makePdf(list) {
+  if (!doc || !list.length || pdfBusy) return;
+  pdfBusy = true; const keep = sheet;
+  toast(list.length > 1 ? `Making the PDF: ${list.length} pages…` : "Making the 36 x 48 PDF…");
+  const SW = 48, SH = 36, DPI = 150, PW = SW * DPI, PH = SH * DPI, M = DPI / 2, head = DPI;   // half-inch margins, one-inch title band
   try {
     if (!window.jspdf) await loadScript(JSPDF);
-    const pdf = new window.jspdf.jsPDF({ orientation: land ? "landscape" : "portrait", unit: "in", format: [36, 48] });
-    paint(new VecCtx(pdf, 1 / DPI));   // the whole sheet as vector drawing (sharp at any size)
-    pdf.setGState(new pdf.GState({ opacity: 1, "stroke-opacity": 1 }));
-    // sharp text on top: icon names and conduit lengths, with a white edge so they read over lines and the print
-    const T = p => ({ x: (p.x - b.x0) * k + ox, y: (p.y - b.y0) * k + oy }), z = iconSize() * k, IN = v => v / DPI;
-    pdf.setFont("helvetica", "bold"); pdf.setLineJoin("round"); pdf.setDrawColor(255, 255, 255);
-    const say = (t, x, y, px, opt) => {
-      pdf.setFontSize(px / DPI * 72); pdf.setLineWidth(IN(Math.max(2, px * 0.28)));
-      pdf.text(t, IN(x), IN(y), Object.assign({ renderingMode: "stroke" }, opt));
-      pdf.setTextColor(17, 17, 17); pdf.text(t, IN(x), IN(y), Object.assign({ renderingMode: "fill" }, opt));
-    };
-    for (const it of doc.items) {
-      const p = T(it), zi = zOf(it, z), px = Math.max(5, (it.nameSize || nameSize()) * k);
-      say(label(it), p.x + zi * (kindOf(it).shape === "riser" ? 1.8 : 1.45), p.y - zi * 1.05, px, { baseline: "middle" });
+    const pdf = new window.jspdf.jsPDF({ orientation: "landscape", unit: "in", format: [36, 48] });
+    for (let n = 0; n < list.length; n++) {
+      const sh = list[n]; sheet = sh;   // rot(), vis() now follow this page's as-built
+      if (n) { pdf.addPage([36, 48], "landscape"); if (n % 3 === 0) { toast(`Making page ${n + 1} of ${list.length}…`); await new Promise(r => setTimeout(r, 0)); } }
+      const r = rot(), b = rotBounds(sheetBox(sh), r), bw = b.x1 - b.x0, bh = b.y1 - b.y0;
+      const k = Math.min((PW - 2 * M) / bw, (PH - 2 * M - head) / bh), ox = (PW - bw * k) / 2, oy = M + head + (PH - 2 * M - head - bh * k) / 2;
+      const T = p => { const q = rotPt(p, r); return { x: (q.x - b.x0) * k + ox, y: (q.y - b.y0) * k + oy }; };
+      const z = iconSize() * k, wm = Math.max(0.2, z * 0.11), lks = lineKinds();
+      const g = new VecCtx(pdf, 1 / DPI), clip = sh.type === "bldg";
+      g.fillStyle = "#fff"; g.fillRect(0, 0, PW, PH);
+      g.strokeStyle = "#111"; g.lineWidth = 4; g.strokeRect(M / 2, M / 2, PW - M, PH - M);
+      g.fillStyle = "#111"; g.font = "700 56px sans-serif"; g.textBaseline = "middle"; g.textAlign = "left";
+      g.fillText(`${projName} · ${sh.name} · As-built`, M, M + head / 2);
+      g.textAlign = "right"; g.font = "500 40px sans-serif"; g.fillText(new Date().toLocaleDateString(), PW - M, M + head / 2);
+      if (clip) { const B = sh.box, q = [[B[0], B[1]], [B[2], B[1]], [B[2], B[3]], [B[0], B[3]]].map(([x, y]) => T({ x, y }));
+        g.clipTo(q); const xs = q.map(p => p.x / DPI), ys = q.map(p => p.y / DPI); g.cull = [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)]; }
+      g.save(); g.translate(ox, oy); g.scale(k, k); g.translate(-b.x0, -b.y0); g.rotate(r * Math.PI / 180); paintPlan(g, k, printMode === "off" ? 0 : printMode === "faded" ? 0.4 : 1); g.restore();
+      const al = (o, isLine) => { const v = vis(o, isLine); g.globalAlpha = v === "faded" ? FADE : 1; return v !== "off"; };
+      for (const ln of doc.lines) if (al(ln, true)) paintLine(g, linePts(ln).map(T), lks[ln.k] || DEF_LINES.c2, wm, false);
+      for (const it of doc.items) if (al(it, false)) paintIcon(g, it, T(it), zOf(it, z), false);
+      for (const ln of doc.lines) if (al(ln, true)) paintLen(g, linePts(ln).map(T), lenText(ln), Math.max(5, (ln.lenSize || lenSize()) * k), "#111");
+      g.globalAlpha = 1; g.cull = null;
+      if (clip) g.unclip();
+      // icon names are not drawn here: they go into the PDF as real text with a white edge (Steven 2026-10-10)
+      if (ppf) {   // scale bar
+        const per = k * ppf; let ft = 10; for (const f of [10, 20, 25, 50, 100, 200, 250, 500]) { ft = f; if (f * per >= DPI * 2) break; }
+        const x = M, y = PH - M - 30, w = ft * per;
+        g.strokeStyle = "#111"; g.lineWidth = 6; g.beginPath(); g.moveTo(x, y - 24); g.lineTo(x, y); g.lineTo(x + w, y); g.lineTo(x + w, y - 24); g.stroke();
+        g.fillStyle = "#111"; g.font = "600 40px sans-serif"; g.textAlign = "left"; g.textBaseline = "alphabetic"; g.fillText(ft + " ft", x + w + 16, y);
+      }
+      const shownI = doc.items.filter(i => vis(i, false) === "on"), shownL = doc.lines.filter(l => vis(l, true) === "on" && (!clip || linePts(l).some(p => inBox(p, sh))));
+      const usedK = [...new Set(shownI.map(i => i.k))], usedL = [...new Set(shownL.map(l => l.k))], rows = usedK.length + usedL.length;
+      if (rows) {   // legend, bottom right
+        const lh = 70, w = 700, h = rows * lh + 30, x = PW - M - w, y = PH - M - h;
+        g.fillStyle = "rgba(255,255,255,.95)"; g.strokeStyle = "#111"; g.lineWidth = 3; g.fillRect(x, y, w, h); g.strokeRect(x, y, w, h);
+        let yy = y + 15 + lh / 2; g.font = "600 40px sans-serif"; g.textAlign = "left"; g.textBaseline = "middle";
+        for (const kk of usedK) { const kd = kinds()[kk]; if (!kd) continue; g.save(); g.translate(x + 60, yy); iconShape(g, kd, 22); g.restore(); g.fillStyle = "#111"; g.fillText(kd.name, x + 120, yy); yy += lh; }
+        for (const lk of usedL) { const v = lks[lk]; if (!v) continue; paintLine(g, [{ x: x + 20, y: yy }, { x: x + 100, y: yy }], v, 2, false); g.fillStyle = "#111"; g.fillText(v.name, x + 120, yy); yy += lh; }
+      }
+      pdf.setGState(new pdf.GState({ opacity: 1, "stroke-opacity": 1 }));
+      // sharp text on top: icon names, with a white edge so they read over lines and the print
+      const IN = v => v / DPI;
+      pdf.setFont("helvetica", "bold"); pdf.setLineJoin("round"); pdf.setDrawColor(255, 255, 255);
+      const say = (t, x, y, px, gray) => {
+        pdf.setFontSize(px / DPI * 72); pdf.setLineWidth(IN(Math.max(2, px * 0.28)));
+        pdf.text(t, IN(x), IN(y), { renderingMode: "stroke", baseline: "middle" });
+        pdf.setTextColor(gray, gray, gray); pdf.text(t, IN(x), IN(y), { renderingMode: "fill", baseline: "middle" });
+      };
+      for (const it of doc.items) {
+        const v = vis(it, false); if (v === "off") continue;
+        const p = T(it), zi = zOf(it, z), px = Math.max(5, (it.nameSize || nameSize()) * k);
+        say(label(it), p.x + zi * (kindOf(it).shape === "riser" ? 1.8 : 1.45), p.y - zi * 1.05, px, v === "faded" ? 175 : 17);
+      }
     }
-    const blob = pdf.output("blob"), fname = `${slug}-as-built-36x48.pdf`, file = new File([blob], fname, { type: "application/pdf" });
+    sheet = keep;
+    const one = list.length === 1 ? "-" + sq(list[0].name) : "-all";
+    const blob = pdf.output("blob"), fname = `${slug}${one}-as-built-36x48.pdf`, file = new File([blob], fname, { type: "application/pdf" });
+    pdfBusy = false;
     try { if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: projName + " as-built" }); return; } } catch (e) { if (e.name === "AbortError") return; }
     const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = fname; document.body.appendChild(a); a.click(); a.remove();
-    toast("PDF saved (36 x 48)");
-  } catch (e) { toast("Couldn't make the PDF: " + e.message); }
-};
+    toast(list.length > 1 ? `PDF saved: ${list.length} pages (36 x 48)` : "PDF saved (36 x 48)");
+  } catch (e) { sheet = keep; pdfBusy = false; toast("Couldn't make the PDF: " + e.message); }
+}
 
-load();
+/* ---------------------------------------------------------------- the as-built list page (Steven 2026-11-20)
+   Draw as-built opens here: the job's as-builts, tap one to work on it. Each has its own name. */
+const sheetUrl = id => { const q = new URLSearchParams(location.search); if (id) q.set("s", id); else q.delete("s"); return location.pathname + "?" + q; };
+function showList(replace) {
+  sheet = null; sel = null; cur = null; mode = "view";
+  $("list").hidden = false; $("wrap").hidden = $("tools").hidden = $("sel").hidden = $("hint").hidden = true;
+  $("proj").textContent = projName;
+  if (replace) history.replaceState(null, "", sheetUrl(null));
+  renderList();
+}
+function openSheet(id, push) {
+  const sh = ((doc && doc.sheets) || []).find(x => x.id === id); if (!sh) { showList(true); return; }
+  sheet = sh; sel = null; cur = null;
+  $("list").hidden = true; $("wrap").hidden = $("tools").hidden = false;
+  $("proj").textContent = projName + " · " + sh.name;
+  $("t-others").hidden = sh.type !== "pick";
+  if (push) history.pushState({ sheet: id }, "", sheetUrl(id));
+  view.fitted = false; planCache = null; W = 0; setMode("view"); resize();
+}
+window.addEventListener("popstate", () => {
+  const id = new URLSearchParams(location.search).get("s");
+  if (id && doc && (doc.sheets || []).some(x => x.id === id)) openSheet(id, false); else showList(false);
+});
+function sheetSays(sh) {
+  if (sh.type === "all") return "Everything on the drawing";
+  if (sh.type === "bldg") return "Only this building" + (sh.rot ? ", turned to lie flat on the sheet" : "");
+  const ks = kinds(), lks = lineKinds();
+  const L = Object.keys(lks).filter(k => picks(sh, true, k)).map(k => lks[k].name), I = Object.keys(ks).filter(k => picks(sh, false, k)).map(k => ks[k].name);
+  const all = [...L, ...I];
+  return all.length ? "Shows " + all.join(", ") : "Nothing picked yet";
+}
+function renderList() {
+  if (sheet) return;
+  const el = $("list");
+  if (!doc) { el.innerHTML = "<p>Loading…</p>"; return; }
+  const S = doc.sheets || [];
+  if (!S.length) { el.innerHTML = `<h2>As-builts</h2><p class="small">Loading your as-builts…</p>`; return; }
+  el.innerHTML = `<h2>As-builts</h2>
+    <div class="top"><button class="primary" id="l-new">+ New as-built</button><button id="l-pdf">Save PDF of all ${S.length}</button></div>
+    ${S.map(sh => `<div class="sh"><button class="open" data-o="${esc(sh.id)}"><b>${esc(sh.name)}</b><span>${esc(sheetSays(sh))} · On the job print</span></button>
+      ${sh.type === "pick" ? `<button class="act" data-e="${esc(sh.id)}">What shows</button>` : ""}<button class="act" data-r="${esc(sh.id)}">Rename</button>${sh.type !== "all" ? `<button class="act danger" data-d="${esc(sh.id)}">Delete</button>` : ""}</div>`).join("")}
+    <p class="small">All of these are the same drawing. A change on one shows on the Composite and on the others too.</p>`;
+  const find = id => S.find(x => x.id === id);
+  for (const b of el.querySelectorAll("[data-o]")) b.onclick = () => openSheet(b.dataset.o, true);
+  for (const b of el.querySelectorAll("[data-r]")) b.onclick = () => renameSheet(find(b.dataset.r));
+  for (const b of el.querySelectorAll("[data-e]")) b.onclick = () => pickEditor(find(b.dataset.e), false);
+  for (const b of el.querySelectorAll("[data-d]")) b.onclick = () => {
+    const sh = find(b.dataset.d);
+    if (!confirm(`Delete the as-built "${sh.name}"? Nothing on the drawing is deleted. It all stays on the Composite.`)) return;
+    doc.sheets = S.filter(x => x !== sh); saveDoc(); renderList();
+  };
+  $("l-new").onclick = newSheet;
+  $("l-pdf").onclick = () => makePdf(S);
+}
+function renameSheet(sh) {
+  openCard(`<h2>Name this as-built</h2>
+    <label class="f"><span>Name</span><input type="text" id="rn-n" value="${esc(sh.name)}" autocomplete="off"></label>
+    <div class="acts"><button class="primary" id="rn-ok">Save</button><button data-cancel id="rn-x">Cancel</button></div>`, "D-8");
+  const inp = $("rn-n"); setTimeout(() => { inp.focus(); inp.select(); }, 50);
+  inp.onkeydown = e => { if (e.key === "Enter") $("rn-ok").click(); };
+  $("rn-ok").onclick = () => { const n = inp.value.trim(); if (!n) { toast("Type a name"); return; } sh.name = n; saveDoc(); closeCard(); renderList(); };
+  $("rn-x").onclick = closeCard;
+}
+// D-7: a new as-built: a name, then what it shows
+function newSheet() {
+  const bl = ((job && job.buildings) || []).filter(b => b.box && b.box[0] != null);
+  openCard(`<h2>New as-built</h2>
+    <label class="f"><span>Name (you can change it later)</span><input type="text" id="ns-n" placeholder="For example: Fiber, Building A" autocomplete="off"></label>
+    <h3>What it shows</h3>
+    <div class="list">${Object.entries(PRESETS).map(([k, v]) => `<button data-p="${k}">${esc(v.name)}</button>`).join("")}
+      ${bl.length ? `<button data-p="bldg">One building, on its own sheet</button>` : ""}
+      <button data-p="own">Pick my own icons and lines</button></div>
+    <div class="acts"><button data-cancel id="ns-x">Cancel</button></div>`, "D-7");
+  const nm = () => $("ns-n").value.trim();
+  for (const b of $("card").querySelectorAll("[data-p]")) b.onclick = () => {
+    const k = b.dataset.p;
+    if (k === "bldg") {
+      const typed = nm();
+      openCard(`<h2>Which building?</h2><div class="chips">${bl.map((x, i) => `<button data-b="${i}">${esc(x.name)}</button>`).join("")}</div>
+        <div class="acts"><button data-cancel id="nb-x">Back</button></div>`, "D-7");
+      for (const c of $("card").querySelectorAll("[data-b]")) c.onclick = () => { const sh = bldgSheet(bl[+c.dataset.b]); if (typed) sh.name = typed; addSheet(sh); };
+      $("nb-x").onclick = newSheet; return;
+    }
+    if (k === "own") { pickEditor({ id: uid(), name: nm() || "My as-built", type: "pick", lines: [], icons: [] }, true); return; }
+    addSheet(presetSheet(k, nm()));
+  };
+  $("ns-x").onclick = closeCard;
+}
+function addSheet(sh) {
+  doc.sheets = doc.sheets || []; doc.sheets.push(sh);
+  if (sh.type === "pick" && /aerial/i.test(sh.lineRx || "") && pullPoles()) { for (const i of doc.items) stamp(i); toast("Added the pole line from GPS Shots"); }
+  saveDoc(); closeCard(); renderList();
+}
+// D-9: tick the icon and line types an as-built shows
+function pickEditor(sh, isNew) {
+  const ks = kinds(), lks = lineKinds();
+  const row = (t, k, on) => `<label class="ck"><input type="checkbox" data-${t}="${k}"${on ? " checked" : ""}> ${esc(t === "l" ? lks[k].name : ks[k].name)}</label>`;
+  openCard(`<h2>What shows on ${esc(sh.name)}</h2>
+    ${isNew ? `<label class="f"><span>Name</span><input type="text" id="pe-n" value="${esc(sh.name)}" autocomplete="off"></label>` : ""}
+    <h3>Lines</h3>${Object.keys(lks).map(k => row("l", k, picks(sh, true, k))).join("")}
+    <h3>Icons</h3>${Object.keys(ks).map(k => row("i", k, picks(sh, false, k))).join("")}
+    <p class="small">Everything else shows faded underneath, or hidden, with the "Others" button.</p>
+    <div class="acts"><button class="primary" id="pe-ok">Save</button><button data-cancel id="pe-x">Cancel</button></div>`, "D-9");
+  $("pe-ok").onclick = () => {
+    if (isNew) { const n = $("pe-n").value.trim(); if (!n) { toast("Type a name"); return; } sh.name = n; }
+    sh.lines = [...$("card").querySelectorAll("[data-l]")].filter(c => c.checked).map(c => c.dataset.l);
+    sh.icons = [...$("card").querySelectorAll("[data-i]")].filter(c => c.checked).map(c => c.dataset.i);
+    delete sh.lineRx; delete sh.iconRx;   // from now on exactly what is ticked
+    if (isNew) { addSheet(sh); return; }
+    saveDoc(); closeCard(); renderList(); if (sheet) { planCache = null; draw(); }
+  };
+  $("pe-x").onclick = closeCard;
+}
+const OM = { faded: "Others: faded", off: "Others: hidden" };
+$("t-others").textContent = OM[othersMode] || OM.faded;
+$("t-others").onclick = () => { othersMode = othersMode === "faded" ? "off" : "faded"; LS.set("draw.others", othersMode); $("t-others").textContent = OM[othersMode]; sel = null; renderSel(); draw(); };
+
+load().then(() => {
+  const id = new URLSearchParams(location.search).get("s");
+  if (id && (doc.sheets || []).some(x => x.id === id)) openSheet(id, false); else showList(true);
+});
 </script>
 </body>
 </html>
