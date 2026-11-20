@@ -116,7 +116,7 @@
    GPS Shots use: a typed name that matches one (18 for a lockbox = LB-18) is that location; any other becomes a new
    location GPS Shots lists and can plot (gpsName / gk / gg below are what GPS Shots reads). Lines start on one icon
    and end on another and stay attached when an icon moves. */
-const APP_VERSION = "V 01.22";
+const APP_VERSION = "V 01.23";
 // phones keep an old copy of this page for a while: load the newest one when it changes (same as GPS Shots)
 (async () => {
   try {
@@ -226,6 +226,7 @@ const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 
    - ones that show only some icon and line types (Conduit and vaults, Aerial, Fiber, ...). The rest shows faded or hidden.
    They are all views of the same drawing, so a change on any of them is a change on the Composite and on the others. */
 let sheet = null, job = null, rdata = null;
+let mainDoc = null, mainPlan = null, mainPpf = 0;   // the job print's drawing (holds the list of as-builts and extra prints) and print
 const rot = () => (sheet && sheet.rot) || 0;
 function rotPt(p, r) {
   if (!r) return { x: p.x, y: p.y };
@@ -281,15 +282,15 @@ function pullPoles() {   // Steven 2026-11-20: the pole line shot in GPS Shots, 
   return made;
 }
 function ensureSheets() {   // the first time: the Composite, one per building, Conduit and vaults, and Aerial
-  if (doc.sheets && doc.sheets.length) return false;
-  const S = doc.sheets = [{ id: "composite", name: "Composite", type: "all" }];
+  if (mainDoc.sheets && mainDoc.sheets.length) return false;
+  const S = mainDoc.sheets = [{ id: "composite", name: "Composite", type: "all" }];
   if (!doc.items.length && !doc.lines.length) return true;
   for (const b of (job && job.buildings) || []) if (b.box && b.box[0] != null) S.push(bldgSheet(b));
   S.push(presetSheet("cv"), presetSheet("aerial"));
   pullPoles(); for (const i of doc.items) stamp(i);
   return true;
 }
-function saveDoc() { kCache = lCache = null; doc.project = projName; doc.updated = Date.now(); LS.set("drawn." + slug, doc); scheduleSave(); }
+function saveDoc() { kCache = lCache = null; const d = mainDoc || doc; d.project = projName; d.updated = Date.now(); keepLocal(d); scheduleSave(d); }   // the list of as-builts and prints lives in the job print's drawing
 
 /* ---------------------------------------------------------------- shared names (designer + GPS Shots) */
 const sq = s => String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -587,26 +588,39 @@ function before() { undo.push(snap()); if (undo.length > 60) undo.shift(); }
 function changed() {
   kCache = lCache = null; wordsVer++;
   for (const it of doc.items) stamp(it);
-  doc.project = projName; doc.updated = Date.now(); LS.set("drawn." + slug, doc); scheduleSave(); draw(); renderSel();
+  doc.project = projName; doc.updated = Date.now(); keepLocal(); scheduleSave(); draw(); renderSel();
 }
 $("t-undo").onclick = () => {
   if (cur) { if (cur.pts.length) cur.pts.splice(-2, 2); else cur = null; showHint(); draw(); return; }
   const s = undo.pop(); if (!s) { toast("Nothing to undo"); return; }
   Object.assign(doc, JSON.parse(s)); sel = null; changed(); toast("Undone");
 };
-let sha = null, saveT = null, saving = false, again = false;
+/* Steven 2026-11-20: each print has its own drawing. The job print's is gps/drawn/<slug>.json (GPS Shots reads it);
+   an extra print's is gps/drawn/<slug>--<print id>.json. */
+const docKey = d => d.printId ? `drawn.${slug}.${d.printId}` : "drawn." + slug;
+const docPath = d => d.printId ? `gps/drawn/${slug}--${d.printId}.json` : `gps/drawn/${slug}.json`;
+function keepLocal(d = doc) { LS.set(docKey(d), d); }
+const shas = {}, dirty = new Set();
+let saveT = null, saving = false, again = false;
 function setSave(t) { $("save").textContent = t; }
-function scheduleSave() { setSave(gh.on() ? "Saving…" : "Saved on this device"); clearTimeout(saveT); saveT = setTimeout(saveNow, 1500); }
+function scheduleSave(d = doc) { dirty.add(d); setSave(gh.on() ? "Saving…" : "Saved on this device"); clearTimeout(saveT); saveT = setTimeout(saveNow, 1500); }
 async function saveNow() {
-  if (!gh.on()) { setSave("Saved on this device"); return; }
+  if (!gh.on()) { dirty.clear(); setSave("Saved on this device"); return; }
   if (saving) { again = true; return; }
-  saving = true; const path = `gps/drawn/${slug}.json`, msg = `Draw as-built: ${projName}`;
+  saving = true;
   try {
-    if (sha == null) { const m = await gh.get(path); sha = m ? m.sha : ""; }
-    let r;
-    try { r = await gh.put(path, doc, sha || undefined, msg); }
-    catch (e) { if (e.status !== 409 && e.status !== 422) throw e; const m = await gh.get(path); sha = m ? m.sha : ""; r = await gh.put(path, doc, sha || undefined, msg); }
-    sha = r.content.sha; setSave("Saved");
+    for (const d of [...dirty]) {
+      dirty.delete(d);
+      const path = docPath(d), msg = `Draw as-built: ${projName}`;
+      try {
+        if (shas[path] == null) { const m = await gh.get(path); shas[path] = m ? m.sha : ""; }
+        let r;
+        try { r = await gh.put(path, d, shas[path] || undefined, msg); }
+        catch (e) { if (e.status !== 409 && e.status !== 422) throw e; const m = await gh.get(path); shas[path] = m ? m.sha : ""; r = await gh.put(path, d, shas[path] || undefined, msg); }
+        shas[path] = r.content.sha;
+      } catch (e) { dirty.add(d); throw e; }
+    }
+    setSave("Saved");
   } catch (e) { setSave("Not sent yet · kept on this device"); clearTimeout(saveT); saveT = setTimeout(saveNow, 20000); }
   saving = false; if (again) { again = false; saveNow(); }
 }
@@ -648,7 +662,7 @@ async function load() {
   else if (c && c.print) plan = await loadPlanFromCustom(c);
   collectNames(job, rdata);
   view.fitted = false; planCache = null; renderList();
-  if (!gh.on()) { setSave("No key: open from the Home Screen icon"); if (!plan) $("proj").textContent = projName + " · no print on this device"; if (ensureSheets()) saveDoc(); return; }
+  if (!gh.on()) { setSave("No key: open from the Home Screen icon"); if (!plan) $("proj").textContent = projName + " · no print on this device"; mainDoc = doc; mainPlan = plan; mainPpf = ppf; if (ensureSheets()) saveDoc(); return; }
   setSave("Loading…");
   try {
     const [j, np, rd, dm] = await Promise.all([
@@ -663,15 +677,16 @@ async function load() {
     if (!plan && c && c.print) { plan = await loadPlanFromCustom(c); view.fitted = false; }
     if (rd) rdata = rd;
     collectNames(job, rd);
-    sha = dm ? dm.sha : "";
+    shas[`gps/drawn/${slug}.json`] = dm ? dm.sha : "";
     const remote = dm ? JSON.parse(decodeB64(dm.content)) : null;
-    if (remote && (remote.updated || 0) > (doc.updated || 0)) { doc = Object.assign(newDoc(), remote); kCache = lCache = null; wordsVer++; LS.set("drawn." + slug, doc); setSave("Saved"); }
+    if (remote && (remote.updated || 0) > (doc.updated || 0)) { doc = Object.assign(newDoc(), remote); kCache = lCache = null; wordsVer++; keepLocal(); setSave("Saved"); }
     else if (doc.updated && (!remote || (remote.updated || 0) < doc.updated)) scheduleSave();
     else setSave(remote ? "Saved" : "Nothing drawn yet");
-    if (fixDrawnNames(rd)) { doc.updated = Date.now(); LS.set("drawn." + slug, doc); kCache = lCache = null; wordsVer++; scheduleSave(); }
+    if (fixDrawnNames(rd)) { doc.updated = Date.now(); keepLocal(); kCache = lCache = null; wordsVer++; scheduleSave(); }
+    mainDoc = doc; mainPlan = plan; mainPpf = ppf;
     if (ensureSheets()) saveDoc();
     $("proj").textContent = projName + (plan ? "" : " · no print found");
-  } catch (e) { setSave("Offline · using this device's copy"); ensureSheets(); }   // not saved: the newer copy on GitHub must not be overwritten
+  } catch (e) { setSave("Offline · using this device's copy"); mainDoc = doc; mainPlan = plan; mainPpf = ppf; ensureSheets(); }   // not saved: the newer copy on GitHub must not be overwritten
   draw();
 }
 
@@ -928,7 +943,7 @@ function renderSel() {
     sizeRow("ls", ln, "lenSize", () => ln.lenSize || lenSize(), doc.lines);
     $("s-lk").onchange = e => { before(); ln.k = e.target.value; changed(); };
     let lenSnap = null;   // one undo step for the whole typed length
-    $("s-len").oninput = e => { if (!lenSnap) { before(); lenSnap = 1; } const v = e.target.value.trim(); if (v) ln.len = v; else delete ln.len; doc.updated = Date.now(); LS.set("drawn." + slug, doc); scheduleSave(); draw(); };   // not changed(): that redraws this box and drops the keyboard
+    $("s-len").oninput = e => { if (!lenSnap) { before(); lenSnap = 1; } const v = e.target.value.trim(); if (v) ln.len = v; else delete ln.len; doc.updated = Date.now(); keepLocal(); scheduleSave(); draw(); };   // not changed(): that redraws this box and drops the keyboard
     $("s-len").onblur = () => { lenSnap = null; };
   }
   $("s-del").onclick = delSel;
@@ -942,7 +957,7 @@ function sizeRow(id, obj, key, get, list) {
   let s0 = null;
   if (list) $(id + "-a").onclick = () => { before(); doc[key] = get(); for (const o of list) delete o[key]; changed(); toast("Done: all the same size"); };
   const set = (v, commit) => { if (!s0) s0 = snap(); obj[key] = Math.max(0.2, Math.min(80, v)); $(id + "-r").value = Math.log(obj[key]); draw();
-    if (commit) { undo.push(s0); s0 = null; doc.updated = Date.now(); LS.set("drawn." + slug, doc); scheduleSave(); } };
+    if (commit) { undo.push(s0); s0 = null; doc.updated = Date.now(); keepLocal(); scheduleSave(); } };
   $(id + "-m").onclick = () => set(get() / 1.25, true);
   $(id + "-p").onclick = () => set(get() * 1.25, true);
   $(id + "-r").oninput = e => set(Math.exp(+e.target.value), false);
@@ -1195,7 +1210,7 @@ const loadScript = src => new Promise((ok, no) => { const s = document.createEle
 // Steven 2026-11-20: Save PDF asks each time: this as-built, or all of them (one 36 x 48 page each, all landscape)
 $("t-save").onclick = () => {
   if (!doc || !sheet) return;
-  const S = doc.sheets || [];
+  const S = mainDoc.sheets || [];
   openCard(`<h2>Save PDF</h2><p class="small">36 x 48 inches, landscape.</p>
     <div class="list"><button class="primary" id="sp-1">Just this one: ${esc(sheet.name)}</button>${S.length > 1 ? `<button id="sp-all">All ${S.length} as-builts, one page each</button>` : ""}</div>
     <div class="acts"><button data-cancel id="sp-x">Cancel</button></div>`, "D-10");
@@ -1206,14 +1221,16 @@ $("t-save").onclick = () => {
 let pdfBusy = false;
 async function makePdf(list) {
   if (!doc || !list.length || pdfBusy) return;
-  pdfBusy = true; const keep = sheet;
+  pdfBusy = true; const keep = sheet, keepPr = curPrint, keepUndo = undo;
   toast(list.length > 1 ? `Making the PDF: ${list.length} pages…` : "Making the 36 x 48 PDF…");
   const SW = 48, SH = 36, DPI = 150, PW = SW * DPI, PH = SH * DPI, M = DPI / 2, head = DPI;   // half-inch margins, one-inch title band
   try {
     if (!window.jspdf) await loadScript(JSPDF);
     const pdf = new window.jspdf.jsPDF({ orientation: "landscape", unit: "in", format: [36, 48] });
     for (let n = 0; n < list.length; n++) {
-      const sh = list[n]; sheet = sh;   // rot(), vis() now follow this page's as-built
+      const sh = list[n];
+      if ((sh.print || null) !== curPrint) await usePrint(sh.print || null, true);   // this page's print and drawing
+      sheet = sh;   // rot(), vis() now follow this page's as-built
       if (n) { pdf.addPage([36, 48], "landscape"); if (n % 3 === 0) { toast(`Making page ${n + 1} of ${list.length}…`); await new Promise(r => setTimeout(r, 0)); } }
       const r = rot(), b = rotBounds(sheetBox(sh), r), bw = b.x1 - b.x0, bh = b.y1 - b.y0;
       const k = Math.min((PW - 2 * M) / bw, (PH - 2 * M - head) / bh), ox = (PW - bw * k) / 2, oy = M + head + (PH - 2 * M - head - bh * k) / 2;
@@ -1265,14 +1282,155 @@ async function makePdf(list) {
         say(label(it), p.x + zi * (kindOf(it).shape === "riser" ? 1.8 : 1.45), p.y - zi * 1.05, px, v === "faded" ? 175 : 17);
       }
     }
-    sheet = keep;
+    sheet = keep; if (curPrint !== keepPr) await usePrint(keepPr, true); undo = keepUndo;
     const one = list.length === 1 ? "-" + sq(list[0].name) : "-all";
     const blob = pdf.output("blob"), fname = `${slug}${one}-as-built-36x48.pdf`, file = new File([blob], fname, { type: "application/pdf" });
     pdfBusy = false;
     try { if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: projName + " as-built" }); return; } } catch (e) { if (e.name === "AbortError") return; }
     const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = fname; document.body.appendChild(a); a.click(); a.remove();
     toast(list.length > 1 ? `PDF saved: ${list.length} pages (36 x 48)` : "PDF saved (36 x 48)");
-  } catch (e) { sheet = keep; pdfBusy = false; toast("Couldn't make the PDF: " + e.message); }
+  } catch (e) { sheet = keep; if (curPrint !== keepPr) await usePrint(keepPr, true); undo = keepUndo; pdfBusy = false; toast("Couldn't make the PDF: " + e.message); }
+}
+
+/* ---------------------------------------------------------------- extra prints (Steven 2026-11-20)
+   More prints can be uploaded for a job. Each has its own drawing and its own as-builts. The print goes to
+   ASBUILT_MAKER gps/prints/<slug>--<print id>.jpg (a PDF page as a picture) or .json (DXF lines); the list is mainDoc.prints. */
+let curPrint = null;   // null = the job print
+const printDocs = {}, printPlans = {};
+const idbSet = (k, v) => new Promise(ok => { try { const q = indexedDB.open("gps", 1); q.onupgradeneeded = () => q.result.createObjectStore("kv"); q.onerror = () => ok(false);
+  q.onsuccess = () => { try { const t = q.result.transaction("kv", "readwrite"); t.objectStore("kv").put(v, k); t.oncomplete = () => ok(true); t.onerror = () => ok(false); } catch { ok(false); } }; } catch { ok(false); } });
+async function loadPrintDoc(pid) {
+  if (printDocs[pid]) return printDocs[pid];
+  const base = { project: projName, slug, printId: pid, v: 1, updated: 0, kinds: JSON.parse(JSON.stringify(mainDoc.kinds || {})), lineKinds: JSON.parse(JSON.stringify(mainDoc.lineKinds || {})), items: [], lines: [] };
+  let d = LS.get(`drawn.${slug}.${pid}`, null);
+  if (gh.on()) {
+    try {
+      const m = await gh.get(`gps/drawn/${slug}--${pid}.json`); shas[`gps/drawn/${slug}--${pid}.json`] = m ? m.sha : "";
+      const remote = m ? JSON.parse(decodeB64(m.content)) : null;
+      if (remote && (!d || (remote.updated || 0) > (d.updated || 0))) d = remote;
+      else if (d && d.updated && (!remote || (remote.updated || 0) < d.updated)) scheduleSave(d);
+    } catch { }
+  }
+  d = Object.assign(base, d || {}, { printId: pid });
+  return (printDocs[pid] = d);
+}
+async function loadExtraPlan(pid) {
+  if (printPlans[pid]) return printPlans[pid];
+  const pr = printRec(pid); if (!pr) return null;
+  let got = await idbGet(`print.${slug}.${pid}`);
+  if ((!got || got.t !== pr.t) && gh.on()) {
+    try { got = pr.kind === "dxf" ? { t: pr.t, plan: await gh.get(pr.path, true) } : { t: pr.t, blob: await gh.get(pr.path, "blob") }; idbSet(`print.${slug}.${pid}`, got); } catch { }
+  }
+  if (!got) return null;
+  if (got.plan) return (printPlans[pid] = got.plan);
+  const img = new Image(); await new Promise(ok => { img.onload = ok; img.onerror = ok; img.src = URL.createObjectURL(got.blob); });
+  return (printPlans[pid] = { size: pr.size, lines: [], texts: [], img });
+}
+async function usePrint(pid, keepUndo) {   // switch the page to this print's drawing
+  if (!pid) { doc = mainDoc; plan = mainPlan; ppf = mainPpf; }
+  else { doc = await loadPrintDoc(pid); plan = await loadExtraPlan(pid); ppf = (printRec(pid) || {}).ppf || 0; if (!plan) toast("Couldn't load that print on this device"); }
+  if (curPrint !== (pid || null) && !keepUndo) undo = [];
+  curPrint = pid || null; kCache = lCache = null; wordsVer++; planCache = null; view.fitted = false;
+}
+function blobB64(blob) { return new Promise((ok, no) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(",")[1]); r.onerror = () => no(r.error); r.readAsDataURL(blob); }); }
+async function putFile(path, content64, message) {
+  const m = await gh.get(path).catch(() => null), body = { message, branch: cfg.branch, content: content64 };
+  if (m && m.sha) body.sha = m.sha;
+  const r = await fetch(gh.url(path), { method: "PUT", headers: gh.headers(false), body: JSON.stringify(body) });
+  if (!r.ok) throw new Error("GitHub said " + r.status);
+}
+const PDFJS = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/";   // same as GPS Shots
+async function pdfPages(file) {
+  if (!window.pdfjsLib) await loadScript(PDFJS + "pdf.min.js");
+  pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS + "pdf.worker.min.js";
+  return pdfjsLib.getDocument({ data: await file.arrayBuffer() }).promise;
+}
+async function pdfToJpeg(pdf, n) {   // one page as a picture, as big as a phone can hold (same as GPS Shots)
+  const pg = await pdf.getPage(n), v1 = pg.getViewport({ scale: 1 }), k = Math.min(5000 / Math.max(v1.width, v1.height), Math.sqrt(15e6 / (v1.width * v1.height)));
+  const v = pg.getViewport({ scale: k }), c = document.createElement("canvas"); c.width = Math.round(v.width); c.height = Math.round(v.height);
+  const x = c.getContext("2d"); x.fillStyle = "#fff"; x.fillRect(0, 0, c.width, c.height);
+  await pg.render({ canvasContext: x, viewport: v }).promise;
+  return { blob: await new Promise(ok => c.toBlob(ok, "image/jpeg", 0.85)), w: c.width, h: c.height };
+}
+async function imageToJpeg(file) {
+  const img = new Image(); await new Promise((ok, no) => { img.onload = ok; img.onerror = () => no(new Error("couldn't read the picture")); img.src = URL.createObjectURL(file); });
+  const k = Math.min(1, 5000 / Math.max(img.width, img.height)), c = document.createElement("canvas"); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+  const x = c.getContext("2d"); x.fillStyle = "#fff"; x.fillRect(0, 0, c.width, c.height); x.drawImage(img, 0, 0, c.width, c.height);
+  return { blob: await new Promise(ok => c.toBlob(ok, "image/jpeg", 0.85)), w: c.width, h: c.height };
+}
+async function dxfToPlan(text) {   // same as GPS Shots
+  if (!window.DxfParser) await loadScript("https://cdn.jsdelivr.net/npm/dxf-parser@1.1.2/dist/dxf-parser.js");
+  const P = window.DxfParser.default || window.DxfParser, dxf = new P().parseSync(text), blocks = dxf.blocks || {};
+  const segs = [], texts = [];
+  const clean = t => String(t).replace(/\\P/g, " ").replace(/\\[A-Za-z][^;\\]*;/g, "").replace(/[{}]/g, "").trim();
+  function walk(ents, tf, sc, depth) {
+    for (const e of ents || []) {
+      if (e.type === "LINE" && e.vertices) segs.push(e.vertices.map(tf));
+      else if ((e.type === "LWPOLYLINE" || e.type === "POLYLINE") && e.vertices && e.vertices.length > 1) { const v = e.vertices.map(tf); if (e.shape || e.closed) v.push(v[0]); segs.push(v); }
+      else if ((e.type === "CIRCLE" || e.type === "ARC") && e.center) {
+        const a0 = e.type === "CIRCLE" ? 0 : e.startAngle; let span = e.type === "CIRCLE" ? 2 * Math.PI : e.endAngle - e.startAngle; if (span <= 0) span += 2 * Math.PI;
+        const n = Math.max(8, Math.ceil(span / (Math.PI / 18))), v = [];
+        for (let i = 0; i <= n; i++) { const a = a0 + span * i / n; v.push(tf({ x: e.center.x + e.radius * Math.cos(a), y: e.center.y + e.radius * Math.sin(a) })); }
+        segs.push(v);
+      }
+      else if ((e.type === "TEXT" || e.type === "MTEXT") && e.text) { const p = e.startPoint || e.position; if (p) texts.push([tf(p), clean(e.text), (e.textHeight || e.height || 1) * sc]); }
+      else if (e.type === "INSERT" && depth < 6 && blocks[e.name]) {
+        const b = blocks[e.name], bp = b.position || { x: 0, y: 0 }, at = e.position || { x: 0, y: 0 }, xs = e.xScale || 1, ys = e.yScale || 1, r = (e.rotation || 0) * Math.PI / 180, cs = Math.cos(r), sn = Math.sin(r);
+        walk(b.entities, p => { const x = (p.x - bp.x) * xs, y = (p.y - bp.y) * ys; return tf({ x: at.x + x * cs - y * sn, y: at.y + x * sn + y * cs }); }, sc * Math.abs(xs), depth + 1);
+      }
+    }
+  }
+  walk(dxf.entities, p => ({ x: p.x, y: p.y }), 1, 0);
+  const all = segs.flat().concat(texts.map(t => t[0])); if (!all.length) throw new Error("no drawing found in this DXF");
+  const xs = all.map(p => p.x), ys = all.map(p => p.y), x0 = Math.min(...xs), y1 = Math.max(...ys), w = Math.max(...xs) - x0 || 1, h = y1 - Math.min(...ys) || 1;
+  const k = 4000 / Math.max(w, h), pad = 40, X = p => Math.round(((p.x - x0) * k + pad) * 10) / 10, Y = p => Math.round(((y1 - p.y) * k + pad) * 10) / 10;
+  return { size: [Math.round(w * k + 2 * pad), Math.round(h * k + 2 * pad)], lines: segs.map(v => ["#000000", 1, v.flatMap(p => [X(p), Y(p)])]), texts: texts.filter(t => t[1]).map(([p, t, z]) => [X(p), Y(p), t, Math.max(4, Math.round(z * k))]) };
+}
+// D-11: add a print
+function addPrintCard() {
+  if (!gh.on()) { toast("Needs the GitHub key to upload a print (open from the Home Screen icon)"); return; }
+  openCard(`<h2>Add a print</h2>
+    <label class="f"><span>The print: a PDF, a picture, or a DXF</span><input type="file" id="ap-f" accept=".pdf,.dxf,image/*" style="font:inherit;font-size:16px;max-width:100%"></label>
+    <label class="f"><span>Name</span><input type="text" id="ap-n" placeholder="For example: Fiber print, sheet 2" autocomplete="off"></label>
+    <label class="f" id="ap-pl" hidden><span id="ap-pt">Which page of the PDF</span><input type="text" id="ap-p" inputmode="numeric" value="1" autocomplete="off"></label>
+    <div class="acts"><button class="primary" id="ap-ok">Upload</button><button data-cancel id="ap-x">Cancel</button></div>`, "D-11");
+  let pdf = null;
+  $("ap-f").onchange = async () => {
+    const f = $("ap-f").files[0]; pdf = null; $("ap-pl").hidden = true; if (!f) return;
+    if (!$("ap-n").value.trim()) $("ap-n").value = f.name.replace(/\.[^.]+$/, "");
+    if (/\.pdf$/i.test(f.name)) { try { pdf = await pdfPages(f); if (pdf.numPages > 1) { $("ap-pt").textContent = `Which page of the PDF (it has ${pdf.numPages})`; $("ap-pl").hidden = false; } } catch (e) { toast("Couldn't read the PDF: " + e.message); } }
+  };
+  $("ap-x").onclick = closeCard;
+  $("ap-ok").onclick = async () => {
+    const f = $("ap-f").files[0], name = $("ap-n").value.trim();
+    if (!f) { toast("Pick the print first"); return; }
+    if (!name) { toast("Give the print a name"); return; }
+    const dxf = /\.dxf$/i.test(f.name), isPdf = /\.pdf$/i.test(f.name), page = Math.max(1, Math.min(pdf ? pdf.numPages : 1, parseInt($("ap-p").value, 10) || 1));
+    const pid = uid(), t = Date.now(), path = `gps/prints/${slug}--${pid}.${dxf ? "json" : "jpg"}`;
+    $("ap-ok").disabled = true; toast("Reading the print…");
+    try {
+      let rec, cache;
+      if (dxf) {
+        const pl = await dxfToPlan(await f.text());
+        toast("Uploading the print…"); await putFile(path, b64(JSON.stringify(pl)), `Draw as-built: print "${name}" for ${projName}`);
+        rec = { id: pid, name, kind: "dxf", path, size: pl.size, file: f.name, t }; cache = { t, plan: pl };
+      } else {
+        const pic = isPdf ? await pdfToJpeg(pdf || await pdfPages(f), page) : await imageToJpeg(f);
+        toast("Uploading the print…"); await putFile(path, await blobB64(pic.blob), `Draw as-built: print "${name}" for ${projName}`);
+        rec = { id: pid, name, kind: "pic", path, size: [pic.w, pic.h], file: f.name, t }; if (isPdf) rec.page = page; cache = { t, blob: pic.blob };
+      }
+      await idbSet(`print.${slug}.${pid}`, cache);
+      mainDoc.prints = mainDoc.prints || []; mainDoc.prints.push(rec);
+      mainDoc.sheets.push({ id: uid(), name, type: "all", print: pid });   // its first as-built: everything on it
+      saveDoc(); closeCard(); renderList(); toast(`Print "${name}" added`);
+    } catch (e) { $("ap-ok").disabled = false; toast("Couldn't upload the print: " + e.message); }
+  };
+}
+function renamePrint(pr) {
+  openCard(`<h2>Name this print</h2><label class="f"><span>Name</span><input type="text" id="rp-n" value="${esc(pr.name)}" autocomplete="off"></label>
+    <div class="acts"><button class="primary" id="rp-ok">Save</button><button data-cancel id="rp-x">Cancel</button></div>`, "D-12");
+  $("rp-ok").onclick = () => { const n = $("rp-n").value.trim(); if (!n) { toast("Type a name"); return; } pr.name = n; saveDoc(); closeCard(); renderList(); };
+  $("rp-x").onclick = closeCard;
 }
 
 /* ---------------------------------------------------------------- the as-built list page (Steven 2026-11-20)
@@ -1285,8 +1443,10 @@ function showList(replace) {
   if (replace) history.replaceState(null, "", sheetUrl(null));
   renderList();
 }
-function openSheet(id, push) {
-  const sh = ((doc && doc.sheets) || []).find(x => x.id === id); if (!sh) { showList(true); return; }
+async function openSheet(id, push) {
+  const sh = ((mainDoc && mainDoc.sheets) || []).find(x => x.id === id); if (!sh) { showList(true); return; }
+  if (sh.print && !printRec(sh.print)) { toast("That print was deleted"); showList(true); return; }
+  if ((sh.print || null) !== curPrint) { toast("Opening the print…"); await usePrint(sh.print || null); }
   sheet = sh; sel = null; cur = null;
   $("list").hidden = true; $("wrap").hidden = $("tools").hidden = false;
   $("proj").textContent = projName + " · " + sh.name;
@@ -1296,10 +1456,13 @@ function openSheet(id, push) {
 }
 window.addEventListener("popstate", () => {
   const id = new URLSearchParams(location.search).get("s");
-  if (id && doc && (doc.sheets || []).some(x => x.id === id)) openSheet(id, false); else showList(false);
+  if (id && mainDoc && (mainDoc.sheets || []).some(x => x.id === id)) openSheet(id, false); else showList(false);
 });
+const printRec = id => ((mainDoc && mainDoc.prints) || []).find(p => p.id === id);
+const printName = id => id ? ((printRec(id) || {}).name || "a deleted print") : "the job print";
 function sheetSays(sh) {
   if (sh.type === "all") return "Everything on the drawing";
+  if ((sh.print || null) !== curPrint && sh.type === "pick") return "Some icons and lines";
   if (sh.type === "bldg") return "Only this building" + (sh.rot ? ", turned to lie flat on the sheet" : "");
   const ks = kinds(), lks = lineKinds();
   const L = Object.keys(lks).filter(k => picks(sh, true, k)).map(k => lks[k].name), I = Object.keys(ks).filter(k => picks(sh, false, k)).map(k => ks[k].name);
@@ -1310,21 +1473,30 @@ function renderList() {
   if (sheet) return;
   const el = $("list");
   if (!doc) { el.innerHTML = "<p>Loading…</p>"; return; }
-  const S = doc.sheets || [];
+  const S = (mainDoc && mainDoc.sheets) || [];
   if (!S.length) { el.innerHTML = `<h2>As-builts</h2><p class="small">Loading your as-builts…</p>`; return; }
   el.innerHTML = `<h2>As-builts</h2>
-    <div class="top"><button class="primary" id="l-new">+ New as-built</button><button id="l-pdf">Save PDF of all ${S.length}</button></div>
-    ${S.map(sh => `<div class="sh"><button class="open" data-o="${esc(sh.id)}"><b>${esc(sh.name)}</b><span>${esc(sheetSays(sh))} · On the job print</span></button>
+    <div class="top"><button class="primary" id="l-new">+ New as-built</button><button id="l-print">+ Add a print</button><button id="l-pdf">Save PDF of all ${S.length}</button></div>
+    ${S.map(sh => `<div class="sh"><button class="open" data-o="${esc(sh.id)}"><b>${esc(sh.name)}</b><span>${esc(sheetSays(sh))} · On ${esc(printName(sh.print))}</span></button>
       ${sh.type === "pick" ? `<button class="act" data-e="${esc(sh.id)}">What shows</button>` : ""}<button class="act" data-r="${esc(sh.id)}">Rename</button>${sh.type !== "all" ? `<button class="act danger" data-d="${esc(sh.id)}">Delete</button>` : ""}</div>`).join("")}
-    <p class="small">All of these are the same drawing. A change on one shows on the Composite and on the others too.</p>`;
+    <p class="small">The as-builts on one print are all the same drawing. A change on one shows on the others on that print too.</p>
+    ${(mainDoc.prints || []).length ? `<h2>Extra prints</h2>${mainDoc.prints.map(pr => `<div class="sh"><span class="open" style="display:flex"><b>${esc(pr.name)}</b><span>${esc(pr.file || "")}${pr.page ? " · page " + pr.page : ""}</span></span>
+      <button class="act" data-pr="${esc(pr.id)}">Rename</button><button class="act danger" data-pd="${esc(pr.id)}">Delete</button></div>`).join("")}` : ""}`;
+  for (const b of el.querySelectorAll("[data-pr]")) b.onclick = () => renamePrint(printRec(b.dataset.pr));
+  for (const b of el.querySelectorAll("[data-pd]")) b.onclick = () => {
+    const pr = printRec(b.dataset.pd), n = S.filter(x => x.print === pr.id).length;
+    if (!confirm(`Delete the print "${pr.name}"${n ? ` and its ${n} as-built${n > 1 ? "s" : ""}` : ""}? The job print and its as-builts stay.`)) return;
+    mainDoc.prints = mainDoc.prints.filter(x => x !== pr); mainDoc.sheets = S.filter(x => x.print !== pr.id); saveDoc(); renderList();
+  };
+  $("l-print").onclick = addPrintCard;
   const find = id => S.find(x => x.id === id);
   for (const b of el.querySelectorAll("[data-o]")) b.onclick = () => openSheet(b.dataset.o, true);
   for (const b of el.querySelectorAll("[data-r]")) b.onclick = () => renameSheet(find(b.dataset.r));
-  for (const b of el.querySelectorAll("[data-e]")) b.onclick = () => pickEditor(find(b.dataset.e), false);
+  for (const b of el.querySelectorAll("[data-e]")) b.onclick = async () => { const sh = find(b.dataset.e); if ((sh.print || null) !== curPrint) await usePrint(sh.print || null); pickEditor(sh, false); };
   for (const b of el.querySelectorAll("[data-d]")) b.onclick = () => {
     const sh = find(b.dataset.d);
     if (!confirm(`Delete the as-built "${sh.name}"? Nothing on the drawing is deleted. It all stays on the Composite.`)) return;
-    doc.sheets = S.filter(x => x !== sh); saveDoc(); renderList();
+    mainDoc.sheets = S.filter(x => x !== sh); saveDoc(); renderList();
   };
   $("l-new").onclick = newSheet;
   $("l-pdf").onclick = () => makePdf(S);
@@ -1343,29 +1515,33 @@ function newSheet() {
   const bl = ((job && job.buildings) || []).filter(b => b.box && b.box[0] != null);
   openCard(`<h2>New as-built</h2>
     <label class="f"><span>Name (you can change it later)</span><input type="text" id="ns-n" placeholder="For example: Fiber, Building A" autocomplete="off"></label>
+    ${(mainDoc.prints || []).length ? `<label class="f"><span>On which print</span><select id="ns-pr" style="font:inherit;font-size:18px;min-height:44px;width:100%;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--ink)"><option value="">The job print</option>${mainDoc.prints.map(pr => `<option value="${esc(pr.id)}">${esc(pr.name)}</option>`).join("")}</select></label>` : ""}
     <h3>What it shows</h3>
     <div class="list">${Object.entries(PRESETS).map(([k, v]) => `<button data-p="${k}">${esc(v.name)}</button>`).join("")}
       ${bl.length ? `<button data-p="bldg">One building, on its own sheet</button>` : ""}
       <button data-p="own">Pick my own icons and lines</button></div>
     <div class="acts"><button data-cancel id="ns-x">Cancel</button></div>`, "D-7");
-  const nm = () => $("ns-n").value.trim();
-  for (const b of $("card").querySelectorAll("[data-p]")) b.onclick = () => {
+  const nm = () => $("ns-n").value.trim(), onPr = () => ($("ns-pr") && $("ns-pr").value) || null;
+  const withPr = sh => { const pr = onPr(); if (pr) sh.print = pr; return sh; };
+  for (const b of $("card").querySelectorAll("[data-p]")) b.onclick = async () => {
     const k = b.dataset.p;
+    if (k === "bldg" && onPr()) { toast("Building outlines are only on the job print"); return; }
     if (k === "bldg") {
       const typed = nm();
       openCard(`<h2>Which building?</h2><div class="chips">${bl.map((x, i) => `<button data-b="${i}">${esc(x.name)}</button>`).join("")}</div>
         <div class="acts"><button data-cancel id="nb-x">Back</button></div>`, "D-7");
-      for (const c of $("card").querySelectorAll("[data-b]")) c.onclick = () => { const sh = bldgSheet(bl[+c.dataset.b]); if (typed) sh.name = typed; addSheet(sh); };
+      for (const c of $("card").querySelectorAll("[data-b]")) c.onclick = async () => { if (curPrint) await usePrint(null); const sh = bldgSheet(bl[+c.dataset.b]); if (typed) sh.name = typed; addSheet(sh); };
       $("nb-x").onclick = newSheet; return;
     }
-    if (k === "own") { pickEditor({ id: uid(), name: nm() || "My as-built", type: "pick", lines: [], icons: [] }, true); return; }
-    addSheet(presetSheet(k, nm()));
+    if (k === "own") { const pr = onPr(); if ((pr || null) !== curPrint) await usePrint(pr); pickEditor(withPr({ id: uid(), name: nm() || "My as-built", type: "pick", lines: [], icons: [] }), true); return; }
+    addSheet(withPr(presetSheet(k, nm())));
   };
   $("ns-x").onclick = closeCard;
 }
-function addSheet(sh) {
-  doc.sheets = doc.sheets || []; doc.sheets.push(sh);
-  if (sh.type === "pick" && /aerial/i.test(sh.lineRx || "") && pullPoles()) { for (const i of doc.items) stamp(i); toast("Added the pole line from GPS Shots"); }
+async function addSheet(sh) {
+  if (!sh.print && curPrint && sh.type === "pick" && /aerial/i.test(sh.lineRx || "")) await usePrint(null);   // the pole line goes on the job print
+  mainDoc.sheets = mainDoc.sheets || []; mainDoc.sheets.push(sh);
+  if (!sh.print && doc === mainDoc && sh.type === "pick" && /aerial/i.test(sh.lineRx || "") && pullPoles()) { for (const i of doc.items) stamp(i); toast("Added the pole line from GPS Shots"); }
   saveDoc(); closeCard(); renderList();
 }
 // D-9: tick the icon and line types an as-built shows
@@ -1394,7 +1570,7 @@ $("t-others").onclick = () => { othersMode = othersMode === "faded" ? "off" : "f
 
 load().then(() => {
   const id = new URLSearchParams(location.search).get("s");
-  if (id && (doc.sheets || []).some(x => x.id === id)) openSheet(id, false); else showList(true);
+  if (id && (mainDoc.sheets || []).some(x => x.id === id)) openSheet(id, false); else showList(true);
 });
 </script>
 </body>
